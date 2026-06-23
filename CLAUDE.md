@@ -95,6 +95,13 @@ classification, so they never reach a brain (`/status`, `/needs`, `/memory`, `/h
 start, all past summaries load into the system prompt of *both* branches (`load_memory` →
 `build_system`). `history` and `memory.md` are append-only — no trimming/windowing yet.
 
+**Raw session transcripts (for RAG)** — also on exit, `save_session` writes the full turn list plus
+metadata (start/end time, `live`/`dry` mode, turn count) to `history/session-<stamp>.json`
+(`HISTORY_DIR`, gitignored), one file per session, `ensure_ascii=False` so Ukrainian stays readable.
+It runs **before** `summarize` so a summary failure can't lose the transcript, and a same-second
+collision guard appends `-2`, `-3`, … rather than overwriting. This is the unsummarized corpus
+intended for downstream retrieval, distinct from the `memory.md` summaries.
+
 ## Calibration
 
 All tuning lives in module-level constants near the top of `engine.py`: `TICK_SECONDS`, `DRIFT`,

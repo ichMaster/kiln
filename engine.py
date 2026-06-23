@@ -16,6 +16,7 @@ kiln — простий чат-двіжок із двома "мозками".
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -26,6 +27,7 @@ from pathlib import Path
 STATE_DIR = Path(__file__).parent / "state"
 MEMORY_FILE = STATE_DIR / "memory.md"     # довга пам'ять: підсумки минулих розмов
 CANON_FILE = STATE_DIR / "canon.md"       # канон: персона/голос (системний промпт)
+HISTORY_DIR = Path(__file__).parent / "history"   # сирі транскрипти сесій (JSON, для RAG)
 ENV_FILE = Path(__file__).parent / ".env"  # локальна конфігурація (моделі + калібрування)
 
 
@@ -334,6 +336,35 @@ def save_summary(text: str) -> None:
         f.write(block)
 
 
+def save_session(history: list[dict], live: bool, started: str) -> Path | None:
+    """
+    Зберігає СИРУ історію сесії у history/session-<stamp>.json (для майбутнього RAG).
+    Один файл = одна сесія; ensure_ascii=False, щоб українська лишалась читомою.
+    Повертає шлях до файлу або None (порожня історія).
+    """
+    if not history:
+        return None
+    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+    ended = _dt.datetime.now()
+    stamp = ended.strftime("%Y-%m-%d_%H-%M-%S")
+    record = {
+        "session": stamp,
+        "started_at": started,
+        "ended_at": ended.isoformat(timespec="seconds"),
+        "mode": "live" if live else "dry",
+        "turns": len(history),
+        "history": history,            # [{role, text}, ...] у хронологічному порядку
+    }
+    # Не перетирати наявний файл, якщо дві сесії закрилися в ту саму секунду.
+    path = HISTORY_DIR / f"session-{stamp}.json"
+    n = 2
+    while path.exists():
+        path = HISTORY_DIR / f"session-{stamp}-{n}.json"
+        n += 1
+    path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 def build_system(canon: str, memory: str) -> str:
     """Системний промпт = канон (персона) + довга пам'ять (якщо є)."""
     if not memory.strip():
@@ -348,22 +379,30 @@ def build_system(canon: str, memory: str) -> str:
 
 def chat_reply(prompt: str, live: bool, history: list[dict], system: str) -> str:
     """
-    Дешева швидка відповідь через звичайну HTTP API (Haiku).
-    Уся історія передається як масив messages, довга пам'ять — у system.
-    Тут — заглушка; підстав реальний виклик Anthropic Messages API:
-
-        from anthropic import Anthropic
-        client = Anthropic()
-        msg = client.messages.create(
-            model=CHAT_MODEL, max_tokens=512,
-            system=system,                   # канон (canon.md/DEFAULT_CANON) + довга пам'ять
-            messages=to_messages(history),   # включає поточний хід
-        )
-        return msg.content[0].text
+    Дешева швидка відповідь через звичайну Anthropic Messages API (Haiku).
+    Уся історія йде масивом messages; канон + довга пам'ять — у system.
     """
     if not live:
         return f"(dry-run chat: messages={len(history)})"
-    raise NotImplementedError("Підключи Anthropic Messages API у chat_reply().")
+
+    # Локальний імпорт: dry-run працює без пакета anthropic — він потрібен
+    # лише цій живій гілці. Ключ береться з ANTHROPIC_API_KEY (.env -> os.environ).
+    from anthropic import Anthropic
+
+    try:
+        msg = Anthropic().messages.create(
+            model=CHAT_MODEL,                 # Haiku 4.5 — дешево і швидко
+            max_tokens=512,                   # коротка репліка
+            system=system,                    # канон (canon.md/DEFAULT_CANON) + довга пам'ять
+            messages=to_messages(history),    # уся стрічка, з поточним ходом
+        )
+    except Exception as e:                    # мережа / ліміти / помилка API
+        # TODO: для тоншого контролю — ловити типізовані винятки SDK
+        # (anthropic.RateLimitError, APIConnectionError, APIStatusError).
+        return f"(chat error: {e})"
+
+    # content — список блоків; беремо перший текстовий (або порожньо).
+    return next((b.text for b in msg.content if b.type == "text"), "")
 
 
 # === Гілка 2: РОЗДУМ / ТУЛИ (Claude CLI) ====================================
@@ -557,6 +596,7 @@ def run(ticks: int | None = 12, live: bool = False, channel=None) -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)   # каталог стану має існувати для запису
     state = load_state()
     history: list[dict] = []          # спільна стрічка розмови на сесію
+    started = _dt.datetime.now().isoformat(timespec="seconds")  # старт сесії (для транскрипту)
     canon = load_canon()              # персона/голос зі state/canon.md
     memory = load_memory()            # довга пам'ять з минулих сесій
     system = build_system(canon, memory)  # канон + пам'ять
@@ -598,9 +638,13 @@ def run(ticks: int | None = 12, live: bool = False, channel=None) -> None:
     finally:
         save_state(state)
         if history:
+            # Сирий транскрипт зберігаємо ПЕРШИМ — він найважливіший (для RAG)
+            # і не має залежати від (можливо невдалого) виклику summarize.
+            session_path = save_session(history, live, started)
             summary = summarize(history, live)
             save_summary(summary)
-            print(f"[exit] збережено підсумок розмови ({len(history)} ходів) -> {MEMORY_FILE.name}")
+            print(f"[exit] збережено підсумок ({len(history)} ходів) -> {MEMORY_FILE.name}; "
+                  f"транскрипт -> history/{session_path.name}")
 
 
 if __name__ == "__main__":
