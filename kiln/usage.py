@@ -1,8 +1,9 @@
 """
-kiln — лог виконання моделі (модель + витрачені токени) і кольори чату.
+kiln — облік виконання моделі (модель + витрачені токени) і кольори чату.
 
-log_model() лише ЗАПАМ'ЯТОВУЄ використання останнього виклику; друкуємо його
-одним компактним рядком print_tech() під відповіддю в стрічці чату.
+usage_record() — чиста функція: нормалізує usage (об'єкт SDK чи словник CLI) у
+стабільний словник {model, input, output, total}. Його повертає кожна гілка
+мозку (seam) разом із текстом; друкуємо одним рядком print_tech() під відповіддю.
 """
 
 from __future__ import annotations
@@ -11,7 +12,6 @@ import json
 import sys
 
 BOT_NAME = "Agnika"               # підпис відповіді в чаті (лише відображення)
-_last_usage: dict | None = None   # використання останнього виклику моделі
 
 
 def _usage_tokens(usage) -> tuple[int | None, int | None]:
@@ -22,19 +22,11 @@ def _usage_tokens(usage) -> tuple[int | None, int | None]:
     return get("input_tokens"), get("output_tokens")
 
 
-def log_model(branch: str, model: str, usage) -> None:
-    """Запам'ятовує використання моделі (модель + токени) для показу в чаті."""
-    global _last_usage
+def usage_record(model: str, usage) -> dict:
+    """Нормалізує usage у {model, input, output, total} (контракт seam'а мозку)."""
     in_tok, out_tok = _usage_tokens(usage)
-    _last_usage = {"model": model, "input": in_tok or 0, "output": out_tok or 0,
-                   "total": (in_tok or 0) + (out_tok or 0)}
-
-
-def take_usage() -> dict | None:
-    """Повертає й СКИДАЄ останнє використання моделі (None, якщо моделі не було)."""
-    global _last_usage
-    u, _last_usage = _last_usage, None
-    return u
+    in_tok, out_tok = in_tok or 0, out_tok or 0
+    return {"model": model, "input": in_tok, "output": out_tok, "total": in_tok + out_tok}
 
 
 # Кольори рядків чату (ANSI). Різні кольори для тебе й для бота.

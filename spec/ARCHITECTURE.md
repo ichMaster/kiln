@@ -24,8 +24,10 @@ self-trigger.
   vector (`state/needs.json`), drift, satiation.
 - **Tick loop** (`engine.py`: `run`) — the always-on loop; one action per tick
   (input > self-trigger > idle); catch-up drift for real elapsed time.
-- **Two brains** (`engine.py`: `chat_reply` Haiku/SDK, `deep_reply` Opus/`claude -p`)
-  behind cost-aware routing (`classify`, `respond`).
+- **Two brains** (`brain.py`: `LiveBrain` — `chat` Haiku/SDK + `deep` Opus/`claude
+  -p`; `MockBrain` for dry-run/tests) behind the **`Brain` seam**, with cost-aware
+  routing (`engine.py`: `classify`, `respond`). The core reaches the model **only**
+  through the seam — never the SDK or CLI directly.
 - **Self-triggers** (`engine.py`: `select_self_trigger`, `TriggerBook`) — the
   agent speaking first (hysteresis + cooldown).
 - **History** (`history.py`) — shared session-transcript helpers.
@@ -59,14 +61,18 @@ an FSM so the loop never blocks.
 
 ## Two brains and cost routing
 
-The cost discipline lives here: **the cheapest brain that fits.**
+The cost discipline lives here: **the cheapest brain that fits.** Both branches sit
+behind the **`Brain` seam** (`brain.py`), each method returning `(text, usage)`:
 
-- **chat** → **Haiku** via the Anthropic Messages API (`chat_reply`, in-process
+- **chat** → **Haiku** via the Anthropic Messages API (`LiveBrain.chat`, in-process
   SDK; `anthropic` imported lazily so dry-run is dependency-free). Cheap, fast,
   no tools.
-- **deep** → **Opus** via `claude -p` (`deep_reply`, subprocess,
+- **deep** → **Opus** via `claude -p` (`LiveBrain.deep`, subprocess,
   `--output-format json` for text + token usage). Reasoning and tools
   (`--allowedTools`).
+- **mock** → `MockBrain` returns deterministic canned text + a synthetic usage
+  record (no network, no subprocess); the dry-run demo and the whole test suite run
+  on it — **zero paid calls**.
 
 `classify(prompt, state)` → `chat | think | tools` from message markers
 (`TOOL_HINTS`/`THINK_HINTS`) **and** a state weight (`0.55·intensity +
@@ -124,7 +130,10 @@ multi-agent is additive, not a rewrite:
   (SDK `msg.usage` / CLI `data.usage`).
 - **Needs:** `state/needs.json` = `{need: level(0..1)}`.
 - **Canon:** `state/canon.md` → the system prompt (fallback `DEFAULT_CANON`).
-- **Brains:** `chat_reply(...)` (SDK) and `deep_reply(...)` (CLI); the model id is config.
+- **Brain seam:** `Brain.chat(history, system)` and `Brain.deep(prompt, history,
+  system, with_tools)` each return `(text, usage)`; `LiveBrain` (SDK + CLI) and
+  `MockBrain` implement it; model ids are config. `respond()` calls the model only
+  through this seam.
 - **Event protocol (planned, 1.1/1.2):** server↔client events (`user.message`,
   `agnika.message`, `status`, `usage`, `tick`, `command`) mirror the FSM.
 

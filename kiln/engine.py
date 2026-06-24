@@ -13,8 +13,10 @@ kiln — простий чат-двіжок із двома "мозками".
 (ввід користувача або потреба перейшла поріг), і тоді хід КЛАСИФІКУЄТЬСЯ
 на одну з гілок.
 
-Решта коду — у модулях: config (сталі), history (стрічка), usage (лог/кольори),
-memory (довга пам'ять + транскрипти), commands (слеш-команди).
+Обидва мозки — за seam'ом brain.Brain (LiveBrain — справжні виклики SDK/CLI;
+MockBrain — для dry-run і тестів), тож ядро (respond/run) не залежить ні від SDK,
+ні від CLI напряму. Решта коду — у модулях: config (сталі), history (стрічка),
+usage (облік/кольори), memory (довга пам'ять + транскрипти), commands (слеш-команди).
 """
 
 from __future__ import annotations
@@ -22,7 +24,6 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import queue
-import subprocess
 import sys
 import threading
 import time
@@ -30,14 +31,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .config import (TICK_SECONDS, NEED_TRIGGERS, SELF_COOLDOWN, DRIFT, SATIATION,
-                     THINK_THRESHOLD, CHAT_MODEL, DEEP_MODEL, DEEP_TOOLS,
+                     THINK_THRESHOLD, CHAT_MODEL, DEEP_MODEL,
                      THINK_HINTS, TOOL_HINTS, STATE_DIR, MEMORY_FILE)
-from .history import ROLE_USER, ROLE_BOT, to_messages, to_transcript
-from .usage import (log_model, take_usage, print_tech, _c, _cli_error_detail,
-                    BOT_NAME, BOT_COLOR, USER_COLOR)
+from .history import ROLE_USER, ROLE_BOT
+from .usage import print_tech, _c, BOT_NAME, BOT_COLOR, USER_COLOR
 from .memory import (load_prompts, pick_prompt, load_memory, load_canon,
                      summarize, save_summary, save_session, build_system)
 from .commands import handle_command
+from .brain import Brain, LiveBrain, MockBrain
 
 
 # === Стан ===================================================================
@@ -155,79 +156,6 @@ def classify(prompt: str, state: State) -> str:
     return "chat"
 
 
-# === Гілка 1: ЧАТ (проста API, Haiku) =======================================
-
-def chat_reply(prompt: str, live: bool, history: list[dict], system: str) -> str:
-    """
-    Дешева швидка відповідь через звичайну Anthropic Messages API (Haiku).
-    Уся історія йде масивом messages; канон + довга пам'ять — у system.
-    """
-    if not live:
-        return f"(dry-run chat: messages={len(history)})"
-
-    # Локальний імпорт: dry-run працює без пакета anthropic — він потрібен
-    # лише цій живій гілці. Ключ береться з ANTHROPIC_API_KEY (.env -> os.environ).
-    from anthropic import Anthropic
-
-    try:
-        msg = Anthropic().messages.create(
-            model=CHAT_MODEL,                 # Haiku 4.5 — дешево і швидко
-            max_tokens=512,                   # коротка репліка
-            system=system,                    # канон (canon.md/DEFAULT_CANON) + довга пам'ять
-            messages=to_messages(history),    # уся стрічка, з поточним ходом
-        )
-    except Exception as e:                    # мережа / ліміти / помилка API
-        # TODO: для тоншого контролю — ловити типізовані винятки SDK
-        # (anthropic.RateLimitError, APIConnectionError, APIStatusError).
-        return f"(chat error: {e})"
-
-    log_model("CHAT", msg.model, msg.usage)   # запам'ятати модель + токени
-    # content — список блоків; беремо перший текстовий (або порожньо).
-    return next((b.text for b in msg.content if b.type == "text"), "")
-
-
-# === Гілка 2: РОЗДУМ / ТУЛИ (Claude CLI) ====================================
-
-def deep_reply(prompt: str, live: bool, with_tools: bool, history: list[dict], system: str) -> str:
-    """
-    Глибокий хід через Claude як зовнішній процес.
-    Історія вкладається в промпт текстовим транскриптом (субпроцес
-    не тримає сесію між викликами), довга пам'ять — через --append-system-prompt.
-    """
-    # Транскрипт — усі попередні ходи; поточний промпт іде в кінці.
-    prior = history[:-1] if history else []
-    full_prompt = prompt
-    if prior:
-        full_prompt = (
-            "Контекст розмови:\n" + to_transcript(prior) +
-            "\n\nПоточне повідомлення:\n" + prompt
-        )
-
-    # --output-format json: дістаємо і текст (result), і usage (токени) одним викликом.
-    cmd = ["claude", "-p", "--model", DEEP_MODEL, "--output-format", "json",
-           "--append-system-prompt", system]
-    if with_tools and DEEP_TOOLS:
-        cmd += ["--allowedTools", ",".join(DEEP_TOOLS)]
-    cmd.append(full_prompt)
-
-    if not live:
-        return f"(dry-run deep: transcript={len(prior)} turns, tools={with_tools})"
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-    except Exception as e:                         # таймаут / процес не стартував
-        return f"(deep error: {e})"
-    if result.returncode != 0:
-        # CLI інколи падає (ліміт, тимчасова помилка) — не валимо цикл, а
-        # повертаємо помилку як відповідь.
-        return f"(deep error: claude CLI {result.returncode}: {_cli_error_detail(result)})"
-    try:
-        data = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return result.stdout.strip()               # несподіваний вивід — як є
-    log_model("DEEP", DEEP_MODEL, data.get("usage"))
-    return (data.get("result") or "").strip()
-
-
 # === Канал вводу ============================================================
 # Простий канал на вхід: тіки крутяться безперервно, а повідомлення
 # користувача надходять асинхронно й підхоплюються на найближчому тіку.
@@ -274,26 +202,26 @@ class StdinChannel:
 
 # === Двіжок (цикл) ==========================================================
 
-def respond(prompt: str, state: State, live: bool, history: list[dict],
-            system: str, force: str | None = None) -> dict:
+def respond(prompt: str, state: State, history: list[dict], system: str,
+            brain: Brain, force: str | None = None) -> dict:
     # force ("chat"|"deep") задає гілку напряму (для self-тригерів і /ask),
-    # інакше — звичайна класифікація.
+    # інакше — звичайна класифікація. Модель кличемо ЛИШЕ через brain (seam):
+    # ядро не знає ні про SDK, ні про CLI. usage приходить разом із текстом.
     cls = force if force else classify(prompt, state)
 
     # Поточний хід користувача — у спільну історію перед викликом.
     history.append({"role": ROLE_USER, "text": prompt})
-    take_usage()   # скинути попереднє: на dry-run/помилці моделі usage лишиться None
 
     if cls == "chat":
-        reply = chat_reply(prompt, live, history, system)
+        reply, usage = brain.chat(history, system)
         route = f"CHAT/{CHAT_MODEL.split('-')[1]}"      # напр. CHAT/haiku
         event = "chat"
     elif cls in ("think", "deep"):
-        reply = deep_reply(prompt, live, with_tools=False, history=history, system=system)
+        reply, usage = brain.deep(prompt, history, system, with_tools=False)
         route = f"THINK/{DEEP_MODEL.split('-')[1]}"      # напр. THINK/opus
         event = "deep"
     else:  # tools
-        reply = deep_reply(prompt, live, with_tools=True, history=history, system=system)
+        reply, usage = brain.deep(prompt, history, system, with_tools=True)
         route = f"TOOLS/{DEEP_MODEL.split('-')[1]}"
         event = "deep"
 
@@ -302,16 +230,21 @@ def respond(prompt: str, state: State, live: bool, history: list[dict],
 
     # Гілка визначає, які потреби закрились.
     apply_satiation(state, event)
-    return {"class": cls, "route": route, "reply": reply, "usage": take_usage()}
+    return {"class": cls, "route": route, "reply": reply, "usage": usage}
 
 
-def run(ticks: int | None = 12, live: bool = False, channel=None) -> None:
+def run(ticks: int | None = 12, live: bool = False, channel=None,
+        brain: Brain | None = None) -> None:
     """
     Цикл тіків. `channel.poll()` дає чергове повідомлення користувача або None.
     ticks=None -> крутитися безкінечно (для живого StdinChannel).
+    `brain` за замовчанням: LiveBrain наживо, MockBrain у dry-run (нуль платних
+    викликів) — у тестах сюди передають мок явно.
     """
     if channel is None:
         channel = ScriptedChannel()
+    if brain is None:
+        brain = LiveBrain() if live else MockBrain()
     STATE_DIR.mkdir(parents=True, exist_ok=True)   # каталог стану має існувати для запису
     state = load_state()
     history: list[dict] = []          # спільна стрічка розмови на сесію
@@ -349,17 +282,17 @@ def run(ticks: int | None = 12, live: bool = False, channel=None) -> None:
                 elif action == "handled":
                     pass                       # команда оброблена, мозок не чіпаємо
                 elif isinstance(action, tuple):    # ("ask", текст) -> примусовий deep
-                    out = respond(action[1], state, live, history, system, force="deep")
+                    out = respond(action[1], state, history, system, brain, force="deep")
                     print("\n" + _c(f"{BOT_NAME}: {out['reply']}", BOT_COLOR))
                     print_tech(out.get("usage"))
                 else:                          # None -> звичайний хід
-                    out = respond(user_msg, state, live, history, system)
+                    out = respond(user_msg, state, history, system, brain)
                     print("\n" + _c(f"you: {user_msg}", USER_COLOR))
                     print(_c(f"{BOT_NAME}: {out['reply']}", BOT_COLOR))
                     print_tech(out.get("usage"))
             elif fired is not None:
                 prompt = pick_prompt(prompts, fired)
-                out = respond(prompt, state, live, history, system, force=faction)
+                out = respond(prompt, state, history, system, brain, force=faction)
                 print("\n" + _c(f"{BOT_NAME} (self): {out['reply']}", BOT_COLOR))
                 print_tech(out.get("usage"))
             else:

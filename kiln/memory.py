@@ -17,7 +17,7 @@ import subprocess
 from .config import (MEMORY_FILE, CANON_FILE, HISTORY_DIR, PROMPTS_FILE,
                      DEFAULT_CANON, DEEP_MODEL)
 from .history import to_transcript
-from .usage import log_model, _cli_error_detail
+from .usage import _cli_error_detail
 
 
 def load_prompts() -> dict[str, list[str]]:
@@ -94,7 +94,7 @@ def summarize(history: list[dict], live: bool) -> str:
         data = json.loads(result.stdout)
     except json.JSONDecodeError:
         return result.stdout.strip()
-    log_model("SUMMARY", DEEP_MODEL, data.get("usage"))
+    # (usage підсумку не показуємо в стрічці — лише результат)
     return (data.get("result") or "").strip()
 
 
