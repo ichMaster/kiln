@@ -19,7 +19,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
-    "ruff>=0.6",
+    # Ruff закріплено в межах мінора: формат детермінований, `ruff format --check` у CI стабільний.
+    "ruff>=0.15,<0.16",
 ]
 
 [project.scripts]
