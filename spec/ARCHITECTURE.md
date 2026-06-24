@@ -38,6 +38,10 @@ self-trigger.
 - **Commands** (`commands.py`) — slash commands, intercepted before routing.
 - **Channels** (`engine.py`: `ScriptedChannel`, `StdinChannel`) — async input
   behind `poll()`.
+- **Output** (`output.py`: `Output` seam, `ConsoleOutput`) — the core writes every
+  reply/usage/notice through this port, never `print` directly. Today it prints to
+  the terminal; v0.3 plugs the echo-free TUI bus, v1.1/1.2 the event protocol — the
+  engine is unchanged. The mirror image of the input `Channel`.
 - **Server / agent host** (planned, v1.1) — wraps the core as a WS/HTTP server;
   hosts many agents keyed by `agent_id`, each with a permission scope.
 - **Clients** (planned) — thin front-ends over the server (Textual TUI, web). None
@@ -134,6 +138,9 @@ multi-agent is additive, not a rewrite:
   system, with_tools)` each return `(text, usage)`; `LiveBrain` (SDK + CLI) and
   `MockBrain` implement it; model ids are config. `respond()` calls the model only
   through this seam.
+- **Output seam:** `Output` with `user(text)` / `agent(text, is_self, lead)` /
+  `usage(dict)` / `notice(text)`; the core emits through it, `ConsoleOutput` is the
+  default sink. The method set foreshadows the event protocol below.
 - **Event protocol (planned, 1.1/1.2):** server↔client events (`user.message`,
   `agnika.message`, `status`, `usage`, `tick`, `command`) mirror the FSM.
 

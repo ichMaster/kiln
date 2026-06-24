@@ -34,11 +34,11 @@ from .config import (TICK_SECONDS, NEED_TRIGGERS, SELF_COOLDOWN, DRIFT, SATIATIO
                      THINK_THRESHOLD, CHAT_MODEL, DEEP_MODEL,
                      THINK_HINTS, TOOL_HINTS, STATE_DIR, MEMORY_FILE)
 from .history import ROLE_USER, ROLE_BOT
-from .usage import print_tech, _c, BOT_NAME, BOT_COLOR, USER_COLOR
 from .memory import (load_prompts, pick_prompt, load_memory, load_canon,
                      summarize, save_summary, save_session, build_system)
 from .commands import handle_command
 from .brain import Brain, LiveBrain, MockBrain
+from .output import Output, ConsoleOutput
 
 
 # === Стан ===================================================================
@@ -234,17 +234,20 @@ def respond(prompt: str, state: State, history: list[dict], system: str,
 
 
 def run(ticks: int | None = 12, live: bool = False, channel=None,
-        brain: Brain | None = None) -> None:
+        brain: Brain | None = None, output: Output | None = None) -> None:
     """
     Цикл тіків. `channel.poll()` дає чергове повідомлення користувача або None.
     ticks=None -> крутитися безкінечно (для живого StdinChannel).
     `brain` за замовчанням: LiveBrain наживо, MockBrain у dry-run (нуль платних
-    викликів) — у тестах сюди передають мок явно.
+    викликів). `output` за замовчанням: ConsoleOutput (друк у термінал) — ядро
+    пише репліки лише через цей порт, тож інтерфейс (TUI/шина) підмінний.
     """
     if channel is None:
         channel = ScriptedChannel()
     if brain is None:
         brain = LiveBrain() if live else MockBrain()
+    if output is None:
+        output = ConsoleOutput()
     STATE_DIR.mkdir(parents=True, exist_ok=True)   # каталог стану має існувати для запису
     state = load_state()
     history: list[dict] = []          # спільна стрічка розмови на сесію
@@ -277,24 +280,24 @@ def run(ticks: int | None = 12, live: bool = False, channel=None,
             if user_msg is not None:
                 action = handle_command(user_msg, state, history, system, live)
                 if action == "quit":
-                    print("[exit] вихід за командою")
+                    output.notice("[exit] вихід за командою")
                     break
                 elif action == "handled":
                     pass                       # команда оброблена, мозок не чіпаємо
                 elif isinstance(action, tuple):    # ("ask", текст) -> примусовий deep
                     out = respond(action[1], state, history, system, brain, force="deep")
-                    print("\n" + _c(f"{BOT_NAME}: {out['reply']}", BOT_COLOR))
-                    print_tech(out.get("usage"))
+                    output.agent(out["reply"], lead=True)
+                    output.usage(out.get("usage"))
                 else:                          # None -> звичайний хід
                     out = respond(user_msg, state, history, system, brain)
-                    print("\n" + _c(f"you: {user_msg}", USER_COLOR))
-                    print(_c(f"{BOT_NAME}: {out['reply']}", BOT_COLOR))
-                    print_tech(out.get("usage"))
+                    output.user(user_msg)
+                    output.agent(out["reply"])
+                    output.usage(out.get("usage"))
             elif fired is not None:
                 prompt = pick_prompt(prompts, fired)
                 out = respond(prompt, state, history, system, brain, force=faction)
-                print("\n" + _c(f"{BOT_NAME} (self): {out['reply']}", BOT_COLOR))
-                print_tech(out.get("usage"))
+                output.agent(out["reply"], is_self=True)
+                output.usage(out.get("usage"))
             else:
                 apply_satiation(state, "idle")     # тиша: відпочинок + вистигання
                 # тихий тік не друкуємо — стан дивись через /status
@@ -309,5 +312,5 @@ def run(ticks: int | None = 12, live: bool = False, channel=None,
             session_path = save_session(history, live, started)
             summary = summarize(history, live)
             save_summary(summary)
-            print(f"[exit] збережено підсумок ({len(history)} ходів) -> {MEMORY_FILE.name}; "
-                  f"транскрипт -> history/{session_path.name}")
+            output.notice(f"[exit] збережено підсумок ({len(history)} ходів) -> {MEMORY_FILE.name}; "
+                          f"транскрипт -> history/{session_path.name}")
