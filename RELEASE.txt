@@ -1,0 +1,11 @@
+kiln — Release Notes
+====================
+
+Version 0.1.0 (2026-06-25)
+---------------------------
+- Needs-driven chat engine: a loop of cheap local ticks; the LLM "brain" fires only on user input or a need crossing its threshold
+- Two-brain routing — Haiku chat branch (Anthropic SDK) vs Opus deep branch (claude -p), chosen by message markers + need-state weight
+- Needs model with drift/satiation cycle; self-triggers with hysteresis + cooldown; slash commands intercepted before routing
+- Input channels (scripted dry-run + live stdin); cross-session memory summaries; raw session transcripts for RAG
+- Modular split (config/history/usage/memory/commands/engine), JSON-seeded needs, Agnika persona, TUI output
+- .env config, external canon file, venv setup, CLAUDE.md + docs/
