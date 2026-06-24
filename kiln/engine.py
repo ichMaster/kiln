@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
-import os
 import queue
 import subprocess
 import sys
@@ -30,15 +29,15 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from config import (TICK_SECONDS, NEED_TRIGGERS, SELF_COOLDOWN, DRIFT, SATIATION,
-                    THINK_THRESHOLD, CHAT_MODEL, DEEP_MODEL, DEEP_TOOLS,
-                    THINK_HINTS, TOOL_HINTS, STATE_DIR, MEMORY_FILE)
-from history import ROLE_USER, ROLE_BOT, to_messages, to_transcript
-from usage import (log_model, take_usage, print_tech, _c, _cli_error_detail,
-                   BOT_NAME, BOT_COLOR, USER_COLOR)
-from memory import (load_prompts, pick_prompt, load_memory, load_canon,
-                    summarize, save_summary, save_session, build_system)
-from commands import handle_command
+from .config import (TICK_SECONDS, NEED_TRIGGERS, SELF_COOLDOWN, DRIFT, SATIATION,
+                     THINK_THRESHOLD, CHAT_MODEL, DEEP_MODEL, DEEP_TOOLS,
+                     THINK_HINTS, TOOL_HINTS, STATE_DIR, MEMORY_FILE)
+from .history import ROLE_USER, ROLE_BOT, to_messages, to_transcript
+from .usage import (log_model, take_usage, print_tech, _c, _cli_error_detail,
+                    BOT_NAME, BOT_COLOR, USER_COLOR)
+from .memory import (load_prompts, pick_prompt, load_memory, load_canon,
+                     summarize, save_summary, save_session, build_system)
+from .commands import handle_command
 
 
 # === Стан ===================================================================
@@ -379,34 +378,3 @@ def run(ticks: int | None = 12, live: bool = False, channel=None) -> None:
             save_summary(summary)
             print(f"[exit] збережено підсумок ({len(history)} ходів) -> {MEMORY_FILE.name}; "
                   f"транскрипт -> history/{session_path.name}")
-
-
-if __name__ == "__main__":
-    live = os.environ.get("KILN_LIVE") == "1"
-    if live:
-        # Живий режим: пиши повідомлення в термінал, тіки крутяться самі.
-        print("kiln: пиши повідомлення (Ctrl-C щоб вийти)…")
-        try:
-            run(ticks=None, live=True, channel=StdinChannel())
-        except KeyboardInterrupt:
-            print("\nбувай.")
-    else:
-        # Демо 1 (dry-run): чат, команди й вихід.
-        run(ticks=12, live=False, channel=ScriptedChannel({
-            1: "привіт, як справи?",          # -> chat / haiku
-            2: "/status",                      # системна команда
-            4: "поясни, чому так виходить",    # -> think / opus
-            5: "/history",                     # показати стрічку
-            6: "/needs",                       # стан потреб
-            8: "/quit",                        # вихід
-        }))
-
-        # Демо 2 (dry-run): self-тригер. Піднімаємо novelty над порогом —
-        # двіжок озивається сам через deep, потім кулдаун тримає тишу.
-        print("\n--- демо self-тригера (novelty над порогом) ---")
-        state = load_state()
-        state.needs["novelty"] = 0.92
-        save_state(state)
-        run(ticks=8, live=False, channel=ScriptedChannel({}))
-        # повертаємо спокійний дефолт
-        st = load_state(); st.needs["novelty"] = 0.25; save_state(st)

@@ -10,12 +10,16 @@ LLM ("the brain") is invoked only on a condition (user input, or a need crossing
 each invocation is **routed** to one of two branches. The README, code comments, and conversational
 prompts are all in **Ukrainian** — keep that voice when editing prompts or user-facing strings.
 
-Modules form a clean DAG — `config`/`history`/`usage` (leaves) → `memory` → `commands` → `engine`:
-`config.py` (paths, `.env`, tunables), `history.py` (session-transcript helpers), `usage.py` (model
-token logging + chat colors), `memory.py` (cross-session memory, prompts/canon, RAG transcripts),
-`commands.py` (slash commands), `engine.py` (`State`, ticks, the two brains, the loop, `__main__`).
-**`engine.py` runs as `__main__`, so no module imports it** — that's why constants live in
-`config.py` and `/ask` does its deep call back in `run()` rather than in `commands.py`.
+The modules live in the `kiln/` package and form a clean DAG —
+`config`/`history`/`usage` (leaves) → `memory` → `commands` → `engine`:
+`kiln/config.py` (paths, `.env`, tunables), `kiln/history.py` (session-transcript helpers),
+`kiln/usage.py` (model token logging + chat colors), `kiln/memory.py` (cross-session memory,
+prompts/canon, RAG transcripts), `kiln/commands.py` (slash commands), `kiln/engine.py`
+(`State`, ticks, the two brains, the loop — **no `__main__`**). The console entry is
+`kiln/__main__.py` (`main()`: live mode + the dry-run demo), wired as the `kiln` command.
+**`engine.py` carries no `__main__`, so it can be imported freely** (incl. by tests) — that's
+why constants live in `config.py` and `/ask` does its deep call back in `run()` rather than in
+`commands.py`.
 
 Human-facing docs live in [`docs/`](docs/) — [`docs/architecture.md`](docs/architecture.md) (design)
 and [`docs/how-it-works.md`](docs/how-it-works.md) (runtime mechanics, tables). The root `README.md`
@@ -27,17 +31,20 @@ is usage-only; this file and `docs/` carry the internals.
 # one-time setup (venv execution model)
 python3 -m venv .venv
 source .venv/bin/activate           # then `python` == .venv/bin/python
-pip install -r requirements.txt
+pip install -e .[dev]               # editable install + dev tools (pytest, ruff)
 
-python engine.py                    # dry-run: deterministic demo via ScriptedChannel (no API/CLI calls)
-KILN_LIVE=1 python engine.py        # live: interactive StdinChannel; ticks run on their own, you type into the terminal
+kiln                                # dry-run: deterministic demo via ScriptedChannel (no API/CLI calls)
+python -m kiln                      # same as `kiln`
+KILN_LIVE=1 kiln                    # live: interactive StdinChannel; ticks run on their own, you type into the terminal
+
+pytest                              # the test suite (runs against a mock brain — zero paid calls)
+ruff check . && ruff format --check .   # lint + format gate
 ```
 
-The venv + `requirements.txt` exist only for the **live chat branch** (`anthropic` SDK). Dry-run
-and the live *deep* branch (which shells out to the `claude` CLI) are stdlib-only, so
-`python3 engine.py` works without the venv too. Live mode also needs the **Claude Code CLI**
-installed and logged in (the deep branch calls `claude -p`). There is **no test suite** — the
-dry-run demo at the bottom of `engine.py` (`if __name__ == "__main__"`) is the de-facto smoke test.
+The `anthropic` dep (in `pyproject.toml`) is needed only by the **live chat branch**. Dry-run
+and the live *deep* branch (which shells out to the `claude` CLI) are stdlib-only. Live mode also
+needs the **Claude Code CLI** installed and logged in (the deep branch calls `claude -p`). The
+test suite lives in `tests/` (pytest); the dry-run demo in `kiln/__main__.py` stays a smoke test.
 
 ### State files live in `state/`
 

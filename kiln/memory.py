@@ -14,10 +14,10 @@ import random
 import re
 import subprocess
 
-from config import (MEMORY_FILE, CANON_FILE, HISTORY_DIR, PROMPTS_FILE,
-                    DEFAULT_CANON, DEEP_MODEL)
-from history import to_transcript
-from usage import log_model, _cli_error_detail
+from .config import (MEMORY_FILE, CANON_FILE, HISTORY_DIR, PROMPTS_FILE,
+                     DEFAULT_CANON, DEEP_MODEL)
+from .history import to_transcript
+from .usage import log_model, _cli_error_detail
 
 
 def load_prompts() -> dict[str, list[str]]:

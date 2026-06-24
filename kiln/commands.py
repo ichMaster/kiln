@@ -11,8 +11,8 @@ handle_command() повертає:
 
 from __future__ import annotations
 
-from history import ROLE_USER
-from memory import load_memory
+from .history import ROLE_USER
+from .memory import load_memory
 
 
 def _fmt_needs(state) -> str:

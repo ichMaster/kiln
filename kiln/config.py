@@ -11,12 +11,18 @@ import os
 from pathlib import Path
 
 # --- Шляхи ------------------------------------------------------------------
-STATE_DIR = Path(__file__).parent / "state"
+# Модуль живе в пакеті kiln/, тож корінь проєкту — це БАТЬКО пакета (а не сам
+# пакет). Усі мутабельні дані (state/, history/, .env) лежать у корені. Корінь
+# можна перевизначити змінною KILN_HOME (напр. щоб тримати стан поза репо).
+_PKG_DIR = Path(__file__).resolve().parent           # .../kiln/kiln (пакет)
+PROJECT_ROOT = Path(os.environ.get("KILN_HOME", _PKG_DIR.parent))   # корінь репо за замовчанням
+
+STATE_DIR = PROJECT_ROOT / "state"
 MEMORY_FILE = STATE_DIR / "memory.md"       # довга пам'ять: підсумки минулих розмов
 CANON_FILE = STATE_DIR / "canon.md"         # канон: персона/голос (системний промпт)
 PROMPTS_FILE = STATE_DIR / "prompts.md"     # промпти self-тригера по потребах
-HISTORY_DIR = Path(__file__).parent / "history"   # сирі транскрипти сесій (JSON, для RAG)
-ENV_FILE = Path(__file__).parent / ".env"   # локальна конфігурація (моделі + калібрування)
+HISTORY_DIR = PROJECT_ROOT / "history"      # сирі транскрипти сесій (JSON, для RAG)
+ENV_FILE = PROJECT_ROOT / ".env"            # локальна конфігурація (моделі + калібрування)
 
 
 def load_dotenv(path: Path = ENV_FILE) -> None:

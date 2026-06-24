@@ -159,23 +159,32 @@ code. Secrets (`ANTHROPIC_API_KEY`) live only in `.env`.
 ## Repository layout
 
 ```
-config.py     # paths, .env, tunables
-history.py    # session transcript helpers
-usage.py      # model/token capture + chat colors
-memory.py     # long-term memory, canon, prompts, transcripts
-commands.py   # slash commands
-engine.py     # State, ticks, two brains, channels, respond, run, __main__
-state/        # needs.json, canon.md, prompts.md, memory.md (generated)
-history/      # session-*.json transcripts (generated; RAG corpus)
-docs/         # how-it-works, architecture (internals), TODO
-spec/         # MISSION.md, ARCHITECTURE.md, ROADMAP.md, vision.md
+pyproject.toml      # project metadata, deps (anthropic; dev: pytest/ruff), console entry, tool config
+VERSION             # single source of truth for the version (pyproject + kiln.__version__ read it)
+kiln/               # the package (installed via `pip install -e .`)
+  __init__.py       # __version__ (reads VERSION)
+  __main__.py       # console entry main(): live mode + the dry-run demo (the smoke test)
+  config.py         # paths (PROJECT_ROOT = package parent, override KILN_HOME), .env, tunables
+  history.py        # session transcript helpers
+  usage.py          # model/token capture + chat colors
+  memory.py         # long-term memory, canon, prompts, transcripts
+  commands.py       # slash commands
+  engine.py         # State, ticks, two brains, channels, respond, run (no __main__)
+tests/              # pytest: unit + contract (seams) + integration on a mock brain
+state/              # needs.json, canon.md, prompts.md, memory.md (generated)
+history/            # session-*.json transcripts (generated; RAG corpus)
+docs/               # how-it-works, architecture (internals)
+spec/               # MISSION.md, ARCHITECTURE.md, ROADMAP.md, vision.md, roadmap/implementation/
 # planned: server/ (agent host), tui/ (Textual client), web/, tools/, rag/
 ```
 
-`engine.py` runs as `__main__`, so **no module imports it**: constants live in
-`config.py`, and `/ask` does its deep call back in `run()` so `commands.py`
-doesn't depend on the core. Build each new dir as its roadmap version begins; the
-core comes first and never depends on a client.
+The console entry lives in `kiln/__main__.py` (the `kiln` command / `python -m
+kiln`), so **`engine.py` carries no `__main__` and can be imported freely** (incl.
+by tests): constants live in `config.py`, and `/ask` does its deep call back in
+`run()` so `commands.py` doesn't depend on the core. Run-time state resolves to the
+project root (the package's parent dir, or `KILN_HOME`), not the package dir. Build
+each new dir as its roadmap version begins; the core comes first and never depends
+on a client.
 
 ## Testing
 

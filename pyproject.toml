@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kiln"
+dynamic = ["version"]
+description = "A cheap, always-on tick-server hosting living text agents — needs-driven, two-brain (Haiku/Opus) routing."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "ichland" }]
+dependencies = [
+    # Потрібен ЛИШЕ живій гілці чату (chat_reply -> Anthropic Messages API).
+    # Dry-run і гілка роздумів (через `claude` CLI) — на самій стандартній бібліотеці.
+    "anthropic>=0.111",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+kiln = "kiln.__main__:main"
+
+[tool.setuptools]
+packages = ["kiln"]
+
+# Версія — єдиним джерелом правди тримаємо кореневий файл VERSION
+# (його ж читає kiln.__version__ і оновлює /release-version).
+[tool.setuptools.dynamic]
+version = { file = "VERSION" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Модель за seam'ом мокається — у тестах ЖОДНИХ платних викликів.
+
+# Ruff (lint + format) — конфіг наповнює KILN-004.
+[tool.ruff]
+line-length = 100
