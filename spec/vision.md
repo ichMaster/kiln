@@ -30,7 +30,7 @@ pieces over inventing. kiln's own contribution is the cheap tick-server core.
 
 | Project | Path | What it is | Used for |
 |---|---|---|---|
-| **lumi** | `~/development/lumi` | full persona engine; Textual TUI; `core` never depends on an interface | TUI (0.2/0.3), RAG (1.4), personality (2.x), client/server (1.1) |
+| **lumi** | `~/development/lumi` | full persona engine; Textual TUI; `core` never depends on an interface | TUI (0.3/0.4), RAG (1.4), personality (2.x), client/server (1.1) |
 | **clay** | `~/development/clay` | voxel-world *body* on fast ticks; swappable stub→Lili brain | Games (1.5) |
 | **silt** | `~/development/silt` | always-on server, 2D life world (cellular automata → Lenia), web + API client | Games (1.5) + server pattern (1.1/3.x) |
 | **checkers** | `~/development/claude-code-test/russian-checkers` | russian checkers (Node) | Games (1.5) |
@@ -49,7 +49,22 @@ brains (Haiku via SDK / Opus via `claude -p`), `chat|think|tools` routing, slash
 commands, `memory.md` summaries, `history/*.json` transcripts, `.env` config,
 canon persona, colored output. Modules: config/history/usage/memory/commands/engine.
 
-### 0.2 Implement TUI — ⬜
+### 0.2 Professional structure & tests (refactor) — ⬜
+Turn the prototype into a maintainable, **tested** package before growing features
+(so every later phase ships with tests + green CI).
+- **Package** — flat modules → a `kiln/` package + `pyproject.toml` (metadata, deps,
+  tool config) + a console entry. (Lumi: `pyproject.toml` + `uv`.)
+- **Brain seam** — both brains behind one **mockable** interface (`chat_reply` /
+  `deep_reply` become implementations) so tests run against a **mock brain** — no
+  paid calls. (Lumi's `LLMClient` seam.)
+- **Tests (`tests/`, pytest)** — unit (drift/satiation, `classify`,
+  `select_self_trigger`, `needs.json` round-trip, usage parsing, catch-up drift),
+  contract (the seams: `needs.json`, `respond()`, the usage dict), a mock-brain
+  integration turn. Dry-run demo stays a smoke test.
+- **ruff + CI** (`.github/workflows/ci.yml` on push; `main` green) + `VERSION` /
+  `RELEASE.txt` for `/release-version`.
+
+### 0.3 Implement TUI — ⬜
 Replace `print` + `StdinChannel` with a real TUI. **Match Lumi's TUI.**
 - **Framework: Textual** (Lumi pins `textual>=0.80`). Port from `lumi/tui/app.py`.
 - Adopt Lumi's **bridge pattern** (`lumi/tui/bridge.py`): an echo-free inbox/outbox
@@ -57,13 +72,13 @@ Replace `print` + `StdinChannel` with a real TUI. **Match Lumi's TUI.**
   and lets Telegram/voice clients reuse the same bus later.
 - Carry over speaker colors/labels (`you` / `Agnika` / tech line).
 
-### 0.3 TUI enhancements — status, tokens, statistics, copy/paste — 🟡
+### 0.4 TUI enhancements — status, tokens, statistics, copy/paste — 🟡
 - **status panel** — live needs, mode, hottest need (today only `/status`).
 - **tokens** — per-turn counter (have the tech line) surfaced in the UI.
 - **statistics** — per-session: total tokens, turns/branch, cost, avg latency.
 - **copy/paste** — copy replies / code blocks. (Textual gives most of this.)
 
-### 0.4 Tokens report — 🟡
+### 0.5 Tokens report — 🟡
 Per-execution `· model · in→out tok (total)` done (`usage.py`). TODO: session
 aggregate (sum, by branch, `$` from the CLI's `total_cost_usd`) + persist it.
 
