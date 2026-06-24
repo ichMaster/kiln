@@ -25,14 +25,20 @@ from .engine import (
 def _demo() -> None:
     """Детермінований dry-run демо-сценарій (також димовий тест)."""
     # Демо 1 (dry-run): чат, команди й вихід.
-    run(ticks=12, live=False, channel=ScriptedChannel({
-        1: "привіт, як справи?",          # -> chat / haiku
-        2: "/status",                      # системна команда
-        4: "поясни, чому так виходить",    # -> think / opus
-        5: "/history",                     # показати стрічку
-        6: "/needs",                       # стан потреб
-        8: "/quit",                        # вихід
-    }))
+    run(
+        ticks=12,
+        live=False,
+        channel=ScriptedChannel(
+            {
+                1: "привіт, як справи?",  # -> chat / haiku
+                2: "/status",  # системна команда
+                4: "поясни, чому так виходить",  # -> think / opus
+                5: "/history",  # показати стрічку
+                6: "/needs",  # стан потреб
+                8: "/quit",  # вихід
+            }
+        ),
+    )
 
     # Демо 2 (dry-run): self-тригер. Піднімаємо novelty над порогом —
     # двіжок озивається сам через deep, потім кулдаун тримає тишу.

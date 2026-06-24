@@ -18,13 +18,14 @@ USAGE_KEYS = {"model", "input", "output", "total"}
 
 # --- usage_record: нормалізація токенів (її ділять обидва адаптери) ----------
 
+
 def test_usage_record_from_cli_dict():
     rec = usage_record(DEEP_MODEL, {"input_tokens": 3, "output_tokens": 4})
     assert rec == {"model": DEEP_MODEL, "input": 3, "output": 4, "total": 7}
 
 
 def test_usage_record_from_sdk_object():
-    class _U:                       # імітація msg.usage із SDK
+    class _U:  # імітація msg.usage із SDK
         input_tokens = 10
         output_tokens = 5
 
@@ -34,11 +35,15 @@ def test_usage_record_from_sdk_object():
 
 def test_usage_record_none_is_zeroed():
     assert usage_record(CHAT_MODEL, None) == {
-        "model": CHAT_MODEL, "input": 0, "output": 0, "total": 0,
+        "model": CHAT_MODEL,
+        "input": 0,
+        "output": 0,
+        "total": 0,
     }
 
 
 # --- Brain seam: форма (text, usage) ----------------------------------------
+
 
 def test_mockbrain_chat_contract():
     text, usage = MockBrain().chat([{"role": "user", "text": "привіт"}], "sys")
@@ -62,6 +67,7 @@ def test_both_brains_satisfy_protocol():
 
 
 # --- respond() через мок: маршрутизація + 0 IO ------------------------------
+
 
 class RecordingBrain:
     """Мок, що запам'ятовує, яку гілку покликали; жодного IO."""
@@ -90,7 +96,9 @@ def test_respond_chat_routes_to_brain_chat():
 def test_respond_think_routes_to_brain_deep():
     brain = RecordingBrain()
     # 'поясни'/'чому' — THINK_HINTS -> гілка deep, без тулів.
-    out = respond("поясни, чому так", State(needs={"intensity": 0.0, "connection": 0.0}), [], "sys", brain)
+    out = respond(
+        "поясни, чому так", State(needs={"intensity": 0.0, "connection": 0.0}), [], "sys", brain
+    )
     assert brain.calls == [("deep", False)]
     assert out["reply"] == "DEEP-REPLY"
 

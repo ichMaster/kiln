@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import sys
 
-BOT_NAME = "Agnika"               # підпис відповіді в чаті (лише відображення)
+BOT_NAME = "Agnika"  # підпис відповіді в чаті (лише відображення)
 
 
 def _usage_tokens(usage) -> tuple[int | None, int | None]:
@@ -30,9 +30,9 @@ def usage_record(model: str, usage) -> dict:
 
 
 # Кольори рядків чату (ANSI). Різні кольори для тебе й для бота.
-USER_COLOR = "\033[1;36m"        # ти — яскраво-блакитний
-BOT_COLOR = "\033[1;32m"         # бот — яскраво-зелений
-TECH_COLOR = "\033[2;32m"        # технічний рядок — тьмяно-зелений
+USER_COLOR = "\033[1;36m"  # ти — яскраво-блакитний
+BOT_COLOR = "\033[1;32m"  # бот — яскраво-зелений
+TECH_COLOR = "\033[2;32m"  # технічний рядок — тьмяно-зелений
 COLOR_RESET = "\033[0m"
 
 
@@ -46,8 +46,13 @@ def print_tech(usage: dict | None) -> None:
     if not usage:
         return
     m = usage["model"]
-    short = m.split("-")[1] if "-" in m else m       # claude-haiku-4-5-… -> haiku
-    print(_c(f"      · {short} · {usage['input']}→{usage['output']} ток ({usage['total']})", TECH_COLOR))
+    short = m.split("-")[1] if "-" in m else m  # claude-haiku-4-5-… -> haiku
+    print(
+        _c(
+            f"      · {short} · {usage['input']}→{usage['output']} ток ({usage['total']})",
+            TECH_COLOR,
+        )
+    )
 
 
 def _cli_error_detail(result) -> str:

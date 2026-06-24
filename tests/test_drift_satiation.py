@@ -29,7 +29,7 @@ def test_drift_clamps_at_one():
 
 
 def test_drift_ignores_needs_without_a_rate():
-    st = State(needs={"foo": 0.5})        # 'foo' немає в DRIFT -> росту нема
+    st = State(needs={"foo": 0.5})  # 'foo' немає в DRIFT -> росту нема
     drift(st, ticks=4)
     assert st.needs["foo"] == 0.5
 
@@ -41,7 +41,7 @@ def test_satiation_chat_closes_connection():
 
 
 def test_satiation_clamps_at_zero():
-    st = State(needs={"connection": 0.10})   # -0.50 -> кліп на 0
+    st = State(needs={"connection": 0.10})  # -0.50 -> кліп на 0
     apply_satiation(st, "chat")
     assert st.needs["connection"] == 0.0
 
@@ -51,18 +51,20 @@ def test_satiation_deep_closes_novelty_harder_than_chat():
     chat = State(needs={"novelty": 0.90})
     apply_satiation(deep, "deep")
     apply_satiation(chat, "chat")
-    assert deep.needs["novelty"] < chat.needs["novelty"]   # deep — «ситна їжа»
+    assert deep.needs["novelty"] < chat.needs["novelty"]  # deep — «ситна їжа»
 
 
 def test_satiation_idle_cools_intensity_up_and_rests():
     st = State(needs={"intensity": 0.40, "rest": 0.40})
     apply_satiation(st, "idle")
-    assert st.needs["intensity"] == pytest.approx(0.40 + SATIATION["idle"]["intensity"])  # напруга росте
-    assert st.needs["rest"] == pytest.approx(0.40 + SATIATION["idle"]["rest"])            # відпочинок
+    assert st.needs["intensity"] == pytest.approx(
+        0.40 + SATIATION["idle"]["intensity"]
+    )  # напруга росте
+    assert st.needs["rest"] == pytest.approx(0.40 + SATIATION["idle"]["rest"])  # відпочинок
 
 
 def test_satiation_only_touches_present_needs():
-    st = State(needs={"connection": 0.50})   # novelty/rest/intensity відсутні
+    st = State(needs={"connection": 0.50})  # novelty/rest/intensity відсутні
     apply_satiation(st, "deep")
     assert set(st.needs) == {"connection"}
 

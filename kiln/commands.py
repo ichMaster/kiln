@@ -19,8 +19,7 @@ def _fmt_needs(state) -> str:
     return "  ".join(f"{k}={state.needs[k]:.2f}" for k in state.needs)
 
 
-def handle_command(line: str, state, history: list[dict],
-                   system: str, live: bool):
+def handle_command(line: str, state, history: list[dict], system: str, live: bool):
     if not line.startswith("/"):
         return None
 
@@ -32,13 +31,14 @@ def handle_command(line: str, state, history: list[dict],
         return "quit"
 
     elif cmd in ("help", "h", "?"):
-        print("Команди: /status  /needs  /memory  /history  /ask <текст>  "
-              "/clear  /help  /quit")
+        print("Команди: /status  /needs  /memory  /history  /ask <текст>  /clear  /help  /quit")
 
     elif cmd == "status":
         name, level = state.hottest_need()
-        print(f"[status] ходів={len(history)}  найгарячіша={name}={level:.2f}  "
-              f"режим={'live' if live else 'dry'}")
+        print(
+            f"[status] ходів={len(history)}  найгарячіша={name}={level:.2f}  "
+            f"режим={'live' if live else 'dry'}"
+        )
         print(f"         потреби: {_fmt_needs(state)}")
 
     elif cmd == "needs":

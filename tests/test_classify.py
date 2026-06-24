@@ -39,7 +39,7 @@ def test_classify_tool_hint_beats_think_hint():
 
 def test_classify_high_state_weight_routes_think_without_hints():
     # Висока вага стану сама штовхає звичайну репліку в роздум.
-    hot = State(needs={"intensity": 1.0, "connection": 1.0})   # weight 1.0 >= поріг
+    hot = State(needs={"intensity": 1.0, "connection": 1.0})  # weight 1.0 >= поріг
     assert turn_weight(hot) >= THINK_THRESHOLD
     assert classify("привіт", hot) == "think"
 

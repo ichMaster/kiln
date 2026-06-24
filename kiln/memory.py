@@ -14,8 +14,7 @@ import random
 import re
 import subprocess
 
-from .config import (MEMORY_FILE, CANON_FILE, HISTORY_DIR, PROMPTS_FILE,
-                     DEFAULT_CANON, DEEP_MODEL)
+from .config import CANON_FILE, DEEP_MODEL, DEFAULT_CANON, HISTORY_DIR, MEMORY_FILE, PROMPTS_FILE
 from .history import to_transcript
 from .usage import _cli_error_detail
 
@@ -83,12 +82,13 @@ def summarize(history: list[dict], live: bool) -> str:
     cmd = ["claude", "-p", "--model", DEEP_MODEL, "--output-format", "json", prompt]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-    except Exception as e:                         # таймаут / процес не стартував
+    except Exception as e:  # таймаут / процес не стартував
         print(f"[exit] підсумок не зроблено: {e}")
         return ""
     if result.returncode != 0:
         # Не валимо вихід через невдалий підсумок — транскрипт уже збережено.
-        print(f"[exit] підсумок не зроблено (claude CLI {result.returncode}: {_cli_error_detail(result)})")
+        detail = _cli_error_detail(result)
+        print(f"[exit] підсумок не зроблено (CLI {result.returncode}: {detail})")
         return ""
     try:
         data = json.loads(result.stdout)
@@ -125,7 +125,7 @@ def save_session(history: list[dict], live: bool, started: str):
         "ended_at": ended.isoformat(timespec="seconds"),
         "mode": "live" if live else "dry",
         "turns": len(history),
-        "history": history,            # [{role, text}, ...] у хронологічному порядку
+        "history": history,  # [{role, text}, ...] у хронологічному порядку
     }
     # Не перетирати наявний файл, якщо дві сесії закрилися в ту саму секунду.
     path = HISTORY_DIR / f"session-{stamp}.json"
@@ -141,7 +141,4 @@ def build_system(canon: str, memory: str) -> str:
     """Системний промпт = канон (персона) + довга пам'ять (якщо є)."""
     if not memory.strip():
         return canon
-    return (
-        canon +
-        "\n\nДовга пам'ять про попередні розмови (для контексту):\n" + memory.strip()
-    )
+    return canon + "\n\nДовга пам'ять про попередні розмови (для контексту):\n" + memory.strip()

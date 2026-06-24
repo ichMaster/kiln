@@ -57,8 +57,11 @@ def test_run_routes_turn_through_output_port(monkeypatch, tmp_path):
     # Ізолюємо персистентність — жодного запису в реальний state/ чи history/.
     monkeypatch.setattr(eng, "STATE_DIR", tmp_path)
     monkeypatch.setattr(
-        eng, "load_state",
-        lambda *a, **k: eng.State(needs={"connection": 0.0, "rest": 0.0, "novelty": 0.0, "intensity": 0.0}),
+        eng,
+        "load_state",
+        lambda *a, **k: eng.State(
+            needs={"connection": 0.0, "rest": 0.0, "novelty": 0.0, "intensity": 0.0}
+        ),
     )
     monkeypatch.setattr(eng, "save_state", lambda *a, **k: None)
     monkeypatch.setattr(eng, "save_session", lambda *a, **k: tmp_path / "s.json")
@@ -66,15 +69,19 @@ def test_run_routes_turn_through_output_port(monkeypatch, tmp_path):
     monkeypatch.setattr(eng, "save_summary", lambda *a, **k: None)
 
     cap = CapturingOutput()
-    eng.run(ticks=2, live=False,
-            channel=eng.ScriptedChannel({1: "привіт"}),
-            brain=MockBrain(), output=cap)
+    eng.run(
+        ticks=2,
+        live=False,
+        channel=eng.ScriptedChannel({1: "привіт"}),
+        brain=MockBrain(),
+        output=cap,
+    )
 
     kinds = [e[0] for e in cap.events]
     assert "user" in kinds and "agent" in kinds and "usage" in kinds
 
     agent_texts = [e[1] for e in cap.events if e[0] == "agent"]
-    assert any("dry-run chat" in t for t in agent_texts)        # репліка від MockBrain
+    assert any("dry-run chat" in t for t in agent_texts)  # репліка від MockBrain
 
     usages = [e[1] for e in cap.events if e[0] == "usage"]
     assert any(isinstance(u, dict) and set(u) == USAGE_KEYS for u in usages)

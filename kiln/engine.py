@@ -30,18 +30,37 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .config import (TICK_SECONDS, NEED_TRIGGERS, SELF_COOLDOWN, DRIFT, SATIATION,
-                     THINK_THRESHOLD, CHAT_MODEL, DEEP_MODEL,
-                     THINK_HINTS, TOOL_HINTS, STATE_DIR, MEMORY_FILE)
-from .history import ROLE_USER, ROLE_BOT
-from .memory import (load_prompts, pick_prompt, load_memory, load_canon,
-                     summarize, save_summary, save_session, build_system)
-from .commands import handle_command
 from .brain import Brain, LiveBrain, MockBrain
-from .output import Output, ConsoleOutput
-
+from .commands import handle_command
+from .config import (
+    CHAT_MODEL,
+    DEEP_MODEL,
+    DRIFT,
+    MEMORY_FILE,
+    NEED_TRIGGERS,
+    SATIATION,
+    SELF_COOLDOWN,
+    STATE_DIR,
+    THINK_HINTS,
+    THINK_THRESHOLD,
+    TICK_SECONDS,
+    TOOL_HINTS,
+)
+from .history import ROLE_BOT, ROLE_USER
+from .memory import (
+    build_system,
+    load_canon,
+    load_memory,
+    load_prompts,
+    pick_prompt,
+    save_session,
+    save_summary,
+    summarize,
+)
+from .output import ConsoleOutput, Output
 
 # === Стан ===================================================================
+
 
 @dataclass
 class State:
@@ -80,6 +99,7 @@ def save_state(state: State, state_dir: Path = STATE_DIR) -> None:
 
 # === Тік ====================================================================
 
+
 def drift(state: State, ticks: int = 1) -> None:
     """Кожна потреба росте на DRIFT[k] × ticks (з відсіканням на 1.0).
     ticks > 1 — «надолуження» дрейфу за реальний час, що минув під час
@@ -98,8 +118,9 @@ def apply_satiation(state: State, event: str) -> None:
 @dataclass
 class TriggerBook:
     """Рантайм-стан тригерів (не зберігається): гістерезис + кулдаун на потребу."""
-    armed: dict[str, bool] = field(default_factory=dict)      # готова спрацювати?
-    cooldown: dict[str, int] = field(default_factory=dict)    # лишилось тіків тиші
+
+    armed: dict[str, bool] = field(default_factory=dict)  # готова спрацювати?
+    cooldown: dict[str, int] = field(default_factory=dict)  # лишилось тіків тиші
 
 
 def select_self_trigger(state: State, tg: TriggerBook) -> tuple[str | None, str | None]:
@@ -118,21 +139,22 @@ def select_self_trigger(state: State, tg: TriggerBook) -> tuple[str | None, str 
         level = state.needs.get(name, 0.0)
         over = level >= cfg["threshold"]
         if not over:
-            tg.armed[name] = True                      # переозброїти нижче порога
+            tg.armed[name] = True  # переозброїти нижче порога
         elif tg.armed.get(name, True) and tg.cooldown.get(name, 0) == 0:
             eligible.append((level - cfg["threshold"], name, cfg["action"]))
 
     if not eligible:
         return None, None
 
-    eligible.sort(reverse=True)                        # найбільший overshoot перший
+    eligible.sort(reverse=True)  # найбільший overshoot перший
     _, name, action = eligible[0]
-    tg.armed[name] = False                             # розрядити гістерезис
-    tg.cooldown[name] = SELF_COOLDOWN                  # завести кулдаун
+    tg.armed[name] = False  # розрядити гістерезис
+    tg.cooldown[name] = SELF_COOLDOWN  # завести кулдаун
     return name, action
 
 
 # === Класифікація ходу ======================================================
+
 
 def turn_weight(state: State) -> float:
     """Вага ходу ~0..1 за станом. Вище -> ближче до роздуму."""
@@ -159,6 +181,7 @@ def classify(prompt: str, state: State) -> str:
 # === Канал вводу ============================================================
 # Простий канал на вхід: тіки крутяться безперервно, а повідомлення
 # користувача надходять асинхронно й підхоплюються на найближчому тіку.
+
 
 class ScriptedChannel:
     """Детермінований канал для тестів: ввід прив'язаний до номерів тіків."""
@@ -187,7 +210,7 @@ class StdinChannel:
     def _reader(self) -> None:
         while True:
             line = sys.stdin.readline()
-            if line == "":          # EOF
+            if line == "":  # EOF
                 break
             line = line.strip()
             if line:
@@ -202,8 +225,15 @@ class StdinChannel:
 
 # === Двіжок (цикл) ==========================================================
 
-def respond(prompt: str, state: State, history: list[dict], system: str,
-            brain: Brain, force: str | None = None) -> dict:
+
+def respond(
+    prompt: str,
+    state: State,
+    history: list[dict],
+    system: str,
+    brain: Brain,
+    force: str | None = None,
+) -> dict:
     # force ("chat"|"deep") задає гілку напряму (для self-тригерів і /ask),
     # інакше — звичайна класифікація. Модель кличемо ЛИШЕ через brain (seam):
     # ядро не знає ні про SDK, ні про CLI. usage приходить разом із текстом.
@@ -214,11 +244,11 @@ def respond(prompt: str, state: State, history: list[dict], system: str,
 
     if cls == "chat":
         reply, usage = brain.chat(history, system)
-        route = f"CHAT/{CHAT_MODEL.split('-')[1]}"      # напр. CHAT/haiku
+        route = f"CHAT/{CHAT_MODEL.split('-')[1]}"  # напр. CHAT/haiku
         event = "chat"
     elif cls in ("think", "deep"):
         reply, usage = brain.deep(prompt, history, system, with_tools=False)
-        route = f"THINK/{DEEP_MODEL.split('-')[1]}"      # напр. THINK/opus
+        route = f"THINK/{DEEP_MODEL.split('-')[1]}"  # напр. THINK/opus
         event = "deep"
     else:  # tools
         reply, usage = brain.deep(prompt, history, system, with_tools=True)
@@ -233,8 +263,13 @@ def respond(prompt: str, state: State, history: list[dict], system: str,
     return {"class": cls, "route": route, "reply": reply, "usage": usage}
 
 
-def run(ticks: int | None = 12, live: bool = False, channel=None,
-        brain: Brain | None = None, output: Output | None = None) -> None:
+def run(
+    ticks: int | None = 12,
+    live: bool = False,
+    channel=None,
+    brain: Brain | None = None,
+    output: Output | None = None,
+) -> None:
     """
     Цикл тіків. `channel.poll()` дає чергове повідомлення користувача або None.
     ticks=None -> крутитися безкінечно (для живого StdinChannel).
@@ -248,18 +283,18 @@ def run(ticks: int | None = 12, live: bool = False, channel=None,
         brain = LiveBrain() if live else MockBrain()
     if output is None:
         output = ConsoleOutput()
-    STATE_DIR.mkdir(parents=True, exist_ok=True)   # каталог стану має існувати для запису
+    STATE_DIR.mkdir(parents=True, exist_ok=True)  # каталог стану має існувати для запису
     state = load_state()
-    history: list[dict] = []          # спільна стрічка розмови на сесію
+    history: list[dict] = []  # спільна стрічка розмови на сесію
     started = _dt.datetime.now().isoformat(timespec="seconds")  # старт сесії (для транскрипту)
-    canon = load_canon()              # персона/голос зі state/canon.md
-    memory = load_memory()            # довга пам'ять з минулих сесій
+    canon = load_canon()  # персона/голос зі state/canon.md
+    memory = load_memory()  # довга пам'ять з минулих сесій
     system = build_system(canon, memory)  # канон + пам'ять
-    prompts = load_prompts()          # промпти self-тригера зі state/prompts.md
-    tg = TriggerBook()                # гістерезис + кулдаун тригерів
+    prompts = load_prompts()  # промпти self-тригера зі state/prompts.md
+    tg = TriggerBook()  # гістерезис + кулдаун тригерів
 
     t = 0
-    last_tick = time.monotonic()       # для надолуження дрейфу за реальним часом
+    last_tick = time.monotonic()  # для надолуження дрейфу за реальним часом
     try:
         while ticks is None or t < ticks:
             # Виклик моделі блокує цикл, тож одна ітерація може тривати багато
@@ -269,7 +304,7 @@ def run(ticks: int | None = 12, live: bool = False, channel=None,
             elapsed = now - last_tick
             last_tick = now
             steps = max(1, round(elapsed / TICK_SECONDS)) if (live and TICK_SECONDS > 0) else 1
-            drift(state, steps)              # надолуження дрейфу за реальним часом (тихо)
+            drift(state, steps)  # надолуження дрейфу за реальним часом (тихо)
             user_msg = channel.poll()
             # Пріоритет: ВВІД важливіший за self-тригер. Якщо є і те, і те —
             # цього тіку обробляємо ввід; тригер перевіримо наступного тіку.
@@ -283,12 +318,12 @@ def run(ticks: int | None = 12, live: bool = False, channel=None,
                     output.notice("[exit] вихід за командою")
                     break
                 elif action == "handled":
-                    pass                       # команда оброблена, мозок не чіпаємо
-                elif isinstance(action, tuple):    # ("ask", текст) -> примусовий deep
+                    pass  # команда оброблена, мозок не чіпаємо
+                elif isinstance(action, tuple):  # ("ask", текст) -> примусовий deep
                     out = respond(action[1], state, history, system, brain, force="deep")
                     output.agent(out["reply"], lead=True)
                     output.usage(out.get("usage"))
-                else:                          # None -> звичайний хід
+                else:  # None -> звичайний хід
                     out = respond(user_msg, state, history, system, brain)
                     output.user(user_msg)
                     output.agent(out["reply"])
@@ -299,7 +334,7 @@ def run(ticks: int | None = 12, live: bool = False, channel=None,
                 output.agent(out["reply"], is_self=True)
                 output.usage(out.get("usage"))
             else:
-                apply_satiation(state, "idle")     # тиша: відпочинок + вистигання
+                apply_satiation(state, "idle")  # тиша: відпочинок + вистигання
                 # тихий тік не друкуємо — стан дивись через /status
 
             time.sleep(TICK_SECONDS if live else 0)
@@ -312,5 +347,7 @@ def run(ticks: int | None = 12, live: bool = False, channel=None,
             session_path = save_session(history, live, started)
             summary = summarize(history, live)
             save_summary(summary)
-            output.notice(f"[exit] збережено підсумок ({len(history)} ходів) -> {MEMORY_FILE.name}; "
-                          f"транскрипт -> history/{session_path.name}")
+            output.notice(
+                f"[exit] збережено підсумок ({len(history)} ходів) -> {MEMORY_FILE.name}; "
+                f"транскрипт -> history/{session_path.name}"
+            )

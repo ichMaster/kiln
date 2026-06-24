@@ -35,13 +35,13 @@ def test_respond_appends_user_and_bot_to_history():
 
 def test_respond_chat_applies_chat_satiation():
     st = State(needs={"connection": 0.80})
-    respond("привіт", st, [], "sys", MockBrain())          # подія chat
+    respond("привіт", st, [], "sys", MockBrain())  # подія chat
     assert st.needs["connection"] == pytest.approx(0.80 + SATIATION["chat"]["connection"])
 
 
 def test_respond_think_routes_deep_and_closes_novelty():
     st = State(needs={"novelty": 0.90, "connection": 0.0})
-    out = respond("поясни, чому так", st, [], "sys", MockBrain())   # think -> подія deep
+    out = respond("поясни, чому так", st, [], "sys", MockBrain())  # think -> подія deep
     assert out["route"].startswith("THINK/")
     assert st.needs["novelty"] == pytest.approx(0.90 + SATIATION["deep"]["novelty"])
 

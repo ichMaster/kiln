@@ -45,7 +45,7 @@ class ConsoleOutput:
 
     def agent(self, text: str, *, is_self: bool = False, lead: bool = False) -> None:
         label = f"{BOT_NAME} (self)" if is_self else BOT_NAME
-        nl = "\n" if (is_self or lead) else ""    # самоініційована/«свіжа» репліка — з відступом
+        nl = "\n" if (is_self or lead) else ""  # самоініційована/«свіжа» репліка — з відступом
         print(nl + _c(f"{label}: {text}", BOT_COLOR))
 
     def usage(self, usage: dict | None) -> None:

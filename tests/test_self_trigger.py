@@ -18,8 +18,8 @@ def test_fires_on_upward_crossing_with_its_action():
 
 def test_hysteresis_one_fire_while_staying_above():
     tg = TriggerBook()
-    st = State(needs={"intensity": 0.80})        # над порогом 0.75
-    assert select_self_trigger(st, tg)[0] == "intensity"      # спрацювало
+    st = State(needs={"intensity": 0.80})  # над порогом 0.75
+    assert select_self_trigger(st, tg)[0] == "intensity"  # спрацювало
     # лишається над порогом -> більше не спрацьовує (розряджений гістерезис)
     assert select_self_trigger(st, tg) == (None, None)
     assert select_self_trigger(st, tg) == (None, None)
@@ -27,25 +27,25 @@ def test_hysteresis_one_fire_while_staying_above():
 
 def test_hysteresis_rearms_after_drop_below():
     tg = TriggerBook()
-    st = State(needs={"connection": 0.85})       # над 0.80 -> дія 'chat'
+    st = State(needs={"connection": 0.85})  # над 0.80 -> дія 'chat'
     assert select_self_trigger(st, tg) == ("connection", "chat")
-    st.needs["connection"] = 0.50                # впало нижче -> переозброєння
-    for _ in range(SELF_COOLDOWN + 1):           # заодно даємо кулдауну стекти
+    st.needs["connection"] = 0.50  # впало нижче -> переозброєння
+    for _ in range(SELF_COOLDOWN + 1):  # заодно даємо кулдауну стекти
         select_self_trigger(st, tg)
-    st.needs["connection"] = 0.85                # перетин угору вдруге
+    st.needs["connection"] = 0.85  # перетин угору вдруге
     assert select_self_trigger(st, tg) == ("connection", "chat")
 
 
 def test_cooldown_blocks_refire_until_drained():
     tg = TriggerBook()
     st = State(needs={"novelty": 0.90})
-    assert select_self_trigger(st, tg)[0] == "novelty"        # спрацювало, кулдаун = SELF_COOLDOWN
+    assert select_self_trigger(st, tg)[0] == "novelty"  # спрацювало, кулдаун = SELF_COOLDOWN
     st.needs["novelty"] = 0.0
-    assert select_self_trigger(st, tg) == (None, None)        # переозброїлось, кулдаун тікає
-    st.needs["novelty"] = 0.90                                # знову над порогом, але кулдаун ще йде
+    assert select_self_trigger(st, tg) == (None, None)  # переозброїлось, кулдаун тікає
+    st.needs["novelty"] = 0.90  # знову над порогом, але кулдаун ще йде
     blocked = [select_self_trigger(st, tg)[0] for _ in range(SELF_COOLDOWN - 2)]
-    assert all(x is None for x in blocked)                    # тиша, поки кулдаун не стік
-    assert select_self_trigger(st, tg)[0] == "novelty"        # кулдаун = 0 -> спрацювало знову
+    assert all(x is None for x in blocked)  # тиша, поки кулдаун не стік
+    assert select_self_trigger(st, tg)[0] == "novelty"  # кулдаун = 0 -> спрацювало знову
 
 
 def test_largest_overshoot_fires_first():

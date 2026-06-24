@@ -34,8 +34,9 @@ class Brain(Protocol):
         """Дешева швидка репліка (вся історія — як messages)."""
         ...
 
-    def deep(self, prompt: str, history: list[dict], system: str,
-             with_tools: bool) -> tuple[str, Usage]:
+    def deep(
+        self, prompt: str, history: list[dict], system: str, with_tools: bool
+    ) -> tuple[str, Usage]:
         """Глибокий хід (роздум або тули); історія — транскриптом у промпт."""
         ...
 
@@ -50,46 +51,60 @@ class LiveBrain:
 
         try:
             msg = Anthropic().messages.create(
-                model=CHAT_MODEL,                 # Haiku 4.5 — дешево і швидко
-                max_tokens=512,                   # коротка репліка
-                system=system,                    # канон + довга пам'ять
-                messages=to_messages(history),    # уся стрічка, з поточним ходом
+                model=CHAT_MODEL,  # Haiku 4.5 — дешево і швидко
+                max_tokens=512,  # коротка репліка
+                system=system,  # канон + довга пам'ять
+                messages=to_messages(history),  # уся стрічка, з поточним ходом
             )
-        except Exception as e:                    # мережа / ліміти / помилка API
+        except Exception as e:  # мережа / ліміти / помилка API
             return f"(chat error: {e})", None
         text = next((b.text for b in msg.content if b.type == "text"), "")
         return text, usage_record(msg.model, msg.usage)
 
-    def deep(self, prompt: str, history: list[dict], system: str,
-             with_tools: bool) -> tuple[str, Usage]:
+    def deep(
+        self, prompt: str, history: list[dict], system: str, with_tools: bool
+    ) -> tuple[str, Usage]:
         # Субпроцес не тримає сесію між викликами, тож попередні ходи вкладаємо
         # текстовим транскриптом, а поточний промпт — у кінець.
         prior = history[:-1] if history else []
         full_prompt = prompt
         if prior:
             full_prompt = (
-                "Контекст розмови:\n" + to_transcript(prior) +
-                "\n\nПоточне повідомлення:\n" + prompt
+                "Контекст розмови:\n"
+                + to_transcript(prior)
+                + "\n\nПоточне повідомлення:\n"
+                + prompt
             )
 
         # --output-format json: дістаємо і текст (result), і usage одним викликом.
-        cmd = ["claude", "-p", "--model", DEEP_MODEL, "--output-format", "json",
-               "--append-system-prompt", system]
+        cmd = [
+            "claude",
+            "-p",
+            "--model",
+            DEEP_MODEL,
+            "--output-format",
+            "json",
+            "--append-system-prompt",
+            system,
+        ]
         if with_tools and DEEP_TOOLS:
             cmd += ["--allowedTools", ",".join(DEEP_TOOLS)]
         cmd.append(full_prompt)
 
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-        except Exception as e:                         # таймаут / процес не стартував
+        except Exception as e:  # таймаут / процес не стартував
             return f"(deep error: {e})", None
         if result.returncode != 0:
             # CLI інколи падає (ліміт, тимчасова помилка) — не валимо цикл.
-            return f"(deep error: claude CLI {result.returncode}: {_cli_error_detail(result)})", None
+            return (
+                f"(deep error: claude CLI {result.returncode}: {_cli_error_detail(result)})",
+                None,
+            )
         try:
             data = json.loads(result.stdout)
         except json.JSONDecodeError:
-            return result.stdout.strip(), None         # несподіваний вивід — як є
+            return result.stdout.strip(), None  # несподіваний вивід — як є
         return (data.get("result") or "").strip(), usage_record(DEEP_MODEL, data.get("usage"))
 
 
@@ -104,8 +119,9 @@ class MockBrain:
         text = f"(dry-run chat: messages={len(history)})"
         return text, usage_record(CHAT_MODEL, {"input_tokens": 8, "output_tokens": 12})
 
-    def deep(self, prompt: str, history: list[dict], system: str,
-             with_tools: bool) -> tuple[str, Usage]:
+    def deep(
+        self, prompt: str, history: list[dict], system: str, with_tools: bool
+    ) -> tuple[str, Usage]:
         prior = len(history) - 1 if history else 0
         text = f"(dry-run deep: transcript={prior} turns, tools={with_tools})"
         return text, usage_record(DEEP_MODEL, {"input_tokens": 20, "output_tokens": 30})
