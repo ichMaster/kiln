@@ -4,11 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`kiln` is a single-file Python prototype (`engine.py`, stdlib only) for a needs-driven chat engine.
-It runs a loop of cheap local "ticks"; an LLM ("the brain") is invoked only on a condition
-(user input, or a need crossing its threshold), and each invocation is **routed** to one of two
-branches. The README, code comments, and conversational prompts are all in **Ukrainian** — keep
-that voice when editing prompts or user-facing strings.
+`kiln` is a small multi-module Python prototype for a needs-driven chat engine (stdlib-only for
+dry-run; `anthropic` SDK only for the live chat branch). It runs a loop of cheap local "ticks"; an
+LLM ("the brain") is invoked only on a condition (user input, or a need crossing its threshold), and
+each invocation is **routed** to one of two branches. The README, code comments, and conversational
+prompts are all in **Ukrainian** — keep that voice when editing prompts or user-facing strings.
+
+Modules form a clean DAG — `config`/`history`/`usage` (leaves) → `memory` → `commands` → `engine`:
+`config.py` (paths, `.env`, tunables), `history.py` (session-transcript helpers), `usage.py` (model
+token logging + chat colors), `memory.py` (cross-session memory, prompts/canon, RAG transcripts),
+`commands.py` (slash commands), `engine.py` (`State`, ticks, the two brains, the loop, `__main__`).
+**`engine.py` runs as `__main__`, so no module imports it** — that's why constants live in
+`config.py` and `/ask` does its deep call back in `run()` rather than in `commands.py`.
+
+Human-facing docs live in [`docs/`](docs/) — [`docs/architecture.md`](docs/architecture.md) (design)
+and [`docs/how-it-works.md`](docs/how-it-works.md) (runtime mechanics, tables). The root `README.md`
+is usage-only; this file and `docs/` carry the internals.
 
 ## Commands
 
@@ -30,7 +41,7 @@ dry-run demo at the bottom of `engine.py` (`if __name__ == "__main__"`) is the d
 
 ### State files live in `state/`
 
-All mutable state is under `STATE_DIR = engine.py's dir / "state"`: `state/needs.md` (seed need
+All mutable state is under `STATE_DIR` (defined in `config.py`, = repo root `/state`): `state/needs.json` (seed need
 levels, rewritten each run by `save_state`), `state/prompts.md` (self-trigger prompts),
 `state/canon.md` (the **canon** — the persona/voice that becomes the system prompt of both
 branches), and `state/memory.md` (cross-session summaries, generated on exit — gitignored).
@@ -40,30 +51,30 @@ empty needs/prompts otherwise).
 
 ### Config via `.env`
 
-`load_dotenv()` (a tiny stdlib-only `KEY=VALUE` parser at the top of `engine.py`, no dependency)
+`load_dotenv()` (a tiny stdlib-only `KEY=VALUE` parser in `config.py`, no dependency)
 reads `.env` from the repo root **before** the config constants are defined, so these can be set
 without touching code: `CHAT_MODEL`, `DEEP_MODEL`, `TICK_SECONDS`, `THINK_THRESHOLD`,
 `SELF_COOLDOWN` (plus `KILN_LIVE`, `ANTHROPIC_API_KEY` for live mode). It uses `os.environ.setdefault`,
 so a real environment variable always wins over `.env`. `.env` is gitignored; the structured dict
 knobs (`DRIFT`/`SATIATION`/`NEED_TRIGGERS`) stay in code.
 
-## Architecture (one file, several layered concerns)
+## Architecture (the big-picture flow)
 
-The whole engine is `engine.py`; section banners (`=== ... ===`) divide it. The big-picture flow:
+Split across the modules listed above; the runtime flow ties them together:
 
 **Tick loop** (`run`) — drifts needs upward each tick (`drift`), then picks exactly one action
 per tick with this priority: **user input > self-trigger > idle**. Input always wins; a pending
 self-trigger waits for the next tick.
 
 **Two brains** (the core idea — *which branch answers decides which needs close*):
-- **Chat** (`chat_reply`, `CHAT_MODEL` Haiku): cheap/fast small talk via the Anthropic Messages
-  API. Whole session `history` goes in as a `messages` array. **Currently a stub** — live mode
-  raises `NotImplementedError`; wire the real `anthropic` SDK call here (the docstring shows the
-  shape).
-- **Deep** (`deep_reply`, `DEEP_MODEL` Opus): reasoning/tools via the `claude -p` subprocess.
-  Since the subprocess holds no session, prior history is flattened into the prompt as a text
-  transcript (`to_transcript`); long-term memory rides on `--append-system-prompt`; `tools` class
-  adds `--allowedTools`.
+- **Chat** (`chat_reply` in `engine.py`, `CHAT_MODEL` Haiku): cheap/fast small talk via a real
+  Anthropic Messages API call (`anthropic` imported lazily so dry-run stays dependency-free). Whole
+  session `history` goes in as a `messages` array; token usage is captured via `log_model` (`usage.py`).
+- **Deep** (`deep_reply`, `DEEP_MODEL` Opus): reasoning/tools via the `claude -p` subprocess with
+  `--output-format json` (so it returns both the text and token `usage`). The subprocess holds no
+  session, so prior history is flattened into the prompt as a text transcript (`to_transcript`);
+  long-term memory rides on `--append-system-prompt`; `tools` class adds `--allowedTools`. On a
+  nonzero exit it degrades to a `(deep error: …)` string instead of crashing the loop.
 
 **Routing** — when the brain fires on user input, `classify(prompt, state)` returns
 `chat | think | tools` from message markers (`TOOL_HINTS`/`THINK_HINTS`) **and** a state weight
@@ -104,7 +115,7 @@ intended for downstream retrieval, distinct from the `memory.md` summaries.
 
 ## Calibration
 
-All tuning lives in module-level constants near the top of `engine.py`: `TICK_SECONDS`, `DRIFT`,
+All tuning lives in module-level constants in `config.py`: `TICK_SECONDS`, `DRIFT`,
 `SATIATION`, `NEED_TRIGGERS`, `SELF_COOLDOWN`, `THINK_THRESHOLD`, `CHAT_MODEL`/`DEEP_MODEL`,
 `DEEP_TOOLS`/`DEEP_SKILLS`, `THINK_HINTS`/`TOOL_HINTS`, and the weights in `turn_weight`. The
 scalar ones (models, `TICK_SECONDS`, `THINK_THRESHOLD`, `SELF_COOLDOWN`) are overridable from
