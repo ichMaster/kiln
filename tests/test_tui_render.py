@@ -7,7 +7,7 @@ exercised by the pilots in test_tui_app.py. No model, no paid calls.
 
 from __future__ import annotations
 
-from tui.render import fmt_tok, short_model, status_line1, status_line2
+from tui.render import fmt_tok, needs_panel_lines, short_model, status_line1, status_line2
 
 
 def _snap(**over):
@@ -82,3 +82,34 @@ def test_status_line2_with_turns():
     assert "3 turns" in line
     assert "181.8k tok" in line
     assert "avg 13.8s" in line
+
+
+# --- needs / thresholds panel ----------------------------------------------
+
+
+def test_needs_panel_one_row_per_need():
+    rows = needs_panel_lines(_snap())
+    assert len(rows) == 2  # connection + novelty
+    assert any(r.lstrip().startswith("connection") for r in rows)
+    assert any("novelty" in r for r in rows)
+
+
+def test_needs_panel_marks_hottest_and_shows_threshold():
+    rows = needs_panel_lines(_snap(hottest=["novelty", 0.9]))
+    novelty = next(r for r in rows if "novelty" in r)
+    assert novelty.startswith("*")  # hottest marked
+    assert "0.90/0.85" in novelty  # level/threshold
+
+
+def test_needs_panel_flags_over_threshold_and_cooldown():
+    rows = needs_panel_lines(_snap(needs={"novelty": 0.9}, cooldowns={"novelty": 3}))
+    novelty = next(r for r in rows if "novelty" in r)
+    assert " !" in novelty  # 0.90 >= 0.85 threshold
+    assert "cd3" in novelty  # active cooldown
+
+
+def test_needs_panel_below_threshold_no_flag():
+    rows = needs_panel_lines(_snap(needs={"connection": 0.5}, hottest=["", 0.0]))
+    connection = next(r for r in rows if "connection" in r)
+    assert " !" not in connection
+    assert "0.50/0.80" in connection

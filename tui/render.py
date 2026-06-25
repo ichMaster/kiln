@@ -39,3 +39,31 @@ def status_line2(snap: dict) -> str:
         f"stats: last {fmt_tok(s['last_tokens'])} tok · {s['last_latency']}s · "
         f"{s['turns']} turns · {fmt_tok(s['tokens_total'])} tok · avg {s['avg_latency']}s"
     )
+
+
+def _bar(level: float, width: int = 10) -> str:
+    """A small fill bar for a 0..1 level."""
+    filled = max(0, min(width, round(level * width)))
+    return "█" * filled + "░" * (width - filled)
+
+
+def needs_panel_lines(snap: dict) -> list[str]:
+    """
+    One row per need: `* name  ███░░░░░░░ level/threshold ! cdN`.
+    `*` marks the hottest need, `!` an at/over-threshold need, `cdN` an active cooldown.
+    This is where Lumi shows model reasoning — kiln shows the motivational substrate.
+    """
+    needs = snap.get("needs", {})
+    thresholds = snap.get("thresholds", {})
+    cooldowns = snap.get("cooldowns", {})
+    hottest = (snap.get("hottest") or ["", 0.0])[0]
+    rows: list[str] = []
+    for name, level in needs.items():
+        thr = thresholds.get(name)
+        mark = "*" if name == hottest else " "
+        thr_s = f"/{thr:.2f}" if thr is not None else ""
+        flag = " !" if (thr is not None and level >= thr) else ""
+        cd = cooldowns.get(name, 0)
+        cd_s = f" cd{cd}" if cd else ""
+        rows.append(f"{mark}{name:<10} {_bar(level)} {level:.2f}{thr_s}{flag}{cd_s}")
+    return rows

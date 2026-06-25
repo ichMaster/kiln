@@ -24,7 +24,7 @@ from kiln.engine import run
 from .bridge import Bridge
 from .channel import TuiChannel
 from .output import TuiOutput
-from .render import status_line1, status_line2
+from .render import needs_panel_lines, status_line1, status_line2
 
 # Line colors (Rich markup) — equivalents of the ANSI ones from usage.py.
 _USER_STYLE = "bold cyan"
@@ -41,6 +41,10 @@ class KilnApp(App):
 
     CSS = """
     #statusbar { dock: top; height: 2; padding: 0 1; background: $panel; color: $text-muted; }
+    #needspanel {
+        dock: top; height: auto; padding: 0 1;
+        border-bottom: solid $panel; color: $text-muted;
+    }
     RichLog { height: 1fr; padding: 0 1; }
     Input { dock: bottom; }
     """
@@ -64,6 +68,7 @@ class KilnApp(App):
 
     def compose(self) -> ComposeResult:
         yield Static("status: starting…", id="statusbar")
+        yield Static("needs: …", id="needspanel")
         yield RichLog(markup=True, wrap=True, highlight=False)
         yield Input(placeholder="Type a message…  (Ctrl+Q — quit)")
 
@@ -92,8 +97,9 @@ class KilnApp(App):
                 self._render(log, event)
 
     def _update_status(self, snap: dict) -> None:
-        bar = self.query_one("#statusbar", Static)
-        bar.update(f"{status_line1(snap)}\n{status_line2(snap)}")
+        self.query_one("#statusbar", Static).update(f"{status_line1(snap)}\n{status_line2(snap)}")
+        rows = needs_panel_lines(snap)
+        self.query_one("#needspanel", Static).update("\n".join(rows) if rows else "needs: …")
 
     def _render(self, log: RichLog, event: dict) -> None:
         kind = event.get("kind")
