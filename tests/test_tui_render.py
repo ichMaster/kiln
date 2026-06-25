@@ -156,9 +156,3 @@ def test_needs_panel_shows_action():
 def test_agent_label_marks_self():
     assert agent_label(False) == "Agnika"
     assert agent_label(True) == "Agnika (self)"
-
-
-def test_agent_label_includes_model():
-    assert agent_label(False, "opus") == "Agnika [opus]"
-    assert agent_label(True, "haiku") == "Agnika (self) [haiku]"
-    assert agent_label(False, None) == "Agnika"  # no model -> plain

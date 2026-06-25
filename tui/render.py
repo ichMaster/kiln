@@ -19,10 +19,9 @@ def fmt_tok(n: int) -> str:
     return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
 
 
-def agent_label(is_self: bool, model: str | None = None) -> str:
-    """Reply label: `Agnika [model]`; self-triggered replies are marked `Agnika (self)`."""
-    base = "Agnika (self)" if is_self else "Agnika"
-    return f"{base} [{model}]" if model else base
+def agent_label(is_self: bool) -> str:
+    """Reply name; self-triggered replies are marked `Agnika (self)`."""
+    return "Agnika (self)" if is_self else "Agnika"
 
 
 def status_line1(snap: dict) -> str:

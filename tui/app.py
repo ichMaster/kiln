@@ -30,10 +30,11 @@ from .channel import TuiChannel
 from .output import TuiOutput
 from .render import agent_label, needs_panel_lines, status_line1, status_line2
 
-# Line colors (Rich markup) — equivalents of the ANSI ones from usage.py.
-_USER_STYLE = "bold cyan"
-_BOT_STYLE = "bold green"
-_SELF_STYLE = "green"  # self-triggered replies: dimmer than a direct reply
+# Line colors (Rich markup). Names are bold; reply/message bodies stay default (white).
+_USER_STYLE = "bold cyan"  # "you" name
+_BOT_STYLE = "bold green"  # "Agnika" name
+_SELF_STYLE = "bold green"  # "Agnika (self)" name — same weight, marked by the (self) suffix
+_MODEL_STYLE = "dark_green"  # the (model) tag next to the name
 
 
 class ChatInput(TextArea):
@@ -162,12 +163,16 @@ class KilnApp(App):
         kind = event.get("kind")
         if kind == "agent":
             is_self = event.get("is_self", False)
-            style = _SELF_STYLE if is_self else _BOT_STYLE
-            # The model rides on the label (e.g. "Agnika [opus]"); no separate tech line.
-            label, text = agent_label(is_self, event.get("model")), event["text"]
+            name_style = _SELF_STYLE if is_self else _BOT_STYLE
+            name = agent_label(is_self)
+            model = event.get("model")
+            # Each span is its own markup (and escaped) so a model like "opus" can't be
+            # mistaken for a tag: bold colored name + dark-green (model); body stays default white.
+            model_part = f" [{_MODEL_STYLE}]({escape(model)})[/]" if model else ""
+            text = event["text"]
             self._last_reply = text
-            log.write(f"[{style}]{label}:[/] {escape(text)}")
-            self._transcript.append(f"{label}: {text}")
+            log.write(f"[{name_style}]{escape(name)}[/]{model_part}: {escape(text)}")
+            self._transcript.append(f"{name}{f' ({model})' if model else ''}: {text}")
         elif kind == "notice":
             log.write(escape(event["text"]))
             self._transcript.append(event["text"])
