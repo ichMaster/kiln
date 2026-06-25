@@ -12,6 +12,7 @@ __main__, тож його можна імпортувати (зокрема в �
 from __future__ import annotations
 
 import os
+import sys
 
 from .engine import (
     ScriptedChannel,
@@ -20,6 +21,16 @@ from .engine import (
     run,
     save_state,
 )
+
+
+def _run_tui() -> None:
+    """`kiln --tui` — Textual-клієнт (екстра `tui`); двіжок крутиться у фоні."""
+    try:
+        from tui.app import main as tui_main
+    except ImportError:
+        print("Для TUI постав екстру: pip install -e '.[tui]'")
+        return
+    tui_main()
 
 
 def _demo() -> None:
@@ -54,6 +65,9 @@ def _demo() -> None:
 
 
 def main() -> None:
+    if "--tui" in sys.argv[1:]:
+        _run_tui()
+        return
     live = os.environ.get("KILN_LIVE") == "1"
     if live:
         # Живий режим: пиши повідомлення в термінал, тіки крутяться самі.

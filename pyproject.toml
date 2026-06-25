@@ -22,6 +22,10 @@ dev = [
     # Ruff закріплено в межах мінора: формат детермінований, `ruff format --check` у CI стабільний.
     "ruff>=0.15,<0.16",
 ]
+# Клієнт TUI (v0.3): встав `pip install -e .[tui]`, запуск — `kiln --tui`.
+tui = [
+    "textual>=8,<9",
+]
 
 [project.scripts]
 kiln = "kiln.__main__:main"
