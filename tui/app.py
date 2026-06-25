@@ -81,7 +81,7 @@ class KilnApp(App):
            Footer. Docking made margins offset-only, overflowing the right border. */
         height: 5;          /* border (2) + ~3 text lines; scrolls if longer */
         border: round $accent;
-        margin: 1 1 2 1;    /* t r b l — top 1 = blank line from the chat; bottom 2 off the footer */
+        margin: 1 1 1 1;    /* t r b l — one blank line above (chat) and below (footer) */
     }
     """
     BINDINGS = [
