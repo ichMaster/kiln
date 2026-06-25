@@ -47,8 +47,8 @@ def status_line2(snap: dict) -> str:
     )
 
 
-def _bar(level: float, width: int = 10) -> str:
-    """A small fill bar for a 0..1 level."""
+def _bar(level: float, width: int = 50) -> str:
+    """A fill bar for a 0..1 level (50 steps)."""
     filled = max(0, min(width, round(level * width)))
     return "█" * filled + "░" * (width - filled)
 
