@@ -30,3 +30,7 @@ class TuiOutput:
 
     def notice(self, text: str) -> None:
         self._bridge.emit({"kind": "notice", "text": text})
+
+    def status(self, snapshot: dict) -> None:
+        # Per-tick snapshot (needs + thresholds + stats) for the status bar / needs panel.
+        self._bridge.emit({"kind": "status", "snapshot": snapshot})

@@ -59,6 +59,7 @@ from .memory import (
     summarize,
 )
 from .output import ConsoleOutput, Output
+from .stats import SessionStats
 
 # === State ==================================================================
 
@@ -264,6 +265,28 @@ def respond(
     return {"class": cls, "route": route, "reply": reply, "usage": usage}
 
 
+def _status_snapshot(
+    status: str, state: State, tg: TriggerBook, stats: SessionStats, branch: str | None
+) -> dict:
+    """
+    Build the per-tick status snapshot the TUI status bar / needs panel render from.
+    status ∈ idle/thinking/responding; branch is the last turn class (chat/think/tools).
+    """
+    thresholds = {name: cfg["threshold"] for name, cfg in NEED_TRIGGERS.items()}
+    cooldowns = {name: c for name, c in tg.cooldown.items() if c > 0}
+    model = CHAT_MODEL if branch == "chat" else DEEP_MODEL  # deep model is the headline default
+    return {
+        "status": status,
+        "model": model,
+        "branch": branch,
+        "needs": dict(state.needs),
+        "thresholds": thresholds,
+        "hottest": list(state.hottest_need()),  # [need, level]
+        "cooldowns": cooldowns,
+        "stats": stats.snapshot(),
+    }
+
+
 def run(
     ticks: int | None = 12,
     live: bool = False,
@@ -293,8 +316,17 @@ def run(
     system = build_system(canon, memory)  # canon + memory
     prompts = load_prompts()  # self-trigger prompts from state/prompts.md
     tg = TriggerBook()  # trigger hysteresis + cooldown
+    stats = SessionStats()  # session token/turn/latency totals (for the status bar)
+
+    def _turn(prompt: str, force: str | None = None) -> dict:
+        # One model turn, timed; folds tokens + latency into the session stats.
+        t0 = time.monotonic()
+        out = respond(prompt, state, history, system, brain, force=force)
+        stats.record(out["class"], out.get("usage"), time.monotonic() - t0)
+        return out
 
     t = 0
+    branch: str | None = None  # last turn's class (chat/think/tools) for the status snapshot
     last_tick = time.monotonic()  # for catch-up drift over real time
     try:
         while ticks is None or t < ticks:
@@ -313,6 +345,7 @@ def run(
             if user_msg is None:
                 fired, faction = select_self_trigger(state, tg)
 
+            status_label = "idle"
             if user_msg is not None:
                 action = handle_command(user_msg, state, history, system, live, output)
                 if action == "quit":
@@ -321,22 +354,28 @@ def run(
                 elif action == "handled":
                     pass  # command handled, the brain is left untouched
                 elif isinstance(action, tuple):  # ("ask", text) -> forced deep
-                    out = respond(action[1], state, history, system, brain, force="deep")
+                    out = _turn(action[1], force="deep")
                     output.agent(out["reply"], lead=True)
                     output.usage(out.get("usage"))
+                    status_label, branch = "responding", out["class"]
                 else:  # None -> normal turn
-                    out = respond(user_msg, state, history, system, brain)
+                    out = _turn(user_msg)
                     output.user(user_msg)
                     output.agent(out["reply"])
                     output.usage(out.get("usage"))
+                    status_label, branch = "responding", out["class"]
             elif fired is not None:
                 prompt = pick_prompt(prompts, fired)
-                out = respond(prompt, state, history, system, brain, force=faction)
+                out = _turn(prompt, force=faction)
                 output.agent(out["reply"], is_self=True)
                 output.usage(out.get("usage"))
+                status_label, branch = "responding", out["class"]
             else:
                 apply_satiation(state, "idle")  # silence: rest + cooling down
                 # a silent tick isn't printed — check state via /status
+
+            # Per-tick status snapshot (needs + thresholds + stats) for live clients.
+            output.status(_status_snapshot(status_label, state, tg, stats, branch))
 
             time.sleep(TICK_SECONDS if live else 0)
             t += 1

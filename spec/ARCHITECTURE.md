@@ -147,12 +147,18 @@ multi-agent is additive, not a rewrite:
   `MockBrain` implement it; model ids are config. `respond()` calls the model only
   through this seam.
 - **Output seam:** `Output` with `user(text)` / `agent(text, is_self, lead)` /
-  `usage(dict)` / `notice(text)`; the core emits through it, `ConsoleOutput` is the
-  default sink. The method set foreshadows the event protocol below.
-- **Bridge bus (v0.3):** `Bridge` carries typed-dict render events on the outbox
-  (`{"kind": "user"|"agent"|"usage"|"notice", …}`, mirroring the `Output` methods)
-  and typed lines on the inbox; both drained non-blocking. Echo-free: input never
-  appears on the outbox. A precursor to the WS event protocol below.
+  `usage(dict)` / `notice(text)` / `status(snapshot)`; the core emits through it,
+  `ConsoleOutput` is the default sink (`status` a no-op). The method set foreshadows
+  the event protocol below.
+- **Status event (v0.4):** `run()` emits a `status(snapshot)` **every tick** —
+  `{status, model, branch, needs, thresholds, hottest, cooldowns, stats}` where
+  `stats = {turns, tokens_total, tokens_by_branch, last_tokens, last_latency,
+  avg_latency}` (`SessionStats`). It's the live data the TUI status bar + needs panel
+  render from; a precursor to the v1.1 WS `status` event.
+- **Bridge bus (v0.3+):** `Bridge` carries typed-dict render events on the outbox
+  (`{"kind": "user"|"agent"|"usage"|"notice"|"status", …}`, mirroring the `Output`
+  methods) and typed lines on the inbox; both drained non-blocking. Echo-free: input
+  never appears on the outbox. A precursor to the WS event protocol below.
 - **Event protocol (planned, 1.1/1.2):** server↔client events (`user.message`,
   `agnika.message`, `status`, `usage`, `tick`, `command`) mirror the FSM.
 

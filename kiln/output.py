@@ -36,6 +36,10 @@ class Output(Protocol):
         """System line ([exit] …, exit status, etc.)."""
         ...
 
+    def status(self, snapshot: dict) -> None:
+        """Per-tick status snapshot (needs + thresholds + session stats). See engine."""
+        ...
+
 
 class ConsoleOutput:
     """The default sink: prints to the terminal (behavior/colors — as before the seam)."""
@@ -53,3 +57,7 @@ class ConsoleOutput:
 
     def notice(self, text: str) -> None:
         print(text)
+
+    def status(self, snapshot: dict) -> None:
+        # The console has no live bar — the per-tick status is a no-op here.
+        return

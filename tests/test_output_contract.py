@@ -32,6 +32,9 @@ class CapturingOutput:
     def notice(self, text: str) -> None:
         self.events.append(("notice", text))
 
+    def status(self, snapshot: dict) -> None:
+        self.events.append(("status", snapshot))
+
 
 def test_sinks_satisfy_protocol():
     assert isinstance(ConsoleOutput(), Output)
