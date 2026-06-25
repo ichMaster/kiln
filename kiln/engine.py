@@ -313,7 +313,7 @@ def run(
                 fired, faction = select_self_trigger(state, tg)
 
             if user_msg is not None:
-                action = handle_command(user_msg, state, history, system, live)
+                action = handle_command(user_msg, state, history, system, live, output)
                 if action == "quit":
                     output.notice("[exit] вихід за командою")
                     break

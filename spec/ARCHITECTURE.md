@@ -35,7 +35,9 @@ self-trigger.
   the tech line).
 - **Memory** (`memory.py`) — long-term `memory.md` summaries, the canon loader,
   prompts, and raw `history/*.json` transcripts (the RAG corpus).
-- **Commands** (`commands.py`) — slash commands, intercepted before routing.
+- **Commands** (`commands.py`) — slash commands, intercepted before routing; their
+  output goes through the **`Output` seam** (`output.notice`), never `print`, so any
+  client (console, TUI) renders it.
 - **Channels** (`engine.py`: `ScriptedChannel`, `StdinChannel`) — async input
   behind `poll()`.
 - **Output** (`output.py`: `Output` seam, `ConsoleOutput`) — the core writes every

@@ -2,7 +2,8 @@
 kiln — системні слеш-команди.
 
 Перехоплюють ввід ДО класифікації, тож не йдуть у мозок як повідомлення.
-handle_command() повертає:
+Вивід команд іде через seam Output (output.notice), а не print — тож будь-який
+клієнт (консоль сьогодні, TUI/веб далі) ловить результат. handle_command() повертає:
   "handled"        — команда виконана, продовжуємо цикл;
   "quit"           — користувач просить вийти;
   ("ask", текст)   — примусовий deep-хід (сам виклик робить цикл run);
@@ -13,13 +14,14 @@ from __future__ import annotations
 
 from .history import ROLE_USER
 from .memory import load_memory
+from .output import Output
 
 
 def _fmt_needs(state) -> str:
     return "  ".join(f"{k}={state.needs[k]:.2f}" for k in state.needs)
 
 
-def handle_command(line: str, state, history: list[dict], system: str, live: bool):
+def handle_command(line: str, state, history: list[dict], system: str, live: bool, output: Output):
     if not line.startswith("/"):
         return None
 
@@ -31,44 +33,46 @@ def handle_command(line: str, state, history: list[dict], system: str, live: boo
         return "quit"
 
     elif cmd in ("help", "h", "?"):
-        print("Команди: /status  /needs  /memory  /history  /ask <текст>  /clear  /help  /quit")
+        output.notice(
+            "Команди: /status  /needs  /memory  /history  /ask <текст>  /clear  /help  /quit"
+        )
 
     elif cmd == "status":
         name, level = state.hottest_need()
-        print(
+        output.notice(
             f"[status] ходів={len(history)}  найгарячіша={name}={level:.2f}  "
             f"режим={'live' if live else 'dry'}"
         )
-        print(f"         потреби: {_fmt_needs(state)}")
+        output.notice(f"         потреби: {_fmt_needs(state)}")
 
     elif cmd == "needs":
-        print(f"[needs] {_fmt_needs(state)}")
+        output.notice(f"[needs] {_fmt_needs(state)}")
 
     elif cmd == "memory":
         mem = load_memory().strip()
-        print("[memory]\n" + (mem if mem else "(порожньо)"))
+        output.notice("[memory]\n" + (mem if mem else "(порожньо)"))
 
     elif cmd == "history":
         if not history:
-            print("[history] (порожньо)")
+            output.notice("[history] (порожньо)")
         else:
             for h in history[-10:]:
                 who = "USER" if h["role"] == ROLE_USER else "BOT "
-                print(f"  {who}: {h['text']}")
+                output.notice(f"  {who}: {h['text']}")
 
     elif cmd == "ask":
         # Примусовий виклик Клода (deep), повз класифікатор.
         # Сам хід робить цикл run() — щоб не тягнути сюди deep_reply (розрив циклу).
         if not arg:
-            print("[ask] вкажи текст: /ask <питання>")
+            output.notice("[ask] вкажи текст: /ask <питання>")
         else:
             return ("ask", arg)
 
     elif cmd == "clear":
         history.clear()
-        print("[clear] історію сесії очищено")
+        output.notice("[clear] історію сесії очищено")
 
     else:
-        print(f"[?] невідома команда: /{cmd} (спробуй /help)")
+        output.notice(f"[?] невідома команда: /{cmd} (спробуй /help)")
 
     return "handled"
