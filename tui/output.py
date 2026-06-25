@@ -24,9 +24,10 @@ class TuiOutput:
     def agent(self, text: str, *, is_self: bool = False, lead: bool = False) -> None:
         self._bridge.emit({"kind": "agent", "text": text, "is_self": is_self, "lead": lead})
 
-    def usage(self, usage: dict | None) -> None:
-        # Carry the raw record {model, input, output, total} — the UI draws the tech line.
-        self._bridge.emit({"kind": "usage", "usage": usage})
+    def usage(self, usage: dict | None, latency: float | None = None) -> None:
+        # Carry the raw record {model, input, output, total} + per-turn latency;
+        # the UI draws the tech line.
+        self._bridge.emit({"kind": "usage", "usage": usage, "latency": latency})
 
     def notice(self, text: str) -> None:
         self._bridge.emit({"kind": "notice", "text": text})

@@ -147,7 +147,7 @@ multi-agent is additive, not a rewrite:
   `MockBrain` implement it; model ids are config. `respond()` calls the model only
   through this seam.
 - **Output seam:** `Output` with `user(text)` / `agent(text, is_self, lead)` /
-  `usage(dict)` / `notice(text)` / `status(snapshot)`; the core emits through it,
+  `usage(dict, latency?)` / `notice(text)` / `status(snapshot)`; the core emits through it,
   `ConsoleOutput` is the default sink (`status` a no-op). The method set foreshadows
   the event protocol below.
 - **Status event (v0.4):** `run()` emits a `status(snapshot)` **every tick** —

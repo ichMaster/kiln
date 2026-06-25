@@ -28,8 +28,8 @@ class Output(Protocol):
         """Agent reply (is_self — self-initiated; lead — with a blank line before it)."""
         ...
 
-    def usage(self, usage: dict | None) -> None:
-        """Technical line beneath the reply (model + tokens)."""
+    def usage(self, usage: dict | None, latency: float | None = None) -> None:
+        """Technical line beneath the reply (model + tokens, optional per-turn latency)."""
         ...
 
     def notice(self, text: str) -> None:
@@ -52,8 +52,8 @@ class ConsoleOutput:
         nl = "\n" if (is_self or lead) else ""  # self-initiated/"fresh" reply — with an indent
         print(nl + _c(f"{label}: {text}", BOT_COLOR))
 
-    def usage(self, usage: dict | None) -> None:
-        print_tech(usage)
+    def usage(self, usage: dict | None, latency: float | None = None) -> None:
+        print_tech(usage, latency)
 
     def notice(self, text: str) -> None:
         print(text)

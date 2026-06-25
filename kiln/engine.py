@@ -356,19 +356,19 @@ def run(
                 elif isinstance(action, tuple):  # ("ask", text) -> forced deep
                     out = _turn(action[1], force="deep")
                     output.agent(out["reply"], lead=True)
-                    output.usage(out.get("usage"))
+                    output.usage(out.get("usage"), stats.last_latency)
                     status_label, branch = "responding", out["class"]
                 else:  # None -> normal turn
                     out = _turn(user_msg)
                     output.user(user_msg)
                     output.agent(out["reply"])
-                    output.usage(out.get("usage"))
+                    output.usage(out.get("usage"), stats.last_latency)
                     status_label, branch = "responding", out["class"]
             elif fired is not None:
                 prompt = pick_prompt(prompts, fired)
                 out = _turn(prompt, force=faction)
                 output.agent(out["reply"], is_self=True)
-                output.usage(out.get("usage"))
+                output.usage(out.get("usage"), stats.last_latency)
                 status_label, branch = "responding", out["class"]
             else:
                 apply_satiation(state, "idle")  # silence: rest + cooling down

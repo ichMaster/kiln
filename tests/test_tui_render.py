@@ -7,7 +7,15 @@ exercised by the pilots in test_tui_app.py. No model, no paid calls.
 
 from __future__ import annotations
 
-from tui.render import fmt_tok, needs_panel_lines, short_model, status_line1, status_line2
+from tui.render import (
+    agent_label,
+    fmt_tok,
+    needs_panel_lines,
+    short_model,
+    status_line1,
+    status_line2,
+    tech_line,
+)
 
 
 def _snap(**over):
@@ -113,3 +121,28 @@ def test_needs_panel_below_threshold_no_flag():
     connection = next(r for r in rows if "connection" in r)
     assert " !" not in connection
     assert "0.50/0.80" in connection
+
+
+# --- chat-log polish: labels + per-turn tech line --------------------------
+
+
+def test_agent_label_marks_self():
+    assert agent_label(False) == "Agnika"
+    assert agent_label(True) == "Agnika (self)"
+
+
+def test_tech_line_with_tokens_and_latency():
+    line = tech_line({"model": "claude-haiku-4-5", "input": 8, "output": 12, "total": 20}, 1.234)
+    assert "haiku" in line
+    assert "8→12 tok (20)" in line
+    assert "1.23s" in line  # latency rounded to 2dp
+
+
+def test_tech_line_without_latency():
+    line = tech_line({"model": "claude-opus-4-8", "input": 1, "output": 2, "total": 3})
+    assert "opus" in line and "tok (3)" in line
+    assert "s" not in line.split("tok")[1]  # no latency tail
+
+
+def test_tech_line_no_usage_is_empty():
+    assert tech_line(None) == ""

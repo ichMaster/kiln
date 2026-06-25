@@ -26,7 +26,7 @@ class CapturingOutput:
     def agent(self, text: str, *, is_self: bool = False, lead: bool = False) -> None:
         self.events.append(("agent", text))
 
-    def usage(self, usage) -> None:
+    def usage(self, usage, latency=None) -> None:
         self.events.append(("usage", usage))
 
     def notice(self, text: str) -> None:

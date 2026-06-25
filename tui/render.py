@@ -19,6 +19,21 @@ def fmt_tok(n: int) -> str:
     return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
 
 
+def agent_label(is_self: bool) -> str:
+    """Reply label; self-triggered replies are marked `Agnika (self)`."""
+    return "Agnika (self)" if is_self else "Agnika"
+
+
+def tech_line(usage: dict | None, latency: float | None = None) -> str:
+    """Per-turn line: `· model · in→out tok (total) · {latency}s` (or '' if no usage)."""
+    if not usage:
+        return ""
+    m = usage.get("model", "")
+    fam = m.split("-")[1] if "-" in m else m
+    tail = f" · {round(latency, 2)}s" if latency is not None else ""
+    return f"      · {fam} · {usage['input']}→{usage['output']} tok ({usage['total']}){tail}"
+
+
 def status_line1(snap: dict) -> str:
     """Top status line: status · model · branch · hottest need."""
     status = snap.get("status", "idle")

@@ -24,16 +24,13 @@ from kiln.engine import run
 from .bridge import Bridge
 from .channel import TuiChannel
 from .output import TuiOutput
-from .render import needs_panel_lines, status_line1, status_line2
+from .render import agent_label, needs_panel_lines, status_line1, status_line2, tech_line
 
 # Line colors (Rich markup) — equivalents of the ANSI ones from usage.py.
 _USER_STYLE = "bold cyan"
 _BOT_STYLE = "bold green"
+_SELF_STYLE = "green"  # self-triggered replies: dimmer than a direct reply
 _TECH_STYLE = "dim green"
-
-
-def _short_model(model: str) -> str:
-    return model.split("-")[1] if "-" in model else model
 
 
 class KilnApp(App):
@@ -104,15 +101,13 @@ class KilnApp(App):
     def _render(self, log: RichLog, event: dict) -> None:
         kind = event.get("kind")
         if kind == "agent":
-            label = "Agnika (self)" if event.get("is_self") else "Agnika"
-            log.write(f"[{_BOT_STYLE}]{label}:[/] {escape(event['text'])}")
+            is_self = event.get("is_self", False)
+            style = _SELF_STYLE if is_self else _BOT_STYLE
+            log.write(f"[{style}]{agent_label(is_self)}:[/] {escape(event['text'])}")
         elif kind == "usage":
-            u = event.get("usage")
-            if u:
-                log.write(
-                    f"[{_TECH_STYLE}]      · {_short_model(u['model'])} · "
-                    f"{u['input']}→{u['output']} tok ({u['total']})[/]"
-                )
+            line = tech_line(event.get("usage"), event.get("latency"))
+            if line:
+                log.write(f"[{_TECH_STYLE}]{line}[/]")
         elif kind == "notice":
             log.write(escape(event["text"]))
         elif kind == "user":  # echo-free: not expected (TuiOutput.user is a no-op)

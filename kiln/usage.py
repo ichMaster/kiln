@@ -41,15 +41,16 @@ def _c(text: str, color: str) -> str:
     return f"{color}{text}{COLOR_RESET}" if sys.stdout.isatty() else text
 
 
-def print_tech(usage: dict | None) -> None:
-    """One compact technical line under the answer (dim green): model + tokens."""
+def print_tech(usage: dict | None, latency: float | None = None) -> None:
+    """One compact technical line under the answer (dim green): model + tokens (+ latency)."""
     if not usage:
         return
     m = usage["model"]
     short = m.split("-")[1] if "-" in m else m  # claude-haiku-4-5-… -> haiku
+    tail = f" · {round(latency, 2)}s" if latency is not None else ""
     print(
         _c(
-            f"      · {short} · {usage['input']}→{usage['output']} tok ({usage['total']})",
+            f"      · {short} · {usage['input']}→{usage['output']} tok ({usage['total']}){tail}",
             TECH_COLOR,
         )
     )
