@@ -74,12 +74,47 @@ runs on push; the core depends only on the brain seam.
 only its own replies to the bus (echo-free); the tick loop keeps running (self-
 triggers still fire) while the UI is open.
 
-### 0.4 TUI enhancements (status, tokens, statistics, copy/paste) — 🟡
-**Goal:** status, tokens, statistics, copy/paste in the UI.
-**Tasks:** live status panel (needs, mode, hottest need); per-turn token line
-surfaced; per-session stats (total tokens, turns/branch, cost, avg latency); copy
-replies/code.
-**DoD:** the panel updates live; stats are visible; replies copy.
+### 0.4 TUI enhancements (Lumi-like layout: status bar, needs panel, stats) — 🟡
+**Goal:** bring the v0.3 TUI up to a **Lumi-like layout** — a top status bar, a live
+**needs/thresholds panel** (kiln's analogue of Lumi's reasoning box), a scrollable
+chat log, an input box, and a command/keybinding footer scoped to *implemented*
+features. Lumi's header is the visual reference; kiln drops what it doesn't have yet
+(sound, style, emotions/mood).
+**Tasks:**
+- **Status bar (top, Lumi-style header, minus sound/style/emotions).** Two lines,
+  updated live each tick:
+  - line 1 — `status:` (online / thinking / idle), current model + branch
+    (haiku/opus), and the hottest need;
+  - line 2 (`stats:`) — **connection statistics + tokens:** last-turn tokens +
+    latency, session totals (turns, total tokens, by branch), average latency, and
+    cache reads where available.
+- **Needs / thresholds panel (replaces the "Thinking" box).** A live box, refreshed
+  each tick, showing every need's current level vs its trigger threshold (a bar +
+  number per need), the hottest need, and any active self-trigger cooldown. This is
+  kiln's native internal-state view — where Lumi shows model reasoning, kiln shows the
+  motivational substrate driving it.
+- **Status/state event on the bus.** Extend the `Output`/bridge event protocol with a
+  periodic `status` event (needs + thresholds + session stats snapshot) the engine
+  emits each tick, so the status bar and needs panel update without the client reading
+  engine state directly. (Foreshadows the v1.1 `status` WS event; ARCHITECTURE +
+  contract test.)
+- **Chat log polish.** `you` / `Agnika` / tech colors, self-trigger replies marked,
+  and a per-turn token + latency line under each reply.
+- **Input box + command hints — implemented only.** The fixed input with a hint line
+  listing **only the slash commands kiln actually has** (`/status /needs /memory
+  /history /ask /clear /help /quit`); no Lumi commands kiln lacks (`/style /mood
+  /model /biorhythm …`).
+- **Keybinding footer — implemented only.** `Ctrl+Q` quit, `Ctrl+Y` copy last reply,
+  `Ctrl+O` copy all, `Ctrl+L` clear screen. (Dictate / sound / palette / mouse-select
+  deferred until they exist.)
+- **Tests.** The status bar and needs panel render correctly from a given `State` +
+  stats snapshot (mock brain); the `status` event carries needs/thresholds/stats; copy
+  actions place reply text on the clipboard; the command-hint list matches the
+  actually-registered commands. CI stays green.
+**DoD:** the TUI shows a live **status bar** and a **needs/thresholds panel** that
+update each tick; per-turn tokens + latency and session totals are visible; the
+command-hint line and keybinding footer list **only implemented features**; copy
+reply / copy all works. Full cost/`$` analytics stays in v0.5.
 
 ### 0.5 Tokens report — 🟡
 **Goal:** per-turn and per-session cost visibility.
