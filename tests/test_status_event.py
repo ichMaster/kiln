@@ -143,7 +143,24 @@ def test_run_emits_status_every_tick(monkeypatch, tmp_path):
     assert len(rec.statuses) == 3  # one per idle tick
     assert all(set(s) == SNAPSHOT_KEYS for s in rec.statuses)
     assert all(s["status"] == "idle" for s in rec.statuses)
-    assert [s["tick"] for s in rec.statuses] == [0, 1, 2]  # the loop's tick counter
+    # real elapsed ticks (dry-run: 1 per tick, catch-up = 1)
+    assert [s["tick"] for s in rec.statuses] == [1, 2, 3]
+
+
+def test_run_tick_counts_real_elapsed_including_blocking(monkeypatch, tmp_path):
+    """A long blocking call advances the tick by the real elapsed ticks, not just by 1."""
+    import kiln.engine as eng
+
+    _isolate(monkeypatch, eng, tmp_path)
+    monkeypatch.setattr(eng, "TICK_SECONDS", 0.5)
+    # Controlled clock: gaps = elapsed; the middle 8.0s gap simulates a long deep call.
+    times = iter([0.0, 0.5, 8.5, 9.0])  # last_tick + `now` for ticks 0/1/2
+    monkeypatch.setattr(eng.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(eng.time, "sleep", lambda *_: None)
+    rec = StatusRecorder()
+    eng.run(ticks=3, live=True, channel=eng.ScriptedChannel({}), brain=MockBrain(), output=rec)
+    # steps = round(gap / 0.5): 1, 16, 1 -> cumulative real ticks 1, 17, 18
+    assert [s["tick"] for s in rec.statuses] == [1, 17, 18]
 
 
 def test_run_status_reflects_a_turn(monkeypatch, tmp_path):

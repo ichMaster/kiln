@@ -271,7 +271,8 @@ def _status_snapshot(
     """
     Build the per-tick status snapshot the TUI status bar / needs panel render from.
     status ∈ idle/thinking/responding; branch is the last turn class (chat/think/tools);
-    tick is the loop's tick counter (0-based).
+    tick is the real elapsed-tick count since session start (catch-up included, so time
+    spent in a blocking model call is counted, not just loop iterations).
     """
     thresholds = {name: cfg["threshold"] for name, cfg in NEED_TRIGGERS.items()}
     # what addresses each need (the self-trigger branch)
@@ -331,6 +332,7 @@ def run(
         return out
 
     t = 0
+    total_ticks = 0  # real ticks since session start (catch-up included — counts blocked time)
     branch: str | None = None  # last turn's class (chat/think/tools) for the status snapshot
     last_tick = time.monotonic()  # for catch-up drift over real time
     try:
@@ -343,6 +345,7 @@ def run(
             last_tick = now
             steps = max(1, round(elapsed / TICK_SECONDS)) if (live and TICK_SECONDS > 0) else 1
             drift(state, steps)  # catch-up drift over real time (silent)
+            total_ticks += steps  # the tick counter tracks real elapsed ticks, not loop iterations
             user_msg = channel.poll()
             # Priority: INPUT beats a self-trigger. If both are present, we handle
             # input this tick; the trigger is checked on the next tick.
@@ -380,7 +383,7 @@ def run(
                 # a silent tick isn't printed — check state via /status
 
             # Per-tick status snapshot (needs + thresholds + stats) for live clients.
-            output.status(_status_snapshot(status_label, state, tg, stats, branch, t))
+            output.status(_status_snapshot(status_label, state, tg, stats, branch, total_ticks))
 
             time.sleep(TICK_SECONDS if live else 0)
             t += 1
