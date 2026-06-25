@@ -16,8 +16,10 @@ from __future__ import annotations
 import threading
 
 from rich.markup import escape
+from textual import events
 from textual.app import App, ComposeResult
-from textual.widgets import Footer, Header, Input, RichLog, Static
+from textual.message import Message
+from textual.widgets import Footer, Header, RichLog, Static, TextArea
 
 from kiln.commands import command_hints
 from kiln.engine import run
@@ -34,6 +36,33 @@ _SELF_STYLE = "green"  # self-triggered replies: dimmer than a direct reply
 _TECH_STYLE = "dim green"
 
 
+class ChatInput(TextArea):
+    """Multi-line chat input: Enter submits, Shift+Enter inserts a newline.
+
+    Sized to ~3 lines (scrolls when longer/pasted) — the Lumi-style prompt box.
+    """
+
+    class Submitted(Message):
+        """Posted when the user submits the input (Enter)."""
+
+        def __init__(self, value: str) -> None:
+            self.value = value
+            super().__init__()
+
+    async def _on_key(self, event: events.Key) -> None:
+        if event.key == "enter":
+            event.prevent_default()
+            event.stop()
+            self.post_message(self.Submitted(self.text))
+            return
+        if event.key == "shift+enter":
+            event.prevent_default()
+            event.stop()
+            self.insert("\n")
+            return
+        await super()._on_key(event)
+
+
 class KilnApp(App):
     """Thin client: log + input line, wired to the engine through the bridge."""
 
@@ -46,8 +75,12 @@ class KilnApp(App):
         border-bottom: solid $panel; color: $text-muted;
     }
     RichLog { height: 1fr; padding: 0 1; }
-    Input { dock: bottom; }
-    #hints { dock: bottom; height: auto; padding: 0 1; color: $text-muted; }
+    #prompt {
+        dock: bottom;
+        height: 5;          /* border (2) + ~3 text lines; scrolls if longer */
+        border: round $accent;
+        margin: 0 1 1 1;    /* the bottom 1 lifts it one line off the footer */
+    }
     """
     BINDINGS = [
         ("ctrl+q", "quit", "Quit"),
@@ -80,12 +113,14 @@ class KilnApp(App):
         yield Static("stats: …", id="stats")
         yield Static("needs: …", id="needspanel")
         yield RichLog(markup=True, wrap=True, highlight=False)
-        yield Input(placeholder="Type a message…  (Ctrl+Q — quit)")
-        yield Static("Enter — send · " + command_hints(), id="hints")
+        prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
+        prompt.border_title = "You"
+        prompt.border_subtitle = "Enter — send · Shift+Enter — newline · " + command_hints()
+        yield prompt
         yield Footer()
 
     def on_mount(self) -> None:
-        self.query_one(Input).focus()
+        self.query_one("#prompt", ChatInput).focus()
         if self._start_engine:
             self._engine_thread = threading.Thread(target=self._run_engine, daemon=True)
             self._engine_thread.start()
@@ -135,14 +170,15 @@ class KilnApp(App):
             log.write(f"[{_USER_STYLE}]you:[/] {escape(event['text'])}")
             self._transcript.append(f"you: {event['text']}")
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
+    def on_chat_input_submitted(self, event: ChatInput.Submitted) -> None:
         line = event.value.strip()
+        prompt = self.query_one("#prompt", ChatInput)
         if line:
             # UI shows the typed text itself (echo-free: the engine does not echo it).
             self.query_one(RichLog).write(f"[{_USER_STYLE}]you:[/] {escape(line)}")
             self._transcript.append(f"you: {line}")
             self.bridge.submit(line)
-        event.input.value = ""
+        prompt.text = ""
 
     def action_copy_reply(self) -> None:
         if self._last_reply:

@@ -72,22 +72,22 @@ def test_app_input_submits_to_bridge(tmp_path):
     pytest.importorskip("textual")
     import asyncio
 
-    from textual.widgets import Header, Input, RichLog
+    from textual.widgets import Header, RichLog
 
-    from tui.app import KilnApp
+    from tui.app import ChatInput, KilnApp
 
     async def scenario():
         bridge = Bridge()
         app = KilnApp(bridge=bridge, live=False, start_engine=False)
         async with app.run_test() as pilot:
             assert app.query(Header)  # standard top bar present
-            assert app.query(Input)  # input line exists
+            assert app.query(ChatInput)  # 3-line input box exists
             assert app.query(RichLog)  # log exists
-            app.query_one(Input).value = "привіт"
+            app.query_one(ChatInput).text = "привіт"
             await pilot.press("enter")
             await pilot.pause()
             # after submit the input cleared, and the line went into the bridge inbox
-            assert app.query_one(Input).value == ""
+            assert app.query_one(ChatInput).text == ""
             assert bridge.poll_input() == "привіт"
 
     asyncio.run(scenario())
