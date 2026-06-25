@@ -1,6 +1,14 @@
 kiln — Release Notes
 ====================
 
+Version 0.4.1 (2026-06-25)
+---------------------------
+- Lumi-style top bar: standard Textual Header + two status/stats lines
+- 3-line bordered input box ("You", Enter sends / Shift+Enter newlines), with right-border and spacing fixes
+- Needs panel in its own bordered box: per-tick counter, bars colored by closeness to threshold (green->yellow->red), widened to 50 steps, and each need's NEED_TRIGGERS action (-> chat/deep/idle)
+- Chat replies: model shown as a dark-green (model) tag, bold names, white reply body on the line after the name; removed the per-turn token/latency line (now only in the status bar)
+- Fixed a teardown crash in the TUI drain timer (NoMatches on exit) - also de-flaked the Textual pilot tests
+
 Version 0.4.0 (2026-06-25)
 ---------------------------
 - Lumi-like TUI: a live two-line status bar (status, model, hottest need; last/total tokens + latency) and a needs/thresholds panel replacing Lumi's reasoning box (KILN-013/014)
