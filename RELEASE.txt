@@ -1,6 +1,15 @@
 kiln — Release Notes
 ====================
 
+Version 0.4.0 (2026-06-25)
+---------------------------
+- Lumi-like TUI: a live two-line status bar (status, model, hottest need; last/total tokens + latency) and a needs/thresholds panel replacing Lumi's reasoning box (KILN-013/014)
+- Per-tick status event (needs + thresholds + session stats) on the Output/bridge seam, plus a SessionStats accumulator (KILN-012)
+- Chat-log polish: per-turn `· model · in→out tok (total) · {latency}s` line; self-trigger replies marked (KILN-015)
+- Command hints + keybinding footer scoped to implemented features only; copy reply / copy all / clear (Ctrl+Y/O/L) (KILN-016)
+- i18n: code comments, docstrings, docs, and operator-facing UI strings are now English; the Ukrainian persona/conversation layer stays Ukrainian
+- Test suite 80 -> 107 (all on a mock brain); CI green on Python 3.10/3.12
+
 Version 0.3.0 (2026-06-25)
 ---------------------------
 - Terminal UI client (Textual): scrollable reply log + fixed input line; launch with `kiln --tui` (new `tui` extra) (KILN-011)
