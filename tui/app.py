@@ -17,13 +17,14 @@ import threading
 
 from rich.markup import escape
 from textual.app import App, ComposeResult
-from textual.widgets import Input, RichLog
+from textual.widgets import Input, RichLog, Static
 
 from kiln.engine import run
 
 from .bridge import Bridge
 from .channel import TuiChannel
 from .output import TuiOutput
+from .render import status_line1, status_line2
 
 # Line colors (Rich markup) — equivalents of the ANSI ones from usage.py.
 _USER_STYLE = "bold cyan"
@@ -39,6 +40,7 @@ class KilnApp(App):
     """Thin client: log + input line, wired to the engine through the bridge."""
 
     CSS = """
+    #statusbar { dock: top; height: 2; padding: 0 1; background: $panel; color: $text-muted; }
     RichLog { height: 1fr; padding: 0 1; }
     Input { dock: bottom; }
     """
@@ -61,6 +63,7 @@ class KilnApp(App):
         self._engine_thread: threading.Thread | None = None
 
     def compose(self) -> ComposeResult:
+        yield Static("status: starting…", id="statusbar")
         yield RichLog(markup=True, wrap=True, highlight=False)
         yield Input(placeholder="Type a message…  (Ctrl+Q — quit)")
 
@@ -83,7 +86,14 @@ class KilnApp(App):
     def _drain(self) -> None:
         log = self.query_one(RichLog)
         for event in self.bridge.drain_output():
-            self._render(log, event)
+            if event.get("kind") == "status":
+                self._update_status(event["snapshot"])
+            else:
+                self._render(log, event)
+
+    def _update_status(self, snap: dict) -> None:
+        bar = self.query_one("#statusbar", Static)
+        bar.update(f"{status_line1(snap)}\n{status_line2(snap)}")
 
     def _render(self, log: RichLog, event: dict) -> None:
         kind = event.get("kind")

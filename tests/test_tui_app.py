@@ -90,3 +90,44 @@ def test_app_input_submits_to_bridge(tmp_path):
             assert bridge.poll_input() == "привіт"
 
     asyncio.run(scenario())
+
+
+def test_app_status_bar_updates_from_status_event(tmp_path):
+    """A status event on the outbox updates the top status-bar widget."""
+    pytest.importorskip("textual")
+    import asyncio
+
+    from textual.widgets import Static
+
+    from tui.app import KilnApp
+
+    snap = {
+        "status": "responding",
+        "model": "claude-opus-4-8",
+        "branch": "think",
+        "needs": {"novelty": 0.9},
+        "thresholds": {"novelty": 0.85},
+        "hottest": ["novelty", 0.9],
+        "cooldowns": {},
+        "stats": {
+            "turns": 1,
+            "tokens_total": 50,
+            "tokens_by_branch": {"think": 50},
+            "last_tokens": 50,
+            "last_latency": 1.2,
+            "avg_latency": 1.2,
+        },
+    }
+
+    async def scenario():
+        bridge = Bridge()
+        app = KilnApp(bridge=bridge, live=False, start_engine=False)
+        async with app.run_test() as pilot:
+            bridge.emit({"kind": "status", "snapshot": snap})
+            app._drain()  # deterministic: drain now instead of waiting for the timer
+            await pilot.pause()
+            bar = str(app.query_one("#statusbar", Static).render())
+            assert "responding" in bar and "opus-4-8" in bar
+            assert "1 turns" in bar  # stats line rendered
+
+    asyncio.run(scenario())
