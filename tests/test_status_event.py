@@ -21,6 +21,7 @@ SNAPSHOT_KEYS = {
     "tick",
     "needs",
     "thresholds",
+    "actions",
     "hottest",
     "cooldowns",
     "stats",
@@ -75,6 +76,7 @@ def test_status_snapshot_shape():
     assert snap["tick"] == 7
     assert snap["needs"] == {"connection": 0.5, "novelty": 0.9}
     assert snap["thresholds"]  # populated from NEED_TRIGGERS
+    assert snap["actions"]["novelty"] == "deep"  # NEED_TRIGGERS action for the need
     assert snap["cooldowns"] == {"novelty": 3}  # rest (0) filtered out
     assert snap["hottest"][0] == "novelty"
 

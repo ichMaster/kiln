@@ -76,13 +76,15 @@ def need_color(level: float, threshold: float | None) -> str:
 
 def needs_panel_lines(snap: dict) -> list[str]:
     """
-    One row per need: `* name  ███░░░░░░░ level/threshold ! cdN`, the bar colored by
-    closeness to the threshold (green -> yellow -> red). `*` marks the hottest need,
-    `!` an at/over-threshold need, `cdN` an active cooldown. This is where Lumi shows
-    model reasoning — kiln shows the motivational substrate.
+    One row per need: `* name  ███░░░░░░░ level/threshold ! cdN → action`, the bar
+    colored by closeness to the threshold (green -> yellow -> red). `*` marks the
+    hottest need, `!` an at/over-threshold need, `cdN` an active cooldown, and
+    `→ action` is the branch that addresses it (NEED_TRIGGERS: chat/deep/idle). This
+    is where Lumi shows model reasoning — kiln shows the motivational substrate.
     """
     needs = snap.get("needs", {})
     thresholds = snap.get("thresholds", {})
+    actions = snap.get("actions", {})
     cooldowns = snap.get("cooldowns", {})
     hottest = (snap.get("hottest") or ["", 0.0])[0]
     rows: list[str] = []
@@ -93,6 +95,10 @@ def needs_panel_lines(snap: dict) -> list[str]:
         flag = " !" if (thr is not None and level >= thr) else ""
         cd = cooldowns.get(name, 0)
         cd_s = f" cd{cd}" if cd else ""
+        action = actions.get(name)
+        action_s = f" → {action}" if action else ""
         color = need_color(level, thr)
-        rows.append(f"{mark}{name:<10} [{color}]{_bar(level)}[/] {level:.2f}{thr_s}{flag}{cd_s}")
+        rows.append(
+            f"{mark}{name:<10} [{color}]{_bar(level)}[/] {level:.2f}{thr_s}{flag}{cd_s}{action_s}"
+        )
     return rows

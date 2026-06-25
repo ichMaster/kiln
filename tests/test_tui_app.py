@@ -109,6 +109,7 @@ def test_app_status_bar_updates_from_status_event(tmp_path):
         "tick": 42,
         "needs": {"novelty": 0.9},
         "thresholds": {"novelty": 0.85},
+        "actions": {"novelty": "deep"},
         "hottest": ["novelty", 0.9],
         "cooldowns": {},
         "stats": {
@@ -137,6 +138,7 @@ def test_app_status_bar_updates_from_status_event(tmp_path):
             assert needs.border_title == "Needs · tick 42"
             panel = str(needs.render())
             assert "novelty" in panel and "0.90/0.85" in panel and " !" in panel
+            assert "deep" in panel  # the NEED_TRIGGERS action shown
 
     asyncio.run(scenario())
 

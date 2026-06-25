@@ -274,6 +274,8 @@ def _status_snapshot(
     tick is the loop's tick counter (0-based).
     """
     thresholds = {name: cfg["threshold"] for name, cfg in NEED_TRIGGERS.items()}
+    # what addresses each need (the self-trigger branch)
+    actions = {name: cfg["action"] for name, cfg in NEED_TRIGGERS.items()}
     cooldowns = {name: c for name, c in tg.cooldown.items() if c > 0}
     model = CHAT_MODEL if branch == "chat" else DEEP_MODEL  # deep model is the headline default
     return {
@@ -283,6 +285,7 @@ def _status_snapshot(
         "tick": tick,
         "needs": dict(state.needs),
         "thresholds": thresholds,
+        "actions": actions,
         "hottest": list(state.hottest_need()),  # [need, level]
         "cooldowns": cooldowns,
         "stats": stats.snapshot(),

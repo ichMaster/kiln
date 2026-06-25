@@ -26,6 +26,7 @@ def _snap(**over):
         "branch": None,
         "needs": {"connection": 0.5, "novelty": 0.9},
         "thresholds": {"connection": 0.8, "novelty": 0.85},
+        "actions": {"connection": "chat", "novelty": "deep"},
         "hottest": ["novelty", 0.9],
         "cooldowns": {},
         "stats": {
@@ -142,6 +143,12 @@ def test_needs_panel_colors_bar_by_closeness():
         _snap(needs={"rest": 0.1}, thresholds={"rest": 0.9}, hottest=["", 0.0])
     )
     assert "[green]" in calm[0]
+
+
+def test_needs_panel_shows_action():
+    rows = needs_panel_lines(_snap())
+    assert "→ deep" in next(r for r in rows if "novelty" in r)
+    assert "→ chat" in next(r for r in rows if "connection" in r)
 
 
 # --- chat-log polish: labels + per-turn tech line --------------------------
