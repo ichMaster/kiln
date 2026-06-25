@@ -23,7 +23,7 @@ class CapturingOutput:
     def user(self, text: str) -> None:
         self.events.append(("user", text))
 
-    def agent(self, text: str, *, is_self: bool = False, lead: bool = False) -> None:
+    def agent(self, text, *, is_self=False, lead=False, model=None) -> None:
         self.events.append(("agent", text))
 
     def usage(self, usage, latency=None) -> None:

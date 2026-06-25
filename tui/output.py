@@ -21,8 +21,12 @@ class TuiOutput:
         # Echo-free: UI already showed the typed text; the engine does NOT echo input.
         return
 
-    def agent(self, text: str, *, is_self: bool = False, lead: bool = False) -> None:
-        self._bridge.emit({"kind": "agent", "text": text, "is_self": is_self, "lead": lead})
+    def agent(
+        self, text: str, *, is_self: bool = False, lead: bool = False, model: str | None = None
+    ) -> None:
+        self._bridge.emit(
+            {"kind": "agent", "text": text, "is_self": is_self, "lead": lead, "model": model}
+        )
 
     def usage(self, usage: dict | None, latency: float | None = None) -> None:
         # Carry the raw record {model, input, output, total} + per-turn latency;

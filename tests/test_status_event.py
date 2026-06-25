@@ -109,7 +109,7 @@ class StatusRecorder:
         self.replies: list[str] = []
 
     def user(self, text): ...
-    def agent(self, text, *, is_self=False, lead=False):
+    def agent(self, text, *, is_self=False, lead=False, model=None):
         self.replies.append(text)
 
     def usage(self, usage, latency=None): ...

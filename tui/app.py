@@ -28,13 +28,12 @@ from kiln.engine import run
 from .bridge import Bridge
 from .channel import TuiChannel
 from .output import TuiOutput
-from .render import agent_label, needs_panel_lines, status_line1, status_line2, tech_line
+from .render import agent_label, needs_panel_lines, status_line1, status_line2
 
 # Line colors (Rich markup) — equivalents of the ANSI ones from usage.py.
 _USER_STYLE = "bold cyan"
 _BOT_STYLE = "bold green"
 _SELF_STYLE = "green"  # self-triggered replies: dimmer than a direct reply
-_TECH_STYLE = "dim green"
 
 
 class ChatInput(TextArea):
@@ -164,15 +163,11 @@ class KilnApp(App):
         if kind == "agent":
             is_self = event.get("is_self", False)
             style = _SELF_STYLE if is_self else _BOT_STYLE
-            label, text = agent_label(is_self), event["text"]
+            # The model rides on the label (e.g. "Agnika [opus]"); no separate tech line.
+            label, text = agent_label(is_self, event.get("model")), event["text"]
             self._last_reply = text
             log.write(f"[{style}]{label}:[/] {escape(text)}")
             self._transcript.append(f"{label}: {text}")
-        elif kind == "usage":
-            line = tech_line(event.get("usage"), event.get("latency"))
-            if line:
-                log.write(f"[{_TECH_STYLE}]{line}[/]")
-                self._transcript.append(line)
         elif kind == "notice":
             log.write(escape(event["text"]))
             self._transcript.append(event["text"])

@@ -24,8 +24,10 @@ class Output(Protocol):
         """Echo of the user's message."""
         ...
 
-    def agent(self, text: str, *, is_self: bool = False, lead: bool = False) -> None:
-        """Agent reply (is_self — self-initiated; lead — with a blank line before it)."""
+    def agent(
+        self, text: str, *, is_self: bool = False, lead: bool = False, model: str | None = None
+    ) -> None:
+        """Agent reply (is_self — self-initiated; lead — blank line before; model — the brain)."""
         ...
 
     def usage(self, usage: dict | None, latency: float | None = None) -> None:
@@ -47,7 +49,11 @@ class ConsoleOutput:
     def user(self, text: str) -> None:
         print("\n" + _c(f"you: {text}", USER_COLOR))
 
-    def agent(self, text: str, *, is_self: bool = False, lead: bool = False) -> None:
+    def agent(
+        self, text: str, *, is_self: bool = False, lead: bool = False, model: str | None = None
+    ) -> None:
+        # The console keeps the per-turn tech line (print_tech) for the model/tokens, so the
+        # label stays plain here; `model` is honoured by the TUI label instead.
         label = f"{BOT_NAME} (self)" if is_self else BOT_NAME
         nl = "\n" if (is_self or lead) else ""  # self-initiated/"fresh" reply — with an indent
         print(nl + _c(f"{label}: {text}", BOT_COLOR))

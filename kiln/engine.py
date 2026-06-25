@@ -360,19 +360,19 @@ def run(
                     pass  # command handled, the brain is left untouched
                 elif isinstance(action, tuple):  # ("ask", text) -> forced deep
                     out = _turn(action[1], force="deep")
-                    output.agent(out["reply"], lead=True)
+                    output.agent(out["reply"], lead=True, model=out["route"].split("/")[-1])
                     output.usage(out.get("usage"), stats.last_latency)
                     status_label, branch = "responding", out["class"]
                 else:  # None -> normal turn
                     out = _turn(user_msg)
                     output.user(user_msg)
-                    output.agent(out["reply"])
+                    output.agent(out["reply"], model=out["route"].split("/")[-1])
                     output.usage(out.get("usage"), stats.last_latency)
                     status_label, branch = "responding", out["class"]
             elif fired is not None:
                 prompt = pick_prompt(prompts, fired)
                 out = _turn(prompt, force=faction)
-                output.agent(out["reply"], is_self=True)
+                output.agent(out["reply"], is_self=True, model=out["route"].split("/")[-1])
                 output.usage(out.get("usage"), stats.last_latency)
                 status_label, branch = "responding", out["class"]
             else:
