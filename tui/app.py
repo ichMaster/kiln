@@ -171,7 +171,9 @@ class KilnApp(App):
             model_part = f" [{_MODEL_STYLE}]({escape(model)})[/]" if model else ""
             text = event["text"]
             self._last_reply = text
-            log.write(f"[{name_style}]{escape(name)}[/]{model_part}: {escape(text)}")
+            # Name + (model) on one line; her reply body on the next line (default white).
+            log.write(f"[{name_style}]{escape(name)}[/]{model_part}:")
+            log.write(escape(text))
             self._transcript.append(f"{name}{f' ({model})' if model else ''}: {text}")
         elif kind == "notice":
             log.write(escape(event["text"]))
