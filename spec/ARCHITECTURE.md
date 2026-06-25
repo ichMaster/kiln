@@ -42,10 +42,16 @@ self-trigger.
   reply/usage/notice through this port, never `print` directly. Today it prints to
   the terminal; v0.3 plugs the echo-free TUI bus, v1.1/1.2 the event protocol — the
   engine is unchanged. The mirror image of the input `Channel`.
+- **TUI bridge** (`tui/bridge.py`: `Bridge`) — the **echo-free** inbox/outbox bus
+  between the engine's tick loop (a background thread) and the UI thread. Two
+  thread-safe queues: `inbox` (UI→engine typed lines, read via a `TuiChannel`) and
+  `outbox` (engine→UI render events, written via a `TuiOutput`). Input never leaks to
+  the outbox, so the UI shows the typed line once and the engine writes only its own
+  replies. The shared bus for later clients (web, server).
 - **Server / agent host** (planned, v1.1) — wraps the core as a WS/HTTP server;
   hosts many agents keyed by `agent_id`, each with a permission scope.
-- **Clients** (planned) — thin front-ends over the server (Textual TUI, web). None
-  hold agent logic.
+- **Clients** (`tui/`: Textual app, planned web) — thin front-ends over the bridge/
+  server. None hold agent logic; the engine never imports a client.
 
 ## The tick loop (the central abstraction)
 
@@ -141,6 +147,10 @@ multi-agent is additive, not a rewrite:
 - **Output seam:** `Output` with `user(text)` / `agent(text, is_self, lead)` /
   `usage(dict)` / `notice(text)`; the core emits through it, `ConsoleOutput` is the
   default sink. The method set foreshadows the event protocol below.
+- **Bridge bus (v0.3):** `Bridge` carries typed-dict render events on the outbox
+  (`{"kind": "user"|"agent"|"usage"|"notice", …}`, mirroring the `Output` methods)
+  and typed lines on the inbox; both drained non-blocking. Echo-free: input never
+  appears on the outbox. A precursor to the WS event protocol below.
 - **Event protocol (planned, 1.1/1.2):** server↔client events (`user.message`,
   `agnika.message`, `status`, `usage`, `tick`, `command`) mirror the FSM.
 
@@ -186,12 +196,14 @@ kiln/               # the package (installed via `pip install -e .`)
   memory.py         # long-term memory, canon, prompts, transcripts
   commands.py       # slash commands
   engine.py         # State, ticks, two brains, channels, respond, run (no __main__)
+tui/                # Textual client (v0.3): bridge bus, TuiOutput/TuiChannel, app — no agent logic
+  bridge.py         # echo-free inbox/outbox Bridge between the loop and the UI thread
 tests/              # pytest: unit + contract (seams) + integration on a mock brain
 state/              # needs.json, canon.md, prompts.md, memory.md (generated)
 history/            # session-*.json transcripts (generated; RAG corpus)
 docs/               # how-it-works, architecture (internals)
 spec/               # MISSION.md, ARCHITECTURE.md, ROADMAP.md, vision.md, roadmap/implementation/
-# planned: server/ (agent host), tui/ (Textual client), web/, tools/, rag/
+# planned: server/ (agent host), web/, tools/, rag/
 ```
 
 The console entry lives in `kiln/__main__.py` (the `kiln` command / `python -m

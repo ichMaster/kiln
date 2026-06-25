@@ -27,7 +27,8 @@ dev = [
 kiln = "kiln.__main__:main"
 
 [tool.setuptools]
-packages = ["kiln"]
+# kiln — двіжок (ядро); tui — тонкий клієнт Textual (без логіки агента).
+packages = ["kiln", "tui"]
 
 # Версія — єдиним джерелом правди тримаємо кореневий файл VERSION
 # (його ж читає kiln.__version__ і оновлює /release-version).
