@@ -17,7 +17,7 @@ import threading
 
 from rich.markup import escape
 from textual.app import App, ComposeResult
-from textual.widgets import Footer, Input, RichLog, Static
+from textual.widgets import Footer, Header, Input, RichLog, Static
 
 from kiln.commands import command_hints
 from kiln.engine import run
@@ -36,6 +36,9 @@ _TECH_STYLE = "dim green"
 
 class KilnApp(App):
     """Thin client: log + input line, wired to the engine through the bridge."""
+
+    TITLE = "kiln"
+    SUB_TITLE = "Agnika"
 
     CSS = """
     #statusbar { dock: top; height: 2; padding: 0 1; background: $panel; color: $text-muted; }
@@ -73,6 +76,7 @@ class KilnApp(App):
         self._transcript: list[str] = []  # plain-text mirror of the log (for Ctrl+O)
 
     def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)  # standard top bar: title + clock + command palette
         yield Static("status: starting…", id="statusbar")
         yield Static("needs: …", id="needspanel")
         yield RichLog(markup=True, wrap=True, highlight=False)

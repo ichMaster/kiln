@@ -72,7 +72,7 @@ def test_app_input_submits_to_bridge(tmp_path):
     pytest.importorskip("textual")
     import asyncio
 
-    from textual.widgets import Input, RichLog
+    from textual.widgets import Header, Input, RichLog
 
     from tui.app import KilnApp
 
@@ -80,6 +80,7 @@ def test_app_input_submits_to_bridge(tmp_path):
         bridge = Bridge()
         app = KilnApp(bridge=bridge, live=False, start_engine=False)
         async with app.run_test() as pilot:
+            assert app.query(Header)  # standard top bar present
             assert app.query(Input)  # input line exists
             assert app.query(RichLog)  # log exists
             app.query_one(Input).value = "привіт"
