@@ -134,3 +134,35 @@ def test_app_status_bar_updates_from_status_event(tmp_path):
             assert "novelty" in panel and "0.90/0.85" in panel and " !" in panel
 
     asyncio.run(scenario())
+
+
+def test_app_copy_and_clear_actions(tmp_path):
+    """Ctrl+Y copies the last reply, Ctrl+O copies the transcript, Ctrl+L clears."""
+    pytest.importorskip("textual")
+    import asyncio
+
+    from textual.widgets import RichLog
+
+    from tui.app import KilnApp
+
+    async def scenario():
+        bridge = Bridge()
+        app = KilnApp(bridge=bridge, live=False, start_engine=False)
+        async with app.run_test() as pilot:
+            bridge.emit({"kind": "agent", "text": "відповідь", "is_self": False, "lead": False})
+            bridge.emit({"kind": "notice", "text": "[exit] saved"})
+            app._drain()
+            await pilot.pause()
+
+            app.action_copy_reply()
+            assert app.clipboard == "відповідь"
+
+            app.action_copy_all()
+            assert "Agnika: відповідь" in app.clipboard
+            assert "[exit] saved" in app.clipboard
+
+            app.action_clear_log()
+            assert app._transcript == [] and app._last_reply == ""
+            assert app.query_one(RichLog).lines == []
+
+    asyncio.run(scenario())

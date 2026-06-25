@@ -7,7 +7,7 @@ Pins the new signature (with output), output via notice, and the absence of dire
 
 from __future__ import annotations
 
-from kiln.commands import handle_command
+from kiln.commands import COMMANDS, command_hints, handle_command
 from kiln.engine import State
 from kiln.output import Output
 
@@ -87,3 +87,18 @@ def test_ask_without_arg_notifies():
     action = handle_command("/ask", State(needs={}), [], "sys", False, out)
     assert action == "handled"
     assert any("[ask]" in n for n in out.notices)
+
+
+def test_command_hints_match_handled_commands():
+    """Every advertised command is actually handled (no phantom hints)."""
+    out = RecordingOutput()
+    for cmd in COMMANDS:
+        action = handle_command(f"/{cmd}", State(needs={}), [], "sys", False, out)
+        assert action in ("handled", "quit")  # recognized, not None / unknown
+    assert not any("unknown command" in n for n in out.notices)
+
+
+def test_command_hints_string_lists_all_commands():
+    hints = command_hints()
+    for cmd in COMMANDS:
+        assert f"/{cmd}" in hints

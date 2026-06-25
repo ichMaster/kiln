@@ -17,8 +17,9 @@ import threading
 
 from rich.markup import escape
 from textual.app import App, ComposeResult
-from textual.widgets import Input, RichLog, Static
+from textual.widgets import Footer, Input, RichLog, Static
 
+from kiln.commands import command_hints
 from kiln.engine import run
 
 from .bridge import Bridge
@@ -44,8 +45,14 @@ class KilnApp(App):
     }
     RichLog { height: 1fr; padding: 0 1; }
     Input { dock: bottom; }
+    #hints { dock: bottom; height: auto; padding: 0 1; color: $text-muted; }
     """
-    BINDINGS = [("ctrl+q", "quit", "Quit")]
+    BINDINGS = [
+        ("ctrl+q", "quit", "Quit"),
+        ("ctrl+y", "copy_reply", "Copy reply"),
+        ("ctrl+o", "copy_all", "Copy all"),
+        ("ctrl+l", "clear_log", "Clear"),
+    ]
 
     def __init__(
         self,
@@ -62,12 +69,16 @@ class KilnApp(App):
         self._brain = brain
         self._start_engine = start_engine
         self._engine_thread: threading.Thread | None = None
+        self._last_reply = ""  # for Ctrl+Y (copy last reply)
+        self._transcript: list[str] = []  # plain-text mirror of the log (for Ctrl+O)
 
     def compose(self) -> ComposeResult:
         yield Static("status: starting…", id="statusbar")
         yield Static("needs: …", id="needspanel")
         yield RichLog(markup=True, wrap=True, highlight=False)
         yield Input(placeholder="Type a message…  (Ctrl+Q — quit)")
+        yield Static("Enter — send · " + command_hints(), id="hints")
+        yield Footer()
 
     def on_mount(self) -> None:
         self.query_one(Input).focus()
@@ -103,23 +114,42 @@ class KilnApp(App):
         if kind == "agent":
             is_self = event.get("is_self", False)
             style = _SELF_STYLE if is_self else _BOT_STYLE
-            log.write(f"[{style}]{agent_label(is_self)}:[/] {escape(event['text'])}")
+            label, text = agent_label(is_self), event["text"]
+            self._last_reply = text
+            log.write(f"[{style}]{label}:[/] {escape(text)}")
+            self._transcript.append(f"{label}: {text}")
         elif kind == "usage":
             line = tech_line(event.get("usage"), event.get("latency"))
             if line:
                 log.write(f"[{_TECH_STYLE}]{line}[/]")
+                self._transcript.append(line)
         elif kind == "notice":
             log.write(escape(event["text"]))
+            self._transcript.append(event["text"])
         elif kind == "user":  # echo-free: not expected (TuiOutput.user is a no-op)
             log.write(f"[{_USER_STYLE}]you:[/] {escape(event['text'])}")
+            self._transcript.append(f"you: {event['text']}")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         line = event.value.strip()
         if line:
             # UI shows the typed text itself (echo-free: the engine does not echo it).
             self.query_one(RichLog).write(f"[{_USER_STYLE}]you:[/] {escape(line)}")
+            self._transcript.append(f"you: {line}")
             self.bridge.submit(line)
         event.input.value = ""
+
+    def action_copy_reply(self) -> None:
+        if self._last_reply:
+            self.copy_to_clipboard(self._last_reply)
+
+    def action_copy_all(self) -> None:
+        self.copy_to_clipboard("\n".join(self._transcript))
+
+    def action_clear_log(self) -> None:
+        self.query_one(RichLog).clear()
+        self._transcript.clear()
+        self._last_reply = ""
 
     def action_quit(self) -> None:
         # Clean exit: ask the engine to end the loop (its finally saves the session),

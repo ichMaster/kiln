@@ -16,6 +16,15 @@ from .history import ROLE_USER
 from .memory import load_memory
 from .output import Output
 
+# Canonical list of implemented slash commands — the single source for both /help
+# and the TUI hint line, so they never advertise a command kiln doesn't have.
+COMMANDS = ("status", "needs", "memory", "history", "ask", "clear", "help", "quit")
+
+
+def command_hints() -> str:
+    """Display string of the implemented slash commands (/ask takes an argument)."""
+    return "  ".join(f"/{c} <text>" if c == "ask" else f"/{c}" for c in COMMANDS)
+
 
 def _fmt_needs(state) -> str:
     return "  ".join(f"{k}={state.needs[k]:.2f}" for k in state.needs)
@@ -33,9 +42,7 @@ def handle_command(line: str, state, history: list[dict], system: str, live: boo
         return "quit"
 
     elif cmd in ("help", "h", "?"):
-        output.notice(
-            "Commands: /status  /needs  /memory  /history  /ask <text>  /clear  /help  /quit"
-        )
+        output.notice("Commands: " + command_hints())
 
     elif cmd == "status":
         name, level = state.hottest_need()
