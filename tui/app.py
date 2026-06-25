@@ -79,7 +79,7 @@ class KilnApp(App):
         dock: bottom;
         height: 5;          /* border (2) + ~3 text lines; scrolls if longer */
         border: round $accent;
-        margin: 0 1 1 1;    /* the bottom 1 lifts it one line off the footer */
+        margin: 0 0 2 1;    /* t r b l — bottom 2 lifts it off the footer; right 0 extends it */
     }
     """
     BINDINGS = [
