@@ -47,12 +47,32 @@ runs on push; the core depends only on the brain seam.
 
 ### 0.3 Implement TUI — ⬜
 **Goal:** a real terminal UI, matching Lumi's.
-**Tasks:** Textual app (port `lumi/tui/app.py`); fixed input line + scrollable log;
-adopt Lumi's echo-free inbox/outbox **bridge** (`lumi/tui/bridge.py`) — fixes the
-typed-text-vs-output interleaving and is the shared bus for later clients; carry
-over `you`/`Agnika`/tech colors.
+**Tasks:**
+- **`tui/` client package + launcher** — create the `tui/` dir (a new dir as the
+  version begins; the client holds **no agent logic**); add a way to start it
+  (`kiln --tui` flag or a `tui` console entry) while keeping the plain console mode.
+- **Textual app** (port `lumi/tui/app.py`) — fixed input line at the bottom, a
+  scrollable reply log above; carry over the `you`/`Agnika`/tech colors as Textual
+  styles (today's ANSI from `usage.py`).
+- **`TuiOutput` sink** — implement the v0.2 **`Output` seam** (`user`/`agent`/
+  `usage`/`notice`) to push into the scrollable log instead of `print`, and pass it
+  to `run(output=…)`. Route the remaining slash-command output (`commands.py`, still
+  on `print`) through the same bus so the UI owns all rendering.
+- **TUI input channel** — a `Channel` (`poll()`) backed by the input widget (the UI
+  mirror of `StdinChannel`), so the tick loop reads typed lines from the UI.
+- **Echo-free bridge** (port `lumi/tui/bridge.py`) — an inbox/outbox bus decoupling
+  the engine's tick loop from the Textual UI thread; fixes typed-text-vs-output
+  interleaving and is the **shared bus for later clients** (web, server). The engine
+  writes only its own replies (no echo of the user's typed line).
+- **Loop alongside the UI** — drive the tick loop concurrently with the Textual
+  event loop (background thread or asyncio task) so the agent keeps ticking and can
+  **self-trigger** while the UI renders; model calls must not freeze the UI.
+- **Tests** — contract tests for `TuiOutput` and the TUI `Channel` against the v0.2
+  seams (mock brain, **zero paid calls**); a Textual pilot smoke if practical. CI
+  stays green.
 **DoD:** chat in a Textual TUI with no input/output interleaving; the engine writes
-only its own replies to the bus (echo-free).
+only its own replies to the bus (echo-free); the tick loop keeps running (self-
+triggers still fire) while the UI is open.
 
 ### 0.4 TUI enhancements (status, tokens, statistics, copy/paste) — 🟡
 **Goal:** status, tokens, statistics, copy/paste in the UI.
