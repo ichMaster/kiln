@@ -1,114 +1,118 @@
-# Архітектура
+# Architecture
 
-Високорівневий устрій kiln. Деталі рантайму, таблиці й алгоритми — у
+A high-level view of kiln. Runtime details, tables, and algorithms — see
 [how-it-works.md](how-it-works.md).
 
-## Ідея
+## The idea
 
-kiln — це чат-двіжок, де **стан керує тим, коли і яку модель кликати**. Двіжок
-крутиться циклом коротких **тіків**. Кожен тік дешевий і локальний: набір
-**потреб** сам повільно дрейфує вгору, без жодного звернення до моделі. Модель
-(«мозок») вмикається лише за умовою — або користувач щось написав, або потреба
-перетнула свій поріг. І коли мозок таки вмикається, хід **класифікується** й
-іде в одну з двох гілок.
+kiln is a chat engine where **state drives when and which model to call**. The
+engine runs in a loop of short **ticks**. Each tick is cheap and local: a set of
+**needs** slowly drifts upward on its own, without any call to the model. The
+model (the "brain") only kicks in on a condition — either the user wrote
+something, or a need crossed its threshold. And when the brain does kick in, the
+turn is **classified** and routed into one of two branches.
 
-Звідси головна властивість: дорога модель (Opus) працює рідко, а більшість
-тіків — це безкоштовний локальний дрейф стану або дешевий чат.
+Hence the main property: the expensive model (Opus) works rarely, while most
+ticks are just free local state drift or cheap chat.
 
-## Модулі
+## Modules
 
-Логіку розбито на модулі з простою спрямованою залежністю (без циклів):
-`config` / `history` / `usage` (листки) → `memory` → `commands` → `engine`.
+The logic is split into modules with a simple directed dependency (no cycles):
+`config` / `history` / `usage` (leaves) → `memory` → `commands` → `engine`.
 
-| Файл | Що містить | Ключові символи |
+| File | What it contains | Key symbols |
 |---|---|---|
-| [`config.py`](../config.py) | шляхи, `.env`, ручки калібрування | `load_dotenv`, `DRIFT`, `SATIATION`, `NEED_TRIGGERS`, `THINK_THRESHOLD`, `CHAT_MODEL`/`DEEP_MODEL`, `DEFAULT_CANON` |
-| [`history.py`](../history.py) | спільна стрічка сесії | `ROLE_USER`/`ROLE_BOT`, `to_messages`, `to_transcript` |
-| [`usage.py`](../usage.py) | лог моделі (токени) + кольори чату | `log_model`, `take_usage`, `print_tech`, `_c`, `BOT_NAME`, `*_COLOR` |
-| [`memory.py`](../memory.py) | довга пам'ять + промпти/канон + транскрипти | `load_memory`, `load_canon`, `load_prompts`, `summarize`, `save_summary`, `save_session`, `build_system` |
-| [`commands.py`](../commands.py) | слеш-команди (до класифікації) | `handle_command` |
-| [`engine.py`](../engine.py) | ядро + цикл + `__main__` | `State`, `drift`, `apply_satiation`, `classify`, `chat_reply`, `deep_reply`, `ScriptedChannel`/`StdinChannel`, `respond`, `run` |
+| [`config.py`](../config.py) | paths, `.env`, calibration knobs | `load_dotenv`, `DRIFT`, `SATIATION`, `NEED_TRIGGERS`, `THINK_THRESHOLD`, `CHAT_MODEL`/`DEEP_MODEL`, `DEFAULT_CANON` |
+| [`history.py`](../history.py) | the shared session thread | `ROLE_USER`/`ROLE_BOT`, `to_messages`, `to_transcript` |
+| [`usage.py`](../usage.py) | model log (tokens) + chat colors | `log_model`, `take_usage`, `print_tech`, `_c`, `BOT_NAME`, `*_COLOR` |
+| [`memory.py`](../memory.py) | long-term memory + prompts/canon + transcripts | `load_memory`, `load_canon`, `load_prompts`, `summarize`, `save_summary`, `save_session`, `build_system` |
+| [`commands.py`](../commands.py) | slash commands (before classification) | `handle_command` |
+| [`engine.py`](../engine.py) | core + loop + `__main__` | `State`, `drift`, `apply_satiation`, `classify`, `chat_reply`, `deep_reply`, `ScriptedChannel`/`StdinChannel`, `respond`, `run` |
 
-`engine.py` запускається як `__main__`, тож **жоден модуль його не імпортує**:
-сталі винесено в `config.py`, а `/ask` робить deep-хід уже в `run()` (тому
-`commands.py` не залежить від ядра).
+`engine.py` runs as `__main__`, so **no module imports it**: constants are moved
+out into `config.py`, and `/ask` does its deep turn back in `run()` (which is why
+`commands.py` doesn't depend on the core).
 
-## Дві гілки («два мозки»)
+## The two branches (the "two brains")
 
-Серцевина архітектури — **яка гілка відповіла, та й визначає, що сталося зі
-станом**.
+The heart of the architecture — **which branch answered is what determines what
+happened to the state**.
 
-- **ЧАТ → Haiku через Anthropic Messages API** (`chat_reply`). Звичайна
-  розмова: привітання, репліки, легкі відповіді. Дешево, швидко, без тулів.
-  Реальний виклик SDK (`anthropic`); ключ — з `ANTHROPIC_API_KEY`. Уся історія
-  сесії йде масивом `messages`, канон + пам'ять — у `system`.
-- **РОЗДУМ / ТУЛИ → Claude як зовнішній процес** (`deep_reply`, `claude -p`).
-  Тут указується модель (Opus), дозволені тули (`--allowedTools`) і скіли.
-  Дорожче, але з міркуванням і доступом до інструментів. Субпроцес не тримає
-  сесію між викликами, тож історія вкладається у промпт текстовим транскриптом.
+- **CHAT → Haiku via the Anthropic Messages API** (`chat_reply`). Ordinary
+  conversation: greetings, replies, light answers. Cheap, fast, no tools. A real
+  SDK call (`anthropic`); the key comes from `ANTHROPIC_API_KEY`. The whole
+  session history goes in as a `messages` array, the canon + memory go in
+  `system`.
+- **REASONING / TOOLS → Claude as an external process** (`deep_reply`,
+  `claude -p`). Here the model (Opus), the allowed tools (`--allowedTools`), and
+  skills are specified. More expensive, but with reasoning and access to tools.
+  The subprocess holds no session between calls, so the history is embedded in
+  the prompt as a text transcript.
 
-Обидві гілки отримують **спільний** системний промпт (`build_system`) — канон
-(персона) плюс довга пам'ять — тож голос сталий незалежно від гілки.
+Both branches receive the **same** system prompt (`build_system`) — the canon
+(persona) plus long-term memory — so the voice stays consistent regardless of
+branch.
 
-## Потік даних на тіку
+## Data flow on a tick
 
 ```
-        ┌──────────────────── тік (TICK_SECONDS) ─────────────────────┐
+        ┌──────────────────── tick (TICK_SECONDS) ────────────────────┐
         │                                                              │
-  drift(state)                          # потреби дрейфують угору      │
+  drift(state)                          # needs drift upward           │
         │                                                              │
-  channel.poll() ── ввід? ──┬── так ──▶ слеш-команда? ─ так ─▶ handle_command
-        │                   │                  │ ні                    │
+  channel.poll() ── input? ─┬── yes ─▶ slash command? ─ yes ─▶ handle_command
+        │                   │                  │ no                    │
         │                   │                  ▼                       │
         │                   │            classify() ─▶ chat|think|tools │
         │                   │                  │                       │
         │                   │                  ▼                       │
         │                   │            respond(...) ─┬─ CHAT ─▶ chat_reply  (Haiku/SDK)
         │                   │                          └─ DEEP ─▶ deep_reply  (Opus/CLI)
-        │                   │ ні                              │          │
+        │                   │ no                              │          │
         │                   ▼                                 │          │
-        │          select_self_trigger(state)  ── спрацював? ─┤          │
-        │            (поріг + гістерезис + кулдаун)            │ так      │
-        │                   │ ні (тиша)                        ▼          │
+        │          select_self_trigger(state)  ── fired? ─────┤          │
+        │            (threshold + hysteresis + cooldown)      │ yes      │
+        │                   │ no (silence)                     ▼          │
         │                   ▼                          respond(force=...) │
         │            apply_satiation(state,"idle")            │          │
         │                                                     ▼          │
-        └────────────── apply_satiation(state, event) ◀── яка гілка ─────┘
-                         (chat | deep | idle)        відповіла
+        └────────────── apply_satiation(state, event) ◀── which branch ──┘
+                         (chat | deep | idle)            answered
 ```
 
-**Пріоритет на тіку:** ввід користувача > self-тригер > тиша. Якщо є і ввід, і
-тригер — цього тіку обробляється ввід, тригер перевіриться наступного тіку.
+**Priority on a tick:** user input > self-trigger > silence. If there's both
+input and a trigger — the input is handled this tick, and the trigger is checked
+on the next tick.
 
-## Стан і персистентність
+## State and persistence
 
-Увесь мутабельний стан — під каталогом `state/` (`run()` створює його за
-потреби, тож свіжий клон не падає):
+All mutable state lives under the `state/` directory (`run()` creates it as
+needed, so a fresh clone doesn't crash):
 
-| Файл | Роль | Хто пише / читає |
+| File | Role | Who writes / reads |
 |---|---|---|
-| `state/needs.json` | рівні потреб `0..1` (сід; перезаписується щосесії) | `load_state` / `save_state` |
-| `state/canon.md` | канон — персона/голос (системний промпт обох гілок) | `load_canon` (запасний — `DEFAULT_CANON`) |
-| `state/prompts.md` | промпти self-тригерів по потребах | `load_prompts` |
-| `state/memory.md` | довга пам'ять: підсумки минулих розмов (генерується, не комітиться) | `save_summary` / `load_memory` |
-| `history/session-*.json` | сирі транскрипти сесій для RAG (генеруються, не комітяться) | `save_session` |
-| `.env` | моделі + скалярні ручки (локальний, не комітиться) | `load_dotenv` |
+| `state/needs.json` | need levels `0..1` (seed; rewritten each session) | `load_state` / `save_state` |
+| `state/canon.md` | the canon — persona/voice (system prompt of both branches) | `load_canon` (fallback — `DEFAULT_CANON`) |
+| `state/prompts.md` | self-trigger prompts per need | `load_prompts` |
+| `state/memory.md` | long-term memory: summaries of past conversations (generated, not committed) | `save_summary` / `load_memory` |
+| `history/session-*.json` | raw session transcripts for RAG (generated, not committed) | `save_session` |
+| `.env` | models + scalar knobs (local, not committed) | `load_dotenv` |
 
-Дві лінії пам'яті між сесіями навмисно різні:
-- **`memory.md`** — стислі *підсумки* (через `claude -p`), що вантажаться в
-  системний промпт наступних сесій. Це «що двіжок пам'ятає».
-- **`history/*.json`** — *повні* сирі ходи плюс метадані, по одному файлу на
-  сесію. Це корпус для майбутнього RAG, не для промпта.
+The two lines of cross-session memory are intentionally different:
+- **`memory.md`** — concise *summaries* (via `claude -p`) that are loaded into
+  the system prompt of subsequent sessions. This is "what the engine remembers."
+- **`history/*.json`** — *full* raw turns plus metadata, one file per session.
+  This is the corpus for future RAG, not for the prompt.
 
-## Чому так (рацій)
+## Why it's like this (the rationale)
 
-- **Стан-обізнаний роутинг береже Opus.** Потреби накопичуються → штовхають у
-  дорогий `deep` → він глибоко їх гасить → довгий період дешевого чату й тиші.
-  Цикл сам обмежує частоту дорогих викликів.
-- **«Яка гілка відповіла, та й закриває».** `deep` — «ситна їжа» (гасить
-  novelty, rest, intensity), `chat` дає здебільшого контакт. Це робить вибір
-  гілки змістовним, а не косметичним.
-- **Тіки дешеві за замовчуванням.** Дрейф — чиста арифметика; модель не
-  чіпається, поки немає приводу. Так двіжок може «жити» фоново.
-- **Зовнішній конфіг.** Моделі, ручки калібрування, персона й промпти винесені
-  у `.env` / `state/`, тож поведінку міняють без правки коду.
+- **State-aware routing conserves Opus.** Needs accumulate → push toward the
+  expensive `deep` → it discharges them deeply → a long stretch of cheap chat and
+  silence. The cycle itself limits the frequency of expensive calls.
+- **"Whichever branch answered is what closes the needs."** `deep` is the
+  "filling meal" (it closes novelty, rest, intensity), `chat` mostly provides
+  connection. This makes the choice of branch meaningful rather than cosmetic.
+- **Ticks are cheap by default.** Drift is pure arithmetic; the model isn't
+  touched until there's a reason. This lets the engine "live" in the background.
+- **External config.** Models, calibration knobs, persona, and prompts are moved
+  out into `.env` / `state/`, so behavior is changed without editing code.

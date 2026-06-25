@@ -1,8 +1,8 @@
 """
-Контракт + інтеграція: respond() — повний хід проти MockBrain (нуль платних викликів).
+Contract + integration: respond() — a full turn against MockBrain (zero paid calls).
 
-Пінимо форму повернення {class, route, reply, usage} і наскрізний ефект ходу:
-ввід -> класифікація -> гілка -> відповідь -> satiation + ріст історії.
+Pins the return shape {class, route, reply, usage} and the end-to-end turn effect:
+input -> classification -> branch -> reply -> satiation + history growth.
 """
 
 from __future__ import annotations
@@ -35,13 +35,13 @@ def test_respond_appends_user_and_bot_to_history():
 
 def test_respond_chat_applies_chat_satiation():
     st = State(needs={"connection": 0.80})
-    respond("привіт", st, [], "sys", MockBrain())  # подія chat
+    respond("привіт", st, [], "sys", MockBrain())  # chat event
     assert st.needs["connection"] == pytest.approx(0.80 + SATIATION["chat"]["connection"])
 
 
 def test_respond_think_routes_deep_and_closes_novelty():
     st = State(needs={"novelty": 0.90, "connection": 0.0})
-    out = respond("поясни, чому так", st, [], "sys", MockBrain())  # think -> подія deep
+    out = respond("поясни, чому так", st, [], "sys", MockBrain())  # think -> deep event
     assert out["route"].startswith("THINK/")
     assert st.needs["novelty"] == pytest.approx(0.90 + SATIATION["deep"]["novelty"])
 
@@ -53,7 +53,7 @@ def test_respond_tools_route_label():
 
 
 def test_respond_full_turn_is_offline():
-    """Наскрізний хід на моку не робить мережевих/субпроцесних викликів."""
+    """An end-to-end turn on the mock makes no network/subprocess calls."""
     import kiln.brain as brainmod
 
     calls = {"n": 0}

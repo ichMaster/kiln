@@ -1,9 +1,9 @@
 """
-Контракт містка TUI (ARCHITECTURE §Components/§Contracts): echo-free inbox/outbox.
+TUI bridge contract (ARCHITECTURE §Components/§Contracts): echo-free inbox/outbox.
 
-Ввід іде ЛИШЕ в inbox, рендер — ЛИШЕ в outbox; набраний рядок ніколи не відлунює
-в outbox. Неблокуючі читання повертають None на порожнечі (не стопорять цикл тіків).
-Без викликів моделі — чистий stdlib-транспорт.
+Input goes ONLY to the inbox, rendering ONLY to the outbox; a typed line never echoes
+into the outbox. Non-blocking reads return None when empty (so they don't stall the tick loop).
+No model calls — pure stdlib transport.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ def test_input_roundtrip_ui_to_engine():
     b = Bridge()
     b.submit("привіт")
     assert b.poll_input() == "привіт"
-    assert b.poll_input() is None  # вичерпано
+    assert b.poll_input() is None  # exhausted
 
 
 def test_output_roundtrip_engine_to_ui():
@@ -27,10 +27,10 @@ def test_output_roundtrip_engine_to_ui():
 
 
 def test_echo_free_input_never_appears_on_outbox():
-    """Структурний echo-free: submit() кладе тільки в inbox, не в outbox."""
+    """Structural echo-free: submit() puts only into the inbox, not the outbox."""
     b = Bridge()
     b.submit("моє повідомлення")
-    assert b.poll_output() is None  # нічого не відлунилось у рендер
+    assert b.poll_output() is None  # nothing echoed into the render
     assert b.poll_input() == "моє повідомлення"
 
 
@@ -48,7 +48,7 @@ def test_drain_output_returns_all_events_in_order():
     b.emit({"kind": "usage", "usage": None})
     drained = b.drain_output()
     assert [e["kind"] for e in drained] == ["user", "agent", "usage"]
-    assert b.drain_output() == []  # черга порожня після вичерпання
+    assert b.drain_output() == []  # queue empty after draining
 
 
 def test_fifo_order_preserved():

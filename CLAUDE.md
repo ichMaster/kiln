@@ -7,8 +7,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `kiln` is a small multi-module Python prototype for a needs-driven chat engine (stdlib-only for
 dry-run; `anthropic` SDK only for the live chat branch). It runs a loop of cheap local "ticks"; an
 LLM ("the brain") is invoked only on a condition (user input, or a need crossing its threshold), and
-each invocation is **routed** to one of two branches. The README, code comments, and conversational
-prompts are all in **Ukrainian** — keep that voice when editing prompts or user-facing strings.
+each invocation is **routed** to one of two branches.
+
+**Language convention:** code comments, docstrings, all documentation (`README.md`, `docs/`,
+`spec/`), and operator-facing chrome (command output, `[exit]` notices, the TUI status/footer) are
+in **English**. The only Ukrainian left is the **persona/conversation layer** — Agnika's voice and
+anything that shapes it for the model: `DEFAULT_CANON` and `state/canon.md`, `state/prompts.md`, the
+`summarize`/self-trigger prompts, the system-prompt memory intro and transcript labels
+(`history.py`), and the `THINK_HINTS`/`TOOL_HINTS` that match Ukrainian user input. Keep that
+Ukrainian; write everything else in English.
 
 The modules live in the `kiln/` package and form a clean DAG —
 `config`/`history`/`usage` (leaves) → `memory` → `commands` → `engine`:

@@ -1,8 +1,8 @@
 """
-Контракт TuiChannel (канал вводу над містком, контракт poll() як у StdinChannel).
+TuiChannel contract (input channel over the bridge, same poll() contract as StdinChannel).
 
-poll() віддає набраний рядок раз, далі None; FIFO. Інтеграція: рядок із inbox
-доходить до двіжка через run() і дає відповідь (MockBrain, нуль платних викликів).
+poll() returns a typed line once, then None; FIFO. Integration: a line from the inbox
+reaches the engine through run() and yields a reply (MockBrain, zero paid calls).
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ def test_poll_returns_submitted_line_then_none():
     ch = TuiChannel(b)
     b.submit("привіт")
     assert ch.poll() == "привіт"
-    assert ch.poll() is None  # вичерпано
+    assert ch.poll() is None  # exhausted
 
 
 def test_poll_is_fifo():
@@ -46,7 +46,7 @@ def test_tuichannel_drives_a_turn(monkeypatch, tmp_path):
     monkeypatch.setattr(eng, "save_summary", lambda *a, **k: None)
 
     b = Bridge()
-    b.submit("привіт")  # ввід у черзі ще до старту циклу
+    b.submit("привіт")  # input queued before the loop starts
     eng.run(
         ticks=3,
         live=False,
@@ -56,4 +56,4 @@ def test_tuichannel_drives_a_turn(monkeypatch, tmp_path):
     )
 
     kinds = [e["kind"] for e in b.drain_output()]
-    assert "agent" in kinds  # ввід дійшов до двіжка й дав відповідь
+    assert "agent" in kinds  # input reached the engine and produced a reply

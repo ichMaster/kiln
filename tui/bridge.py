@@ -1,20 +1,20 @@
 """
-kiln.tui.bridge — echo-free місток між циклом тіків і потоком UI.
+kiln.tui.bridge — echo-free bridge between the tick loop and the UI thread.
 
-Дві НЕЗАЛЕЖНІ черги (thread-safe, бо двіжок крутиться в фоновому потоці, а UI — у
-своєму):
-  - inbox  (UI -> двіжок): введені користувачем рядки; двіжок читає їх через
+Two INDEPENDENT queues (thread-safe, since the engine runs in a background thread and the
+UI in its own):
+  - inbox  (UI -> engine): user-typed lines; the engine reads them via
     TuiChannel.poll() (KILN-009);
-  - outbox (двіжок -> UI): події рендера, які кладе TuiOutput (KILN-008), а UI
-    вичерпує й малює.
+  - outbox (engine -> UI): render events placed by TuiOutput (KILN-008), which the UI
+    drains and draws.
 
-**Echo-free структурно:** ввід іде ЛИШЕ в inbox, рендер — ЛИШЕ в outbox; введений
-рядок ніколи не «відлунює» в outbox. Тому UI сам показує набране (один раз), а
-двіжок пише в outbox тільки СВОЇ відповіді — без подвійного відлуння й перемішування
-вводу з виводом.
+**Echo-free by construction:** input goes ONLY to inbox, render ONLY to outbox; a typed
+line never "echoes" back into outbox. So the UI shows the typed text itself (once), while
+the engine writes ONLY ITS OWN replies to outbox — no double echo and no mixing of input
+with output.
 
-Подія рендера — простий dict (foreshadow серверного протоколу подій v1.1/1.2),
-ключ `kind` ∈ {"user", "agent", "usage", "notice"} віддзеркалює методи seam'а Output:
+A render event is a plain dict (foreshadowing the server event protocol v1.1/1.2); the
+key `kind` ∈ {"user", "agent", "usage", "notice"} mirrors the Output seam's methods:
   {"kind": "user",   "text": str}
   {"kind": "agent",  "text": str, "is_self": bool, "lead": bool}
   {"kind": "usage",  "usage": dict | None}
@@ -27,40 +27,40 @@ import queue
 
 
 class Bridge:
-    """Thread-safe inbox/outbox між двіжком і UI (без логіки агента)."""
+    """Thread-safe inbox/outbox between engine and UI (no agent logic)."""
 
     def __init__(self) -> None:
-        self._inbox: queue.Queue[str] = queue.Queue()  # UI -> двіжок (рядки)
-        self._outbox: queue.Queue[dict] = queue.Queue()  # двіжок -> UI (події рендера)
+        self._inbox: queue.Queue[str] = queue.Queue()  # UI -> engine (lines)
+        self._outbox: queue.Queue[dict] = queue.Queue()  # engine -> UI (render events)
 
-    # --- бік UI: ввід -> двіжок --------------------------------------------
+    # --- UI side: input -> engine ------------------------------------------
     def submit(self, line: str) -> None:
-        """UI кладе набраний рядок для двіжка."""
+        """UI places a typed line for the engine."""
         self._inbox.put(line)
 
-    # --- бік двіжка: читання вводу (неблокуюче) ----------------------------
+    # --- engine side: read input (non-blocking) ----------------------------
     def poll_input(self) -> str | None:
-        """Двіжок (TuiChannel) забирає черговий рядок або None, не блокуючи цикл."""
+        """Engine (TuiChannel) takes the next line or None, without blocking the loop."""
         try:
             return self._inbox.get_nowait()
         except queue.Empty:
             return None
 
-    # --- бік двіжка: рендер -> UI ------------------------------------------
+    # --- engine side: render -> UI -----------------------------------------
     def emit(self, event: dict) -> None:
-        """Двіжок (TuiOutput) кладе подію рендера для UI."""
+        """Engine (TuiOutput) places a render event for the UI."""
         self._outbox.put(event)
 
-    # --- бік UI: читання рендера (неблокуюче) ------------------------------
+    # --- UI side: read render (non-blocking) -------------------------------
     def poll_output(self) -> dict | None:
-        """UI забирає чергову подію рендера або None."""
+        """UI takes the next render event or None."""
         try:
             return self._outbox.get_nowait()
         except queue.Empty:
             return None
 
     def drain_output(self) -> list[dict]:
-        """Усі наявні події рендера одразу (UI малює їх за один прохід)."""
+        """All available render events at once (UI draws them in one pass)."""
         events: list[dict] = []
         while (event := self.poll_output()) is not None:
             events.append(event)

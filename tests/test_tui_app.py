@@ -1,13 +1,13 @@
 """
-KILN-011: застосунок TUI + паралельний цикл.
+KILN-011: TUI application + concurrent loop.
 
-Два рівні:
-  1) Wiring/паралельність (без textual) — двіжок у фоновому потоці, керований
-     містком: ввід з inbox -> відповідь у outbox; `/quit` чисто спиняє цикл.
-  2) Pilot (під importorskip textual) — застосунок монтується, submit вводу йде
-     в inbox містка (UI->місток зв'язано).
+Two levels:
+  1) Wiring/concurrency (without textual) — the engine runs on a background thread,
+     driven by the bridge: input from inbox -> reply into outbox; `/quit` cleanly stops the loop.
+  2) Pilot (under importorskip textual) — the app mounts, submitting input goes
+     into the bridge inbox (UI->bridge wired).
 
-Усе на MockBrain — нуль платних викликів.
+Everything on MockBrain — zero paid calls.
 """
 
 from __future__ import annotations
@@ -38,14 +38,14 @@ def _isolate_persistence(monkeypatch, eng, tmp_path):
 
 
 def test_engine_runs_on_thread_driven_by_bridge(monkeypatch, tmp_path):
-    """Двіжок крутиться у фоновому потоці; ввід з містка дає відповідь; /quit спиняє."""
+    """The engine runs on a background thread; bridge input yields a reply; /quit stops it."""
     import kiln.engine as eng
 
     _isolate_persistence(monkeypatch, eng, tmp_path)
 
     bridge = Bridge()
-    bridge.submit("привіт")  # хід
-    bridge.submit("/quit")  # чистий стоп (engine finally збереже сесію)
+    bridge.submit("привіт")  # turn
+    bridge.submit("/quit")  # clean stop (engine finally will save the session)
 
     thread = threading.Thread(
         target=eng.run,
@@ -61,14 +61,14 @@ def test_engine_runs_on_thread_driven_by_bridge(monkeypatch, tmp_path):
     thread.start()
     thread.join(timeout=5.0)
 
-    assert not thread.is_alive()  # /quit спинив нескінченний цикл (ticks=None)
+    assert not thread.is_alive()  # /quit stopped the infinite loop (ticks=None)
     kinds = [e["kind"] for e in bridge.drain_output()]
-    assert "agent" in kinds  # "привіт" отримав відповідь
-    assert "notice" in kinds  # "/quit" -> "[exit] вихід за командою"
+    assert "agent" in kinds  # "привіт" got a reply
+    assert "notice" in kinds  # "/quit" -> "[exit] exit by command"
 
 
 def test_app_input_submits_to_bridge(tmp_path):
-    """UI->місток: submit рядка кладе його в inbox (двіжок не стартуємо)."""
+    """UI->bridge: submitting a line puts it into the inbox (we don't start the engine)."""
     pytest.importorskip("textual")
     import asyncio
 
@@ -80,12 +80,12 @@ def test_app_input_submits_to_bridge(tmp_path):
         bridge = Bridge()
         app = KilnApp(bridge=bridge, live=False, start_engine=False)
         async with app.run_test() as pilot:
-            assert app.query(Input)  # рядок вводу є
-            assert app.query(RichLog)  # лог є
+            assert app.query(Input)  # input line exists
+            assert app.query(RichLog)  # log exists
             app.query_one(Input).value = "привіт"
             await pilot.press("enter")
             await pilot.pause()
-            # після submit вхід очистився, а рядок пішов у inbox містка
+            # after submit the input cleared, and the line went into the bridge inbox
             assert app.query_one(Input).value == ""
             assert bridge.poll_input() == "привіт"
 

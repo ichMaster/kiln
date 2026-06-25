@@ -5,7 +5,7 @@ Detailed plan. Legend: ✅ done · 🟡 partial · ⬜ planned.
 ## Positioning
 
 **kiln is a distinct approach — not a Lumi rebuild.** It shares the persona
-(Лілі → Agnika) with [`lumi`](file:///Users/Vitalii_Bondarenko2/development/lumi),
+(Lili → Agnika) with [`lumi`](file:///Users/Vitalii_Bondarenko2/development/lumi),
 but its own focus is a **cheap, always-on tick _server_**: a persona that lives on
 cheap local ticks and spends the expensive model **rarely** (needs-gated
 Haiku/Opus routing), exposed as a server clients attach to — so the tick server

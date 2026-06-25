@@ -1,9 +1,9 @@
 """
-Контракт seam'а виводу (ARCHITECTURE §Components, §Contracts).
+Output seam contract (ARCHITECTURE §Components, §Contracts).
 
-Ядро (engine.run) пише репліки лише через порт Output — ніколи у print напряму.
-Тут: типовий ConsoleOutput друкує репліку + технічний рядок, а підмінний сінк
-ловить події повного ходу (через MockBrain, без запису в реальний state/).
+The core (engine.run) writes replies only through the Output port — never via print directly.
+Here: the default ConsoleOutput prints the reply + a technical line, while a fake sink
+captures the events of a full turn (via MockBrain, without writing to the real state/).
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ USAGE_KEYS = {"model", "input", "output", "total"}
 
 
 class CapturingOutput:
-    """Фейковий сінк: записує події замість друку."""
+    """Fake sink: records events instead of printing."""
 
     def __init__(self):
         self.events: list = []
@@ -51,10 +51,10 @@ def test_console_output_prints_reply_and_tech(capsys):
 
 
 def test_run_routes_turn_through_output_port(monkeypatch, tmp_path):
-    """Повний хід через run() надсилає репліку + usage у порт; нуль запису на диск."""
+    """A full turn through run() sends the reply + usage to the port; zero disk writes."""
     import kiln.engine as eng
 
-    # Ізолюємо персистентність — жодного запису в реальний state/ чи history/.
+    # Isolate persistence — no writes to the real state/ or history/.
     monkeypatch.setattr(eng, "STATE_DIR", tmp_path)
     monkeypatch.setattr(
         eng,
@@ -81,7 +81,7 @@ def test_run_routes_turn_through_output_port(monkeypatch, tmp_path):
     assert "user" in kinds and "agent" in kinds and "usage" in kinds
 
     agent_texts = [e[1] for e in cap.events if e[0] == "agent"]
-    assert any("dry-run chat" in t for t in agent_texts)  # репліка від MockBrain
+    assert any("dry-run chat" in t for t in agent_texts)  # reply from MockBrain
 
     usages = [e[1] for e in cap.events if e[0] == "usage"]
     assert any(isinstance(u, dict) and set(u) == USAGE_KEYS for u in usages)

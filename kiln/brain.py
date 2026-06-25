@@ -1,15 +1,15 @@
 """
-kiln — seam «мозок»: обидві гілки за одним тонким інтерфейсом.
+kiln — the "brain" seam: both branches behind one thin interface.
 
-Ядро (respond/run) кличе модель ЛИШЕ через цей seam — ніколи напряму SDK чи CLI.
-Реалізації:
-  - LiveBrain — справжні виклики: чат через Anthropic Messages API (Haiku),
-    роздум/тули через `claude -p` (Opus, субпроцес);
-  - MockBrain — детерміновані канонічні відповіді + синтетичний usage, без
-    мережі й субпроцесів (dry-run демо й усі тести йдуть через нього → 0 платних викликів).
+The core (respond/run) calls the model ONLY through this seam — never the SDK or CLI directly.
+Implementations:
+  - LiveBrain — real calls: chat via the Anthropic Messages API (Haiku),
+    think/tools via `claude -p` (Opus, subprocess);
+  - MockBrain — deterministic canned replies + synthetic usage, with no
+    network or subprocesses (the dry-run demo and all tests go through it → 0 paid calls).
 
-Контракт: кожен метод повертає (text, usage), де usage — {model, input, output, total}
-або None (помилка/без виклику). Парсинг токенів — у usage.usage_record.
+Contract: each method returns (text, usage), where usage is {model, input, output, total}
+or None (error / no call). Token parsing lives in usage.usage_record.
 """
 
 from __future__ import annotations
@@ -22,41 +22,41 @@ from .config import CHAT_MODEL, DEEP_MODEL, DEEP_TOOLS
 from .history import to_messages, to_transcript
 from .usage import _cli_error_detail, usage_record
 
-# usage: {model, input, output, total} або None
+# usage: {model, input, output, total} or None
 Usage = dict | None
 
 
 @runtime_checkable
 class Brain(Protocol):
-    """Seam між ядром і моделлю. Дві гілки — дешевий чат і глибокий хід."""
+    """Seam between the core and the model. Two branches — cheap chat and a deep turn."""
 
     def chat(self, history: list[dict], system: str) -> tuple[str, Usage]:
-        """Дешева швидка репліка (вся історія — як messages)."""
+        """A cheap, fast reply (the whole history goes in as messages)."""
         ...
 
     def deep(
         self, prompt: str, history: list[dict], system: str, with_tools: bool
     ) -> tuple[str, Usage]:
-        """Глибокий хід (роздум або тули); історія — транскриптом у промпт."""
+        """A deep turn (reasoning or tools); history goes into the prompt as a transcript."""
         ...
 
 
 class LiveBrain:
-    """Справжній мозок: Haiku через SDK (чат) + Opus через `claude -p` (роздум/тули)."""
+    """The real brain: Haiku via the SDK (chat) + Opus via `claude -p` (think/tools)."""
 
     def chat(self, history: list[dict], system: str) -> tuple[str, Usage]:
-        # Локальний імпорт: dry-run/тести працюють без пакета anthropic — він
-        # потрібен лише цій живій гілці. Ключ — з ANTHROPIC_API_KEY (.env -> os.environ).
+        # Local import: dry-run/tests work without the anthropic package — it's
+        # needed only by this live branch. Key comes from ANTHROPIC_API_KEY (.env -> os.environ).
         from anthropic import Anthropic
 
         try:
             msg = Anthropic().messages.create(
-                model=CHAT_MODEL,  # Haiku 4.5 — дешево і швидко
-                max_tokens=512,  # коротка репліка
-                system=system,  # канон + довга пам'ять
-                messages=to_messages(history),  # уся стрічка, з поточним ходом
+                model=CHAT_MODEL,  # Haiku 4.5 — cheap and fast
+                max_tokens=512,  # short reply
+                system=system,  # canon + long-term memory
+                messages=to_messages(history),  # the whole transcript, with the current turn
             )
-        except Exception as e:  # мережа / ліміти / помилка API
+        except Exception as e:  # network / limits / API error
             return f"(chat error: {e})", None
         text = next((b.text for b in msg.content if b.type == "text"), "")
         return text, usage_record(msg.model, msg.usage)
@@ -64,8 +64,8 @@ class LiveBrain:
     def deep(
         self, prompt: str, history: list[dict], system: str, with_tools: bool
     ) -> tuple[str, Usage]:
-        # Субпроцес не тримає сесію між викликами, тож попередні ходи вкладаємо
-        # текстовим транскриптом, а поточний промпт — у кінець.
+        # The subprocess holds no session between calls, so prior turns are embedded
+        # as a text transcript, with the current prompt at the end.
         prior = history[:-1] if history else []
         full_prompt = prompt
         if prior:
@@ -76,7 +76,7 @@ class LiveBrain:
                 + prompt
             )
 
-        # --output-format json: дістаємо і текст (result), і usage одним викликом.
+        # --output-format json: we get both the text (result) and usage in one call.
         cmd = [
             "claude",
             "-p",
@@ -93,10 +93,10 @@ class LiveBrain:
 
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-        except Exception as e:  # таймаут / процес не стартував
+        except Exception as e:  # timeout / process failed to start
             return f"(deep error: {e})", None
         if result.returncode != 0:
-            # CLI інколи падає (ліміт, тимчасова помилка) — не валимо цикл.
+            # The CLI occasionally fails (a limit, a transient error) — don't crash the loop.
             return (
                 f"(deep error: claude CLI {result.returncode}: {_cli_error_detail(result)})",
                 None,
@@ -104,15 +104,15 @@ class LiveBrain:
         try:
             data = json.loads(result.stdout)
         except json.JSONDecodeError:
-            return result.stdout.strip(), None  # несподіваний вивід — як є
+            return result.stdout.strip(), None  # unexpected output — as is
         return (data.get("result") or "").strip(), usage_record(DEEP_MODEL, data.get("usage"))
 
 
 class MockBrain:
     """
-    Детермінований мозок для dry-run і тестів: канонічні відповіді + синтетичний
-    usage. Жодних мережевих викликів і субпроцесів — отже, нуль платних викликів.
-    Тексти відповідей навмисно збігаються з колишніми dry-run-заглушками.
+    Deterministic brain for dry-run and tests: canned replies + synthetic
+    usage. No network calls and no subprocesses — hence zero paid calls.
+    The reply texts deliberately match the former dry-run stubs.
     """
 
     def chat(self, history: list[dict], system: str) -> tuple[str, Usage]:

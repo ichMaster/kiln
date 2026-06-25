@@ -1,4 +1,4 @@
-"""Unit: класифікація ходу — turn_weight (вага стану) і classify (гілка)."""
+"""Unit: turn classification — turn_weight (state weight) and classify (branch)."""
 
 from __future__ import annotations
 
@@ -33,13 +33,13 @@ def test_classify_tool_hint_routes_tools():
 
 
 def test_classify_tool_hint_beats_think_hint():
-    # TOOL_HINTS перевіряються першими -> tools, навіть якщо є маркер міркування.
+    # TOOL_HINTS are checked first -> tools, even if a reasoning marker is present.
     assert classify("поясни і знайди файл", State(needs={})) == "tools"
 
 
 def test_classify_high_state_weight_routes_think_without_hints():
-    # Висока вага стану сама штовхає звичайну репліку в роздум.
-    hot = State(needs={"intensity": 1.0, "connection": 1.0})  # weight 1.0 >= поріг
+    # A high state weight on its own pushes a plain message into reasoning.
+    hot = State(needs={"intensity": 1.0, "connection": 1.0})  # weight 1.0 >= threshold
     assert turn_weight(hot) >= THINK_THRESHOLD
     assert classify("привіт", hot) == "think"
 

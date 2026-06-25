@@ -1,14 +1,14 @@
 """
-kiln.tui.app — Textual-застосунок над двіжком.
+kiln.tui.app — Textual application on top of the engine.
 
-Лог відповідей (прокручуваний) + фіксований рядок вводу. Двіжок (engine.run)
-крутиться у ФОНОВОМУ потоці й спілкується з UI лише через місток: TuiChannel читає
-введені рядки з inbox, TuiOutput кладе події рендера в outbox, а застосунок їх
-вичерпує таймером і малює. Тож цикл тіків живе паралельно з UI (самотригери теж
-працюють), а виклики моделі не морозять інтерфейс.
+A scrollable reply log + a fixed input line. The engine (engine.run) runs in a BACKGROUND
+thread and talks to the UI only through the bridge: TuiChannel reads typed lines from inbox,
+TuiOutput places render events in outbox, and the app drains them on a timer and draws them.
+So the tick loop lives in parallel with the UI (self-triggers work too), and model calls
+do not freeze the interface.
 
-Echo-free: набране користувач бачить одразу (UI сам пише `you: …`), а двіжок ввід
-НЕ відлунює — пише в лог лише свої відповіді.
+Echo-free: the user sees the typed text immediately (the UI writes `you: …` itself), while
+the engine does NOT echo input — it writes only its own replies to the log.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from .bridge import Bridge
 from .channel import TuiChannel
 from .output import TuiOutput
 
-# Кольори рядків (Rich markup) — відповідники ANSI з usage.py.
+# Line colors (Rich markup) — equivalents of the ANSI ones from usage.py.
 _USER_STYLE = "bold cyan"
 _BOT_STYLE = "bold green"
 _TECH_STYLE = "dim green"
@@ -36,13 +36,13 @@ def _short_model(model: str) -> str:
 
 
 class KilnApp(App):
-    """Тонкий клієнт: лог + рядок вводу, зв'язані з двіжком через місток."""
+    """Thin client: log + input line, wired to the engine through the bridge."""
 
     CSS = """
     RichLog { height: 1fr; padding: 0 1; }
     Input { dock: bottom; }
     """
-    BINDINGS = [("ctrl+q", "quit", "Вийти")]
+    BINDINGS = [("ctrl+q", "quit", "Quit")]
 
     def __init__(
         self,
@@ -62,14 +62,14 @@ class KilnApp(App):
 
     def compose(self) -> ComposeResult:
         yield RichLog(markup=True, wrap=True, highlight=False)
-        yield Input(placeholder="Напиши повідомлення…  (Ctrl+Q — вийти)")
+        yield Input(placeholder="Type a message…  (Ctrl+Q — quit)")
 
     def on_mount(self) -> None:
         self.query_one(Input).focus()
         if self._start_engine:
             self._engine_thread = threading.Thread(target=self._run_engine, daemon=True)
             self._engine_thread.start()
-        self.set_interval(0.1, self._drain)  # вичерпуємо outbox у такт UI
+        self.set_interval(0.1, self._drain)  # drain outbox in step with the UI
 
     def _run_engine(self) -> None:
         run(
@@ -95,24 +95,24 @@ class KilnApp(App):
             if u:
                 log.write(
                     f"[{_TECH_STYLE}]      · {_short_model(u['model'])} · "
-                    f"{u['input']}→{u['output']} ток ({u['total']})[/]"
+                    f"{u['input']}→{u['output']} tok ({u['total']})[/]"
                 )
         elif kind == "notice":
             log.write(escape(event["text"]))
-        elif kind == "user":  # echo-free: не очікується (TuiOutput.user — no-op)
+        elif kind == "user":  # echo-free: not expected (TuiOutput.user is a no-op)
             log.write(f"[{_USER_STYLE}]you:[/] {escape(event['text'])}")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         line = event.value.strip()
         if line:
-            # UI сам показує набране (echo-free: двіжок його не відлунює).
+            # UI shows the typed text itself (echo-free: the engine does not echo it).
             self.query_one(RichLog).write(f"[{_USER_STYLE}]you:[/] {escape(line)}")
             self.bridge.submit(line)
         event.input.value = ""
 
     def action_quit(self) -> None:
-        # Чистий вихід: просимо двіжок завершити цикл (його finally збереже сесію),
-        # коротко чекаємо й закриваємось.
+        # Clean exit: ask the engine to end the loop (its finally saves the session),
+        # wait briefly, and close.
         self.bridge.submit("/quit")
         if self._engine_thread is not None:
             self._engine_thread.join(timeout=2.0)
@@ -120,5 +120,5 @@ class KilnApp(App):
 
 
 def main() -> None:
-    """Запуск TUI наживо (LiveBrain) — потрібні ключі/CLI як у звичайному live-режимі."""
+    """Launch the TUI live (LiveBrain) — needs keys/CLI as in normal live mode."""
     KilnApp(live=True).run()

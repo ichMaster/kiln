@@ -1,8 +1,8 @@
 """
-Контракт командного surface: handle_command пише через seam Output (output.notice),
-а не print — тож TUI/веб ловлять результат так само, як консоль.
+Command surface contract: handle_command writes through the Output seam (output.notice),
+not print — so TUI/web capture the result the same way the console does.
 
-Пінимо нову сигнатуру (з output), вивід через notice і відсутність прямих print.
+Pins the new signature (with output), output via notice, and the absence of direct prints.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from kiln.output import Output
 
 
 class RecordingOutput:
-    """Сінк Output, що записує події замість друку."""
+    """Output sink that records events instead of printing."""
 
     def __init__(self):
         self.notices: list[str] = []
@@ -37,7 +37,7 @@ def test_status_emits_via_notice_not_print(capsys):
     )
     assert action == "handled"
     assert any("[status]" in n for n in out.notices)
-    assert capsys.readouterr().out == ""  # нічого не друкувалось напряму (no print)
+    assert capsys.readouterr().out == ""  # nothing printed directly (no print)
 
 
 def test_needs_emits_via_notice():
@@ -63,7 +63,7 @@ def test_clear_clears_history_and_notifies():
 def test_unknown_command_notifies():
     out = RecordingOutput()
     handle_command("/wat", State(needs={}), [], "sys", False, out)
-    assert any("невідома команда" in n for n in out.notices)
+    assert any("unknown command" in n for n in out.notices)
 
 
 def test_non_command_returns_none():

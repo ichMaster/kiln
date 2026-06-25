@@ -1,290 +1,290 @@
-# Як це працює (у деталях)
+# How it works (in detail)
 
-Покрокова механіка рантайму, таблиці й алгоритми. Огляд устрою — в
+Step-by-step runtime mechanics, tables, and algorithms. For a design overview, see
 [architecture.md](architecture.md).
 
-## Цикл тіків
+## Tick loop
 
-Двіжок крутиться у `run(ticks, live, channel)`. На кожному тіку послідовно:
+The engine spins in `run(ticks, live, channel)`. On each tick, in order:
 
-1. **`drift(state, steps)`** — кожна потреба росте на `DRIFT[k] × steps`
-   (відсічення на `1.0`). У живому режимі `steps` = скільки тіків **реально**
-   минуло від попередньої ітерації (`round(elapsed / TICK_SECONDS)`, мінімум 1),
-   виміряне через `time.monotonic()`. Так блокуючий виклик моделі «зістарює»
-   потреби пропорційно до витраченого часу — **надолуження дрейфу**; коли
-   `steps > 1`, друкується рядок `[time] …`. У dry-run завжди рівно 1 тік
-   (детермінованість демо збережена).
-2. **`channel.poll()`** — неблокуюче бере чергове повідомлення користувача або
+1. **`drift(state, steps)`** — every need grows by `DRIFT[k] × steps`
+   (clamped at `1.0`). In live mode, `steps` is how many ticks **actually**
+   elapsed since the previous iteration (`round(elapsed / TICK_SECONDS)`, minimum 1),
+   measured via `time.monotonic()`. This way a blocking model call "ages"
+   the needs in proportion to the time spent — **drift catch-up**; when
+   `steps > 1`, a `[time] …` line is printed. In dry-run there is always exactly 1 tick
+   (so the demo stays deterministic).
+2. **`channel.poll()`** — non-blocking; takes the next user message or
    `None`.
-3. **Вибір дії за пріоритетом:**
-   - є **ввід** → якщо це слеш-команда, її обробляє `handle_command` (мозок не
-     чіпається); інакше `respond()` класифікує й відповідає;
-   - вводу нема, але спрацював **self-тригер** → `respond(force=...)` тією
-     гілкою, що задана тригером;
-   - нічого → **тиша**: `apply_satiation(state, "idle")`.
-4. **`time.sleep(TICK_SECONDS)`** у живому режимі (у dry-run — `0`).
+3. **Action selection by priority:**
+   - there is **input** → if it's a slash command, `handle_command` handles it (the brain
+     isn't touched); otherwise `respond()` classifies and replies;
+   - there is no input, but a **self-trigger** fired → `respond(force=...)` on the
+     branch specified by the trigger;
+   - nothing → **silence**: `apply_satiation(state, "idle")`.
+4. **`time.sleep(TICK_SECONDS)`** in live mode (in dry-run — `0`).
 
-На виході (звичайному, `/quit` чи Ctrl-C — через `finally`): `save_state`,
-потім `save_session` (транскрипт) і `summarize` + `save_summary` (підсумок).
+On exit (normal, `/quit`, or Ctrl-C — via `finally`): `save_state`,
+then `save_session` (transcript) and `summarize` + `save_summary` (summary).
 
-`ticks=None` крутить цикл безкінечно (для живого `StdinChannel`); ціле число —
-рівно стільки тіків (для демо).
+`ticks=None` spins the loop forever (for the live `StdinChannel`); an integer means
+exactly that many ticks (for the demo).
 
-## Модель потреб
+## Needs model
 
-Стан — набір потреб, кожна `0..1` (`state/needs.json`). Дві сили: повільний
-**дрейф угору** щотіку і **закриття подіями**.
+State is a set of needs, each `0..1` (`state/needs.json`). Two forces: slow
+**upward drift** every tick and **closure by events**.
 
-### Дрейф і що означає кожна потреба
+### Drift and what each need means
 
-| Потреба | Що означає | Дрейф/тік (`DRIFT`) |
+| Need | What it means | Drift/tick (`DRIFT`) |
 |---|---|---|
-| `connection` | тяга до контакту | +0.020 |
-| `rest` | накопичена втома | +0.010 |
-| `novelty` | потреба в новому | +0.015 |
-| `intensity` | емоційна напруга | +0.030 |
+| `connection` | the urge for contact | +0.020 |
+| `rest` | accumulated fatigue | +0.010 |
+| `novelty` | the need for something new | +0.015 |
+| `intensity` | emotional tension | +0.030 |
 
-### Закриття подіями (`SATIATION`)
+### Closure by events (`SATIATION`)
 
-Ключова ідея: **яка гілка відповіла, та й визначає, які потреби закрились.**
-Виклик Клода (`deep`) насичує глибше, ніж дешевий чат.
+The key idea: **whichever branch answered is what determines which needs got closed.**
+A Claude call (`deep`) satiates more deeply than cheap chat.
 
-| Подія | connection | rest | novelty | intensity |
+| Event | connection | rest | novelty | intensity |
 |---|---|---|---|---|
-| `chat` — відповідь Haiku (Anthropic SDK) | −0.50 | — | −0.10 | −0.10 |
-| `deep` — відповідь Claude CLI (роздум/тули) | −0.50 | −0.15 | −0.40 | −0.35 |
-| `idle` — тиша (тік без відповіді) | — | −0.05 | −0.02 |
+| `chat` — Haiku reply (Anthropic SDK) | −0.50 | — | −0.10 | −0.10 |
+| `deep` — Claude CLI reply (reasoning/tools) | −0.50 | −0.15 | −0.40 | −0.35 |
+| `idle` — silence (a tick without a reply) | — | −0.05 | −0.02 |
 
-Контакт (будь-який) гасить `connection`. Але саме `deep` закриває `novelty`
-(дізнались нове) і `rest` (важку роботу зроблено) та найсильніше розряджає
-`intensity`. Звідси природний цикл: потреби накопичуються → штовхають у дорогий
-`deep` → він їх глибоко гасить → довгий період дешевого чату й тиші.
+Contact (of any kind) eases `connection`. But it is `deep` specifically that closes `novelty`
+(learned something new) and `rest` (the hard work is done), and discharges
+`intensity` the most. Hence the natural cycle: needs accumulate → push toward the expensive
+`deep` → it eases them deeply → a long stretch of cheap chat and silence.
 
-`apply_satiation` відсікає рівні на `0.0`; `drift` — на `1.0`.
+`apply_satiation` clamps levels at `0.0`; `drift` clamps them at `1.0`.
 
-## Класифікація і роутинг
+## Classification and routing
 
-Коли мозок таки вмикається на **ввід користувача**, `classify(prompt, state)`
-повертає `chat | think | tools`:
+When the brain does kick in on **user input**, `classify(prompt, state)`
+returns `chat | think | tools`:
 
-1. є явні **маркери інструментів** (`TOOL_HINTS`: `файл`, `запусти`, `пошук`…)
+1. there are explicit **tool markers** (`TOOL_HINTS`: `файл`, `запусти`, `пошук`…)
    → `tools`;
-2. є **маркери міркування** (`THINK_HINTS`: `чому`, `поясни`, `проаналізуй`…)
-   **АБО** висока вага стану → `think`;
-3. інакше → `chat`.
+2. there are **reasoning markers** (`THINK_HINTS`: `чому`, `поясни`, `проаналізуй`…)
+   **OR** a high state weight → `think`;
+3. otherwise → `chat`.
 
-Вага стану:
+State weight:
 
 ```
-turn_weight = 0.55 * intensity + 0.45 * connection      # відсічена на 0..1
+turn_weight = 0.55 * intensity + 0.45 * connection      # clamped to 0..1
 ```
 
-Якщо `turn_weight >= THINK_THRESHOLD` (0.45) або є маркери — хід іде у `deep`,
-інакше — у `chat`. `respond()` мапить клас на гілку та на подію насичення:
+If `turn_weight >= THINK_THRESHOLD` (0.45) or there are markers — the turn goes to `deep`,
+otherwise — to `chat`. `respond()` maps the class to a branch and to a satiation event:
 `chat → "chat"`, `think`/`tools → "deep"`.
 
-> **Self-тригери класифікацію оминають.** Гілка для них задана наперед у
-> `NEED_TRIGGERS` і передається в `respond(force=...)`.
+> **Self-triggers bypass classification.** Their branch is set in advance in
+> `NEED_TRIGGERS` and passed to `respond(force=...)`.
 
-## Self-тригери (двіжок озивається сам)
+## Self-triggers (the engine speaks up on its own)
 
-Коли потреба перетинає **свій** поріг, двіжок ініціює хід сам
-(`select_self_trigger`). На кожну потребу — свій поріг і гілка (`NEED_TRIGGERS`):
+When a need crosses **its** threshold, the engine initiates a turn on its own
+(`select_self_trigger`). Each need has its own threshold and branch (`NEED_TRIGGERS`):
 
-| Потреба | Поріг | Гілка при спрацюванні |
+| Need | Threshold | Branch when fired |
 |---|---|---|
 | `connection` | 0.80 | chat (Haiku) |
 | `rest` | 0.90 | chat (Haiku) |
 | `novelty` | 0.85 | deep (Claude) |
 | `intensity` | 0.75 | deep (Claude) |
 
-Контактні потреби (connection/rest) закриваються дешевим чатом; змістовні
-(novelty/intensity) — глибоким викликом.
+Contact needs (connection/rest) are closed by cheap chat; substantive ones
+(novelty/intensity) — by a deep call.
 
-### Стан тригерів (`TriggerBook`)
+### Trigger state (`TriggerBook`)
 
-Окремо від потреб двіжок тримає **рантайм-стан тригерів** (не зберігається між
-сесіями) — по два поля на кожну потребу:
+Separately from the needs, the engine keeps **runtime trigger state** (not persisted across
+sessions) — two fields per need:
 
-| Поле | Що означає | Дефолт |
+| Field | What it means | Default |
 |---|---|---|
-| `armed[need]` | чи готовий тригер спрацювати | `True` |
-| `cooldown[need]` | скільки ще тіків мовчати після спрацювання | `0` |
+| `armed[need]` | whether the trigger is ready to fire | `True` |
+| `cooldown[need]` | how many more ticks to stay silent after firing | `0` |
 
-Ці два поля і дають два запобіжники від «спаму» — без них потреба, що сидить над
-порогом, зчиняла б хід **щотіку**.
+These two fields provide the two guards against "spam" — without them, a need that sits above
+its threshold would launch a turn **every tick**.
 
-### Алгоритм `select_self_trigger` (крок за кроком)
+### The `select_self_trigger` algorithm (step by step)
 
-Викликається щотіку, **коли немає вводу користувача**. Повертає `(потреба, дія)`
-для self-виклику або `(None, None)`.
+Called every tick **when there is no user input**. Returns `(need, action)`
+for a self-call, or `(None, None)`.
 
-1. **Тікають кулдауни.** Для кожної потреби, якщо `cooldown > 0`, зменшити на 1.
-2. **Збір кандидатів.** Для кожної потреби порівнюємо рівень із її порогом:
-   - рівень **нижче** порога → `armed = True` (**переозброєння**: тригер знову
-     готовий до наступного перетину вгору);
-   - рівень **≥** порога **і** `armed` **і** `cooldown == 0` → це кандидат,
-     із «перевищенням» `overshoot = рівень − поріг`.
-3. **Немає кандидатів** → `(None, None)`: двіжок мовчить, тік стає `idle`.
-4. **Вибір.** Серед кандидатів береться той із **найбільшим overshoot** — потреба,
-   що найдалі зайшла за свій поріг.
-5. **Спрацювання.** Для обраної потреби: `armed = False` (**розрядити**) і
-   `cooldown = SELF_COOLDOWN`. Повертаємо `(потреба, дія)` → `run()` робить
-   `respond(prompt, force=дія)`.
+1. **Cooldowns tick down.** For each need, if `cooldown > 0`, decrement by 1.
+2. **Collect candidates.** For each need, compare its level against its threshold:
+   - level **below** the threshold → `armed = True` (**re-arm**: the trigger is
+     again ready for the next upward crossing);
+   - level **≥** the threshold **and** `armed` **and** `cooldown == 0` → it's a candidate,
+     with an "overshoot" of `overshoot = level − threshold`.
+3. **No candidates** → `(None, None)`: the engine stays silent, the tick becomes `idle`.
+4. **Selection.** Among the candidates, the one with the **largest overshoot** is taken — the need
+   that has gone furthest past its threshold.
+5. **Firing.** For the chosen need: `armed = False` (**discharge**) and
+   `cooldown = SELF_COOLDOWN`. We return `(need, action)` → `run()` does
+   `respond(prompt, force=action)`.
 
-Тобто умова спрацювання — **над порогом І `armed` І `cooldown == 0`**.
+So the firing condition is — **above the threshold AND `armed` AND `cooldown == 0`**.
 
-### Навіщо обидва запобіжники
+### Why both guards
 
-- **Гістерезис (`armed`).** Дає рівно **один** хід на перетин порога вгору.
-  Одразу після спрацювання тригер розряджений (`armed = False`) і не спрацює
-  знову, доки потреба не **впаде нижче** порога й не переозброїться (крок 2). На
-  практиці саме відповідь і гасить потребу: self-хід на `novelty` (deep) знижує
-  novelty на 0.40 → вона падає під поріг → переозброєння.
-- **Кулдаун (`SELF_COOLDOWN` = 5).** Жорстка підлога: навіть якби потреба швидко
-  переозброїлась, ще `N` тіків тиші на саме цю потребу. Зазвичай домінує
-  гістерезис (відповідь і так збиває потребу нижче порога), а кулдаун — додатковий
-  запобіжник проти швидкого повтору.
+- **Hysteresis (`armed`).** Gives exactly **one** turn per upward threshold crossing.
+  Immediately after firing the trigger is discharged (`armed = False`) and won't fire
+  again until the need **falls below** the threshold and re-arms (step 2). In
+  practice it's the reply itself that eases the need: a self-turn on `novelty` (deep) lowers
+  novelty by 0.40 → it drops below the threshold → re-arm.
+- **Cooldown (`SELF_COOLDOWN` = 5).** A hard floor: even if the need quickly
+  re-armed, there are still `N` ticks of silence for that specific need. Usually hysteresis
+  dominates (the reply already knocks the need below the threshold), and the cooldown is an extra
+  guard against a fast repeat.
 
-### Приклад: `novelty` (поріг 0.85, дія deep, дрейф +0.015/тік)
+### Example: `novelty` (threshold 0.85, action deep, drift +0.015/tick)
 
-| Тік | novelty | armed | cooldown | Що сталося |
+| Tick | novelty | armed | cooldown | What happened |
 |---|---|---|---|---|
-| k−1 | 0.84 | `True` | 0 | під порогом → переозброєний, чекає |
-| **k** | **0.86** | `True`→`False` | 0→**5** | перетнув поріг → **спрацював** (deep); novelty −0.40 |
-| k+1 | 0.46 | `False`→`True` | 4 | під порогом → переозброєний; але далеко від порога |
-| k+2…k+5 | ↑ повільний дрейф | `True` | 3 → 0 | мовчить; кулдаун вигасає |
-| ~k+27 | **0.85** | `True` | 0 | знову над порогом і armed → може спрацювати |
+| k−1 | 0.84 | `True` | 0 | below the threshold → re-armed, waiting |
+| **k** | **0.86** | `True`→`False` | 0→**5** | crossed the threshold → **fired** (deep); novelty −0.40 |
+| k+1 | 0.46 | `False`→`True` | 4 | below the threshold → re-armed; but far from the threshold |
+| k+2…k+5 | ↑ slow drift | `True` | 3 → 0 | silent; cooldown burns down |
+| ~k+27 | **0.85** | `True` | 0 | above the threshold again and armed → may fire |
 
-Видно, що тут **гістерезис** (потреба впала на 0.40 і має ~26 тіків дрейфу назад)
-зв'язує сильніше, ніж кулдаун (5 тіків). Кулдаун стає вирішальним лише коли
-відповідь майже не гасить потребу.
+You can see that here **hysteresis** (the need dropped by 0.40 and has ~26 ticks of drift to climb
+back) binds more tightly than the cooldown (5 ticks). The cooldown becomes decisive only when
+the reply barely eases the need.
 
-**Один self-хід за тік:** якщо одночасно над порогом кілька потреб, цього тіку
-озивається та, що з найбільшим overshoot; решта чекають наступних тіків, кожна за
-своїми `armed`/`cooldown`. (А відповідь обраної потреби через `apply_satiation`
-часто збиває й сусідні потреби нижче їхніх порогів.)
+**One self-turn per tick:** if several needs are above their thresholds at once, this tick
+the one with the largest overshoot speaks; the rest wait for later ticks, each according to
+its own `armed`/`cooldown`. (And the reply for the chosen need, via `apply_satiation`,
+often knocks neighboring needs below their thresholds too.)
 
-Промпт self-тригера береться випадково зі списку у `state/prompts.md` (секція
-`[потреба]`), запасний — згенерований у коді.
+The self-trigger's prompt is picked at random from a list in `state/prompts.md` (the
+`[потреба]` section), with a fallback generated in code.
 
-## Канали вводу
+## Input channels
 
-Ввід абстраговано в канал із методом `poll() -> str | None`:
+Input is abstracted into a channel with a `poll() -> str | None` method:
 
-- **`ScriptedChannel({tick: text})`** — детермінований: ввід прив'язаний до
-  номерів тіків. Для демо й тестів.
-- **`StdinChannel`** — живий: фоновий потік-демон читає `stdin` у чергу;
-  `poll()` неблокуюче забирає черговий рядок (або `None`). Тож цикл тіків не
-  зупиняється в очікуванні вводу — повідомлення підхоплюється на найближчому
-  тіку.
+- **`ScriptedChannel({tick: text})`** — deterministic: input is bound to
+  tick numbers. For the demo and tests.
+- **`StdinChannel`** — live: a background daemon thread reads `stdin` into a queue;
+  `poll()` non-blockingly takes the next line (or `None`). So the tick loop doesn't
+  stall waiting for input — a message is picked up on the next
+  tick.
 
-## Історія розмови
+## Conversation history
 
-Спільний для обох гілок список усіх повідомлень сесії (`history`), без обрізання
-й самарізації — накопичуємо все й додаємо до промпта. Кожен елемент —
+A list of all session messages shared by both branches (`history`), with no trimming
+or summarization — we accumulate everything and append it to the prompt. Each item is
 `{"role": "user"|"assistant", "text": ...}`.
 
-- **Чат** (SDK): уся історія йде як масив `messages` (`to_messages`).
-- **Роздум/тули** (CLI): історія вкладається у промпт текстовим транскриптом
-  (`to_transcript`, підписи `Користувач:` / `Ти:`), бо субпроцес не тримає сесію
-  між викликами.
+- **Chat** (SDK): the whole history goes in as a `messages` array (`to_messages`).
+- **Reasoning/tools** (CLI): history is embedded in the prompt as a text transcript
+  (`to_transcript`, with `Користувач:` / `Ти:` labels), because the subprocess holds no session
+  between calls.
 
-Кожен хід `respond()`: спершу в `history` дописується повідомлення користувача,
-потім — відповідь двіжка. Стрічка спільна, тож перемикання гілок не губить
-контекст.
+Each `respond()` turn: first the user's message is appended to `history`,
+then the engine's reply. The stream is shared, so switching branches doesn't lose
+context.
 
-## Дві гілки в деталях
+## The two branches in detail
 
-**ЧАТ — `chat_reply` (Haiku, Anthropic SDK).** Імпорт `anthropic` локальний
-(dry-run лишається без залежностей); `Anthropic()` бере ключ із
-`ANTHROPIC_API_KEY`. Виклик:
+**CHAT — `chat_reply` (Haiku, Anthropic SDK).** The `anthropic` import is local
+(dry-run stays dependency-free); `Anthropic()` takes the key from
+`ANTHROPIC_API_KEY`. The call:
 
 ```python
 Anthropic().messages.create(
     model=CHAT_MODEL, max_tokens=512,
-    system=system,                  # канон + довга пам'ять
-    messages=to_messages(history),  # уся стрічка, з поточним ходом
+    system=system,                  # canon + long-term memory
+    messages=to_messages(history),  # the whole stream, including the current turn
 )
 ```
 
-Відповідь — список блоків; беремо перший текстовий. Помилка мережі/ліміту/API
-не валить цикл — повертається рядок `(chat error: …)`.
+The reply is a list of blocks; we take the first text one. A network/limit/API error
+doesn't crash the loop — a `(chat error: …)` string is returned.
 
-**РОЗДУМ/ТУЛИ — `deep_reply` (Opus, `claude -p`).** Субпроцес:
+**REASONING/TOOLS — `deep_reply` (Opus, `claude -p`).** The subprocess:
 
 ```
 claude -p --model DEEP_MODEL --append-system-prompt <system> [--allowedTools …] <prompt>
 ```
 
-Попередня історія йде в промпт текстовим транскриптом; поточне повідомлення — в
-кінці. `--allowedTools` додається лише для класу `tools` (`DEEP_TOOLS`).
+Prior history goes into the prompt as a text transcript; the current message comes at
+the end. `--allowedTools` is added only for the `tools` class (`DEEP_TOOLS`).
 
-## Довга пам'ять і транскрипти сесій
+## Long-term memory and session transcripts
 
-**На старті:** `load_memory()` читає всі минулі підсумки одним текстом, а
-`build_system(canon, memory)` зшиває їх із каноном у системний промпт обох
-гілок. Так двіжок «пам'ятає» попередні розмови. `load_canon()` бере персону зі
-`state/canon.md` (запасний — `DEFAULT_CANON`).
+**On start:** `load_memory()` reads all past summaries as a single text, and
+`build_system(canon, memory)` stitches them together with the canon into the system prompt of both
+branches. This is how the engine "remembers" earlier conversations. `load_canon()` takes the persona from
+`state/canon.md` (fallback — `DEFAULT_CANON`).
 
-**На виході** (`finally`):
+**On exit** (`finally`):
 
-1. `save_session(history, live, started)` — пише **сирий** транскрипт у
+1. `save_session(history, live, started)` — writes the **raw** transcript to
    `history/session-<stamp>.json` (`{session, started_at, ended_at, mode, turns,
-   history}`, `ensure_ascii=False`). Зберігається **першим**, щоб можливий збій
-   `summarize` не з'їв транскрипт; колізію тієї ж секунди обходить суфікс `-2`,
-   `-3`, …
-2. `summarize(history, live)` — стислий підсумок через `claude -p`
-   (у dry-run — заглушка).
-3. `save_summary(text)` — дописує підсумок у `state/memory.md` з датою.
+   history}`, `ensure_ascii=False`). It's saved **first**, so that a possible
+   `summarize` failure can't swallow the transcript; a same-second collision is sidestepped with a `-2`,
+   `-3`, … suffix.
+2. `summarize(history, live)` — a concise summary via `claude -p`
+   (in dry-run — a stub).
+3. `save_summary(text)` — appends the summary to `state/memory.md` with a date.
 
-`history` і `memory.md` — append-only, без обрізання поки що.
+`history` and `memory.md` are append-only, with no trimming yet.
 
-## Конфігурація і калібрування
+## Configuration and calibration
 
-Усі сталі — у `config.py`. `load_dotenv()` (свій мінімальний парсер
-`KEY=VALUE`, без залежностей) читає `.env` із кореня **до** визначення констант.
-Використовує `os.environ.setdefault` — **справжня змінна середовища завжди
-перемагає** `.env`.
+All the constants are in `config.py`. `load_dotenv()` (its own minimal
+`KEY=VALUE` parser, dependency-free) reads `.env` from the root **before** the constants are
+defined. It uses `os.environ.setdefault` — **a real environment variable always
+wins** over `.env`.
 
-Зі `.env` задаються: `CHAT_MODEL`, `DEEP_MODEL`, `TICK_SECONDS`,
-`THINK_THRESHOLD`, `SELF_COOLDOWN` (плюс `KILN_LIVE`, `ANTHROPIC_API_KEY` для
-живого режиму).
+Set from `.env`: `CHAT_MODEL`, `DEEP_MODEL`, `TICK_SECONDS`,
+`THINK_THRESHOLD`, `SELF_COOLDOWN` (plus `KILN_LIVE`, `ANTHROPIC_API_KEY` for
+live mode).
 
-Решта ручок — константи у `config.py`:
+The rest of the knobs are constants in `config.py`:
 
-| Ручка | Що крутить |
+| Knob | What it tunes |
 |---|---|
-| `DRIFT` | швидкість дрейфу окремо для кожної потреби |
-| `SATIATION` | скільки кожна подія (chat/deep/idle) закриває потреби |
-| `NEED_TRIGGERS` | поріг і гілка self-тригера на кожну потребу |
-| `DEEP_TOOLS` / `DEEP_SKILLS` | дозволені тули та скіли гілки роздумів |
-| `THINK_HINTS` / `TOOL_HINTS` | слова-маркери для класифікації |
-| ваги в `turn_weight()` | внесок intensity/connection у вагу ходу |
+| `DRIFT` | drift speed, separately for each need |
+| `SATIATION` | how much each event (chat/deep/idle) closes the needs |
+| `NEED_TRIGGERS` | the threshold and branch of the self-trigger for each need |
+| `DEEP_TOOLS` / `DEEP_SKILLS` | the allowed tools and skills for the reasoning branch |
+| `THINK_HINTS` / `TOOL_HINTS` | marker words for classification |
+| the weights in `turn_weight()` | the contribution of intensity/connection to the turn weight |
 
-Структуровані ручки (словники `DRIFT`/`SATIATION`/`NEED_TRIGGERS`) лишаються в
-коді — вони не лягають у плаский `KEY=VALUE`.
+The structured knobs (the `DRIFT`/`SATIATION`/`NEED_TRIGGERS` dicts) stay in
+code — they don't fit a flat `KEY=VALUE`.
 
-## Слеш-команди
+## Slash commands
 
-Рядок, що починається з `/`, перехоплюється **до** класифікації
-(`handle_command`), тож не йде в мозок як повідомлення:
+A line starting with `/` is intercepted **before** classification
+(`handle_command`), so it doesn't go to the brain as a message:
 
-| Команда | Дія |
+| Command | Action |
 |---|---|
-| `/status` | ходи, найгарячіша потреба, режим, усі потреби |
-| `/needs` | поточні рівні потреб |
-| `/memory` | вміст довгої пам'яті (`memory.md`) |
-| `/history` | останні ходи стрічки сесії |
-| `/ask <текст>` | примусовий виклик Клода (deep), повз класифікатор |
-| `/clear` | очистити історію сесії |
-| `/help` | список команд |
-| `/quit` | вихід (підсумок і транскрипт усе одно збережуться) |
+| `/status` | turns, the hottest need, mode, all needs |
+| `/needs` | current need levels |
+| `/memory` | contents of long-term memory (`memory.md`) |
+| `/history` | the latest turns of the session stream |
+| `/ask <text>` | a forced Claude call (deep), past the classifier |
+| `/clear` | clear the session history |
+| `/help` | the list of commands |
+| `/quit` | exit (the summary and transcript are saved regardless) |
 
-## Точки розширення («Далі»)
+## Extension points ("Next")
 
-- Тонша класифікація: зараз за словами-маркерами; згодом — за наміром.
-- Обрізання історії сесії (вікно останніх N ходів) — зараз без обрізання.
-- Обрізання/злиття довгої пам'яті: `memory.md` з часом лише росте.
-- Per-turn timestamps у транскриптах (зараз — лише час сесії) для тоншого RAG.
-- Типізовані винятки SDK у `chat_reply` замість одного широкого `except`.
+- Finer classification: currently by marker words; eventually — by intent.
+- Trimming the session history (a window of the last N turns) — currently no trimming.
+- Trimming/merging long-term memory: `memory.md` only grows over time.
+- Per-turn timestamps in transcripts (currently — only the session time) for finer RAG.
+- Typed SDK exceptions in `chat_reply` instead of one broad `except`.

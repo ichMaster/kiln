@@ -1,9 +1,9 @@
 """
-Контракт TuiOutput (реалізація seam'а Output над містком).
+TuiOutput contract (the Output seam implemented over the bridge).
 
-agent/usage/notice -> події в outbox; user() — echo-free НЕ-операція. Повний хід
-через run() з MockBrain кладе репліку + usage в outbox і НЕ відлунює ввід.
-Нуль платних викликів.
+agent/usage/notice -> events into the outbox; user() is an echo-free no-op. A full turn
+through run() with MockBrain puts the reply + usage into the outbox and does NOT echo input.
+Zero paid calls.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ def test_tuioutput_emits_agent_and_usage():
 def test_tuioutput_user_is_echo_free_noop():
     b = Bridge()
     TuiOutput(b).user("моє повідомлення")
-    assert b.drain_output() == []  # ввід не відлунюється у рендер
+    assert b.drain_output() == []  # input is not echoed into the render
 
 
 def test_run_turn_emits_to_outbox(monkeypatch, tmp_path):
@@ -65,9 +65,9 @@ def test_run_turn_emits_to_outbox(monkeypatch, tmp_path):
     events = b.drain_output()
     kinds = [e["kind"] for e in events]
     assert "agent" in kinds and "usage" in kinds
-    assert "user" not in kinds  # echo-free: двіжок не шле ввід у рендер
+    assert "user" not in kinds  # echo-free: the engine doesn't send input to the render
 
     agent_ev = next(e for e in events if e["kind"] == "agent")
-    assert "dry-run chat" in agent_ev["text"]  # репліка від MockBrain
+    assert "dry-run chat" in agent_ev["text"]  # reply from MockBrain
     usage_ev = next(e for e in events if e["kind"] == "usage")
     assert set(usage_ev["usage"]) == USAGE_KEYS

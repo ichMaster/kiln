@@ -1,9 +1,9 @@
 """
-Контракт seam'а «мозок» (ARCHITECTURE §Contracts, §Two brains and cost routing).
+Contract for the "brain" seam (ARCHITECTURE §Contracts, §Two brains and cost routing).
 
-Кожна гілка повертає (text, usage), де usage = {model, input, output, total}.
-respond() кличе модель ЛИШЕ через brain — тут перевіряємо це на моку, без жодних
-мережевих чи субпроцесних викликів (нуль платних викликів).
+Each branch returns (text, usage), where usage = {model, input, output, total}.
+respond() calls the model ONLY through brain — verified here against a mock, with no
+network or subprocess calls (zero paid calls).
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from kiln.usage import usage_record
 USAGE_KEYS = {"model", "input", "output", "total"}
 
 
-# --- usage_record: нормалізація токенів (її ділять обидва адаптери) ----------
+# --- usage_record: token normalization (shared by both adapters) -------------
 
 
 def test_usage_record_from_cli_dict():
@@ -25,7 +25,7 @@ def test_usage_record_from_cli_dict():
 
 
 def test_usage_record_from_sdk_object():
-    class _U:  # імітація msg.usage із SDK
+    class _U:  # mimics msg.usage from the SDK
         input_tokens = 10
         output_tokens = 5
 
@@ -42,7 +42,7 @@ def test_usage_record_none_is_zeroed():
     }
 
 
-# --- Brain seam: форма (text, usage) ----------------------------------------
+# --- Brain seam: the (text, usage) shape ------------------------------------
 
 
 def test_mockbrain_chat_contract():
@@ -61,16 +61,16 @@ def test_mockbrain_deep_contract():
 
 
 def test_both_brains_satisfy_protocol():
-    # runtime_checkable Protocol: структурна відповідність seam'у.
+    # runtime_checkable Protocol: structural conformance to the seam.
     assert isinstance(MockBrain(), Brain)
     assert isinstance(LiveBrain(), Brain)
 
 
-# --- respond() через мок: маршрутизація + 0 IO ------------------------------
+# --- respond() through a mock: routing + 0 IO -------------------------------
 
 
 class RecordingBrain:
-    """Мок, що запам'ятовує, яку гілку покликали; жодного IO."""
+    """Mock that records which branch was called; no IO."""
 
     def __init__(self):
         self.calls: list = []
@@ -95,7 +95,7 @@ def test_respond_chat_routes_to_brain_chat():
 
 def test_respond_think_routes_to_brain_deep():
     brain = RecordingBrain()
-    # 'поясни'/'чому' — THINK_HINTS -> гілка deep, без тулів.
+    # Prompt carries THINK_HINTS markers -> deep branch, no tools.
     out = respond(
         "поясни, чому так", State(needs={"intensity": 0.0, "connection": 0.0}), [], "sys", brain
     )
@@ -111,11 +111,11 @@ def test_respond_force_deep_bypasses_classify():
 
 
 def test_respond_with_mock_never_touches_subprocess(monkeypatch):
-    """З мок-мозком respond не торкається subprocess (нуль платних викликів)."""
+    """With a mock brain, respond never touches subprocess (zero paid calls)."""
     import kiln.brain as brainmod
 
     def _boom(*a, **k):
-        raise AssertionError("subprocess.run не має викликатися з MockBrain")
+        raise AssertionError("subprocess.run must not be called with MockBrain")
 
     monkeypatch.setattr(brainmod.subprocess, "run", _boom)
     respond("поясни, чому так", State(needs={}), [], "sys", MockBrain(), force="deep")

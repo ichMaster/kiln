@@ -1,7 +1,7 @@
-"""kiln — дешевий always-on tick-сервер для живих текстових агентів.
+"""kiln — a cheap always-on tick server for live text agents.
 
-Пакет: config/history/usage (листки) -> memory -> commands -> engine.
-Консольний вхід — kiln.__main__:main (команда `kiln` або `python -m kiln`).
+Package: config/history/usage (leaves) -> memory -> commands -> engine.
+Console entry point is kiln.__main__:main (the `kiln` command or `python -m kiln`).
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ __all__ = ["__version__"]
 
 
 def _read_version() -> str:
-    """Версія з кореневого файлу VERSION (єдине джерело правди; синхрон із pyproject)."""
+    """Version from the root VERSION file (single source of truth; synced with pyproject)."""
     version_file = Path(__file__).resolve().parent.parent / "VERSION"
     if version_file.exists():
         return version_file.read_text(encoding="utf-8").strip()

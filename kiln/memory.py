@@ -1,9 +1,9 @@
 """
-kiln — довга пам'ять між сесіями, промпти/канон і транскрипти сесій.
+kiln — cross-session long-term memory, prompts/canon, and session transcripts.
 
-При виході розмова підсумовується через Claude і дописується в memory.md, а
-сира історія сесії лягає у history/*.json (для RAG). При старті підсумки
-вантажаться в системний промпт обох гілок.
+On exit the conversation is summarized via Claude and appended to memory.md, while
+the raw session history is written to history/*.json (for RAG). On start the summaries
+are loaded into the system prompt of both branches.
 """
 
 from __future__ import annotations
@@ -21,11 +21,11 @@ from .usage import _cli_error_detail
 
 def load_prompts() -> dict[str, list[str]]:
     """
-    Читає state/prompts.md: секції [потреба] зі списком промптів self-тригера.
-    Формат:
+    Reads state/prompts.md: [need] sections with a list of self-trigger prompts.
+    Format:
         [connection]
-        Текст промпта 1
-        Текст промпта 2
+        Prompt text 1
+        Prompt text 2
         [novelty]
         ...
     """
@@ -47,7 +47,7 @@ def load_prompts() -> dict[str, list[str]]:
 
 
 def pick_prompt(prompts: dict[str, list[str]], need: str) -> str:
-    """Випадковий промпт для потреби; запасний — якщо для потреби списку немає."""
+    """Random prompt for a need; falls back when the need has no list."""
     options = prompts.get(need)
     if options:
         return random.choice(options)
@@ -55,12 +55,12 @@ def pick_prompt(prompts: dict[str, list[str]], need: str) -> str:
 
 
 def load_memory() -> str:
-    """Усі попередні підсумки розмов одним текстом (або '')."""
+    """All previous conversation summaries as one text (or '')."""
     return MEMORY_FILE.read_text(encoding="utf-8") if MEMORY_FILE.exists() else ""
 
 
 def load_canon() -> str:
-    """Канон (персона/голос обох гілок) зі state/canon.md; запасний — DEFAULT_CANON."""
+    """Canon (persona/voice of both branches) from state/canon.md; falls back to DEFAULT_CANON."""
     if CANON_FILE.exists():
         text = CANON_FILE.read_text(encoding="utf-8").strip()
         if text:
@@ -69,7 +69,7 @@ def load_canon() -> str:
 
 
 def summarize(history: list[dict], live: bool) -> str:
-    """Підсумок розмови через Claude (`claude -p`). У dry-run — заглушка."""
+    """Conversation summary via Claude (`claude -p`). In dry-run — a stub."""
     if not history:
         return ""
     transcript = to_transcript(history)
@@ -78,41 +78,41 @@ def summarize(history: list[dict], live: bool) -> str:
         "які висновки, що варто пам'ятати наступного разу.\n\n" + transcript
     )
     if not live:
-        return f"(dry-run summary: {len(history)} ходів)"
+        return f"(dry-run summary: {len(history)} turns)"
     cmd = ["claude", "-p", "--model", DEEP_MODEL, "--output-format", "json", prompt]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-    except Exception as e:  # таймаут / процес не стартував
-        print(f"[exit] підсумок не зроблено: {e}")
+    except Exception as e:  # timeout / process failed to start
+        print(f"[exit] summary failed: {e}")
         return ""
     if result.returncode != 0:
-        # Не валимо вихід через невдалий підсумок — транскрипт уже збережено.
+        # Don't crash exit over a failed summary — the transcript is already saved.
         detail = _cli_error_detail(result)
-        print(f"[exit] підсумок не зроблено (CLI {result.returncode}: {detail})")
+        print(f"[exit] summary failed (CLI {result.returncode}: {detail})")
         return ""
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError:
         return result.stdout.strip()
-    # (usage підсумку не показуємо в стрічці — лише результат)
+    # (summary usage is not shown in the feed — only the result)
     return (data.get("result") or "").strip()
 
 
 def save_summary(text: str) -> None:
-    """Дописує підсумок у memory.md з датою-роздільником."""
+    """Appends a summary to memory.md with a date separator."""
     if not text:
         return
     stamp = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
-    block = f"\n## Розмова {stamp}\n{text}\n"
+    block = f"\n## Conversation {stamp}\n{text}\n"
     with MEMORY_FILE.open("a", encoding="utf-8") as f:
         f.write(block)
 
 
 def save_session(history: list[dict], live: bool, started: str):
     """
-    Зберігає СИРУ історію сесії у history/session-<stamp>.json (для майбутнього RAG).
-    Один файл = одна сесія; ensure_ascii=False, щоб українська лишалась читомою.
-    Повертає шлях до файлу або None (порожня історія).
+    Saves the RAW session history to history/session-<stamp>.json (for future RAG).
+    One file = one session; ensure_ascii=False so Ukrainian stays readable.
+    Returns the file path or None (empty history).
     """
     if not history:
         return None
@@ -125,9 +125,9 @@ def save_session(history: list[dict], live: bool, started: str):
         "ended_at": ended.isoformat(timespec="seconds"),
         "mode": "live" if live else "dry",
         "turns": len(history),
-        "history": history,  # [{role, text}, ...] у хронологічному порядку
+        "history": history,  # [{role, text}, ...] in chronological order
     }
-    # Не перетирати наявний файл, якщо дві сесії закрилися в ту саму секунду.
+    # Don't overwrite an existing file if two sessions closed in the same second.
     path = HISTORY_DIR / f"session-{stamp}.json"
     n = 2
     while path.exists():
@@ -138,7 +138,7 @@ def save_session(history: list[dict], live: bool, started: str):
 
 
 def build_system(canon: str, memory: str) -> str:
-    """Системний промпт = канон (персона) + довга пам'ять (якщо є)."""
+    """System prompt = canon (persona) + long-term memory (if any)."""
     if not memory.strip():
         return canon
     return canon + "\n\nДовга пам'ять про попередні розмови (для контексту):\n" + memory.strip()

@@ -1,12 +1,12 @@
 """
-kiln — консольний вхід.
+kiln — console entry point.
 
-Команда `kiln` (або `python -m kiln`) кличе main(). Живий режим читає stdin і
-крутить тіки безперервно; dry-run — детермінований демо-сценарій через
-ScriptedChannel (без жодних викликів моделі), він же — димовий тест двіжка.
+The `kiln` command (or `python -m kiln`) calls main(). Live mode reads stdin and
+runs ticks continuously; dry-run is a deterministic demo scenario via
+ScriptedChannel (without any model calls), which doubles as the engine's smoke test.
 
-Вхід винесено з engine.py навмисно: engine лишається бібліотечним модулем без
-__main__, тож його можна імпортувати (зокрема в тестах) без побічних ефектів.
+The entry point is split out of engine.py deliberately: engine stays a library module
+without __main__, so it can be imported (including in tests) without side effects.
 """
 
 from __future__ import annotations
@@ -24,41 +24,41 @@ from .engine import (
 
 
 def _run_tui() -> None:
-    """`kiln --tui` — Textual-клієнт (екстра `tui`); двіжок крутиться у фоні."""
+    """`kiln --tui` — Textual client (the `tui` extra); the engine runs in the background."""
     try:
         from tui.app import main as tui_main
     except ImportError:
-        print("Для TUI постав екстру: pip install -e '.[tui]'")
+        print("For the TUI, install the extra: pip install -e '.[tui]'")
         return
     tui_main()
 
 
 def _demo() -> None:
-    """Детермінований dry-run демо-сценарій (також димовий тест)."""
-    # Демо 1 (dry-run): чат, команди й вихід.
+    """Deterministic dry-run demo scenario (also the smoke test)."""
+    # Demo 1 (dry-run): chat, commands, and exit.
     run(
         ticks=12,
         live=False,
         channel=ScriptedChannel(
             {
                 1: "привіт, як справи?",  # -> chat / haiku
-                2: "/status",  # системна команда
+                2: "/status",  # system command
                 4: "поясни, чому так виходить",  # -> think / opus
-                5: "/history",  # показати стрічку
-                6: "/needs",  # стан потреб
-                8: "/quit",  # вихід
+                5: "/history",  # show the feed
+                6: "/needs",  # needs state
+                8: "/quit",  # exit
             }
         ),
     )
 
-    # Демо 2 (dry-run): self-тригер. Піднімаємо novelty над порогом —
-    # двіжок озивається сам через deep, потім кулдаун тримає тишу.
-    print("\n--- демо self-тригера (novelty над порогом) ---")
+    # Demo 2 (dry-run): self-trigger. We raise novelty above the threshold —
+    # the engine speaks first via deep, then the cooldown keeps it quiet.
+    print("\n--- self-trigger demo (novelty above threshold) ---")
     state = load_state()
     state.needs["novelty"] = 0.92
     save_state(state)
     run(ticks=8, live=False, channel=ScriptedChannel({}))
-    # повертаємо спокійний дефолт
+    # restore the calm default
     st = load_state()
     st.needs["novelty"] = 0.25
     save_state(st)
@@ -70,12 +70,12 @@ def main() -> None:
         return
     live = os.environ.get("KILN_LIVE") == "1"
     if live:
-        # Живий режим: пиши повідомлення в термінал, тіки крутяться самі.
-        print("kiln: пиши повідомлення (Ctrl-C щоб вийти)…")
+        # Live mode: type messages into the terminal, ticks run on their own.
+        print("kiln: type a message (Ctrl-C to exit)…")
         try:
             run(ticks=None, live=True, channel=StdinChannel())
         except KeyboardInterrupt:
-            print("\nбувай.")
+            print("\nbye.")
     else:
         _demo()
 

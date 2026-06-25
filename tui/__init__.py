@@ -1,9 +1,9 @@
 """
-kiln.tui — клієнт термінального UI (Textual) над двіжком.
+kiln.tui — terminal UI (Textual) client on top of the engine.
 
-Тонкий клієнт: НЕ містить логіки агента. Спілкується з циклом тіків лише через
-echo-free місток (bridge.Bridge) — інбокс (UI -> двіжок: введені рядки) та аутбокс
-(двіжок -> UI: події рендера). Сам двіжок (kiln.engine) цей пакет не імпортує.
+Thin client: holds NO agent logic. It talks to the tick loop only through an
+echo-free Bridge (bridge.Bridge) — inbox (UI -> engine: typed lines) and outbox
+(engine -> UI: render events). The engine itself (kiln.engine) does not import this package.
 """
 
 from __future__ import annotations

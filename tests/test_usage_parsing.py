@@ -1,4 +1,4 @@
-"""Unit: розбір usage (_usage_tokens) і причина невдачі CLI (_cli_error_detail)."""
+"""Unit: usage parsing (_usage_tokens) and the CLI failure reason (_cli_error_detail)."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def test_cli_error_detail_plain_stdout():
 
 def test_cli_error_detail_empty():
     r = SimpleNamespace(stderr="", stdout="")
-    assert _cli_error_detail(r) == "без деталей"
+    assert _cli_error_detail(r) == "no details"
 
 
 def test_cli_error_detail_truncates_long():

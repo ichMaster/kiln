@@ -1,12 +1,12 @@
 """
-kiln — seam виводу: ядро пише репліки через порт, а не у print напряму.
+kiln — the output seam: the core writes replies through a port, not via print directly.
 
-Мета — лишити ядро (engine.run) незалежним від інтерфейсу: сьогодні типовий сінк
-ConsoleOutput друкує в термінал (кольори як раніше), а в v0.3 на той самий порт
-стане echo-free TUI-шина, у v1.1/1.2 — серверний протокол подій (user.message,
-agnika.message, usage, ...). Зміна сінка міняє, КУДИ йде вивід, не чіпаючи двіжок.
+The goal is to keep the core (engine.run) independent of the interface: today the default sink
+ConsoleOutput prints to the terminal (colors as before), in v0.3 an echo-free TUI bus will plug
+into the same port, and in v1.1/1.2 a server-side event protocol (user.message, agnika.message,
+usage, ...). Swapping the sink changes WHERE output goes without touching the engine.
 
-Контракт: ядро викликає лише методи Output; жодних print у engine.
+Contract: the core calls only Output methods; no print in engine.
 """
 
 from __future__ import annotations
@@ -18,34 +18,34 @@ from .usage import BOT_COLOR, BOT_NAME, USER_COLOR, _c, print_tech
 
 @runtime_checkable
 class Output(Protocol):
-    """Порт виводу. Методи приблизно відповідають майбутнім подіям протоколу."""
+    """Output port. The methods roughly correspond to future protocol events."""
 
     def user(self, text: str) -> None:
-        """Ехо повідомлення користувача."""
+        """Echo of the user's message."""
         ...
 
     def agent(self, text: str, *, is_self: bool = False, lead: bool = False) -> None:
-        """Репліка агента (is_self — самоініційована; lead — з порожнім рядком перед нею)."""
+        """Agent reply (is_self — self-initiated; lead — with a blank line before it)."""
         ...
 
     def usage(self, usage: dict | None) -> None:
-        """Технічний рядок під відповіддю (модель + токени)."""
+        """Technical line beneath the reply (model + tokens)."""
         ...
 
     def notice(self, text: str) -> None:
-        """Системний рядок ([exit] …, статус виходу тощо)."""
+        """System line ([exit] …, exit status, etc.)."""
         ...
 
 
 class ConsoleOutput:
-    """Типовий сінк: друк у термінал (поведінка/кольори — як до seam'а)."""
+    """The default sink: prints to the terminal (behavior/colors — as before the seam)."""
 
     def user(self, text: str) -> None:
         print("\n" + _c(f"you: {text}", USER_COLOR))
 
     def agent(self, text: str, *, is_self: bool = False, lead: bool = False) -> None:
         label = f"{BOT_NAME} (self)" if is_self else BOT_NAME
-        nl = "\n" if (is_self or lead) else ""  # самоініційована/«свіжа» репліка — з відступом
+        nl = "\n" if (is_self or lead) else ""  # self-initiated/"fresh" reply — with an indent
         print(nl + _c(f"{label}: {text}", BOT_COLOR))
 
     def usage(self, usage: dict | None) -> None:
