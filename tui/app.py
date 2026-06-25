@@ -72,7 +72,7 @@ class KilnApp(App):
     CSS = """
     #status, #stats { height: 1; padding: 0 2; background: $panel; color: $text-muted; }
     #needspanel {
-        height: auto; padding: 0 1; margin: 1 1 0 1;
+        height: auto; padding: 0 1; margin: 1 1 1 1;  /* bottom 1 = empty line before the chat */
         border: round $primary-darken-3; color: $text-muted;
     }
     RichLog { height: 1fr; padding: 0 1; }
