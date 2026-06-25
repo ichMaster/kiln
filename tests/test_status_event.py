@@ -18,6 +18,7 @@ SNAPSHOT_KEYS = {
     "status",
     "model",
     "branch",
+    "tick",
     "needs",
     "thresholds",
     "hottest",
@@ -67,10 +68,11 @@ def test_status_snapshot_shape():
     state = State(needs={"connection": 0.5, "novelty": 0.9})
     tg = TriggerBook()
     tg.cooldown = {"novelty": 3, "rest": 0}  # only >0 should surface
-    snap = _status_snapshot("idle", state, tg, SessionStats(), branch=None)
+    snap = _status_snapshot("idle", state, tg, SessionStats(), branch=None, tick=7)
     assert set(snap) == SNAPSHOT_KEYS
     assert set(snap["stats"]) == STATS_KEYS
     assert snap["status"] == "idle"
+    assert snap["tick"] == 7
     assert snap["needs"] == {"connection": 0.5, "novelty": 0.9}
     assert snap["thresholds"]  # populated from NEED_TRIGGERS
     assert snap["cooldowns"] == {"novelty": 3}  # rest (0) filtered out
@@ -79,10 +81,10 @@ def test_status_snapshot_shape():
 
 def test_status_snapshot_model_follows_branch():
     state, tg, stats = State(needs={}), TriggerBook(), SessionStats()
-    assert _status_snapshot("responding", state, tg, stats, "chat")["model"] == CHAT_MODEL
-    assert _status_snapshot("responding", state, tg, stats, "think")["model"] == DEEP_MODEL
+    assert _status_snapshot("responding", state, tg, stats, "chat", 0)["model"] == CHAT_MODEL
+    assert _status_snapshot("responding", state, tg, stats, "think", 0)["model"] == DEEP_MODEL
     assert (
-        _status_snapshot("idle", state, tg, stats, None)["model"] == DEEP_MODEL
+        _status_snapshot("idle", state, tg, stats, None, 0)["model"] == DEEP_MODEL
     )  # headline default
 
 
@@ -139,6 +141,7 @@ def test_run_emits_status_every_tick(monkeypatch, tmp_path):
     assert len(rec.statuses) == 3  # one per idle tick
     assert all(set(s) == SNAPSHOT_KEYS for s in rec.statuses)
     assert all(s["status"] == "idle" for s in rec.statuses)
+    assert [s["tick"] for s in rec.statuses] == [0, 1, 2]  # the loop's tick counter
 
 
 def test_run_status_reflects_a_turn(monkeypatch, tmp_path):

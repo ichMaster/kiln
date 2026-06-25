@@ -266,11 +266,12 @@ def respond(
 
 
 def _status_snapshot(
-    status: str, state: State, tg: TriggerBook, stats: SessionStats, branch: str | None
+    status: str, state: State, tg: TriggerBook, stats: SessionStats, branch: str | None, tick: int
 ) -> dict:
     """
     Build the per-tick status snapshot the TUI status bar / needs panel render from.
-    status ∈ idle/thinking/responding; branch is the last turn class (chat/think/tools).
+    status ∈ idle/thinking/responding; branch is the last turn class (chat/think/tools);
+    tick is the loop's tick counter (0-based).
     """
     thresholds = {name: cfg["threshold"] for name, cfg in NEED_TRIGGERS.items()}
     cooldowns = {name: c for name, c in tg.cooldown.items() if c > 0}
@@ -279,6 +280,7 @@ def _status_snapshot(
         "status": status,
         "model": model,
         "branch": branch,
+        "tick": tick,
         "needs": dict(state.needs),
         "thresholds": thresholds,
         "hottest": list(state.hottest_need()),  # [need, level]
@@ -375,7 +377,7 @@ def run(
                 # a silent tick isn't printed — check state via /status
 
             # Per-tick status snapshot (needs + thresholds + stats) for live clients.
-            output.status(_status_snapshot(status_label, state, tg, stats, branch))
+            output.status(_status_snapshot(status_label, state, tg, stats, branch, t))
 
             time.sleep(TICK_SECONDS if live else 0)
             t += 1

@@ -106,6 +106,7 @@ def test_app_status_bar_updates_from_status_event(tmp_path):
         "status": "responding",
         "model": "claude-opus-4-8",
         "branch": "think",
+        "tick": 42,
         "needs": {"novelty": 0.9},
         "thresholds": {"novelty": 0.85},
         "hottest": ["novelty", 0.9],
@@ -131,9 +132,9 @@ def test_app_status_bar_updates_from_status_event(tmp_path):
             stats = str(app.query_one("#stats", Static).render())
             assert "responding" in status and "opus-4-8" in status
             assert "1 turns" in stats  # stats line rendered
-            # needs/thresholds panel: its own bordered box (title "Needs") with the over-threshold need
+            # needs/thresholds panel: its own bordered box, title carries the tick counter
             needs = app.query_one("#needspanel", Static)
-            assert needs.border_title == "Needs"
+            assert needs.border_title == "Needs · tick 42"
             panel = str(needs.render())
             assert "novelty" in panel and "0.90/0.85" in panel and " !" in panel
 

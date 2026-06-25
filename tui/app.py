@@ -18,6 +18,7 @@ import threading
 from rich.markup import escape
 from textual import events
 from textual.app import App, ComposeResult
+from textual.css.query import NoMatches
 from textual.message import Message
 from textual.widgets import Footer, Header, RichLog, Static, TextArea
 
@@ -140,7 +141,10 @@ class KilnApp(App):
         )
 
     def _drain(self) -> None:
-        log = self.query_one(RichLog)
+        try:
+            log = self.query_one(RichLog)
+        except NoMatches:
+            return  # DOM not mounted yet / torn down (e.g. on exit) — skip this tick
         for event in self.bridge.drain_output():
             if event.get("kind") == "status":
                 self._update_status(event["snapshot"])
@@ -151,7 +155,9 @@ class KilnApp(App):
         self.query_one("#status", Static).update(status_line1(snap))
         self.query_one("#stats", Static).update(status_line2(snap))
         rows = needs_panel_lines(snap)
-        self.query_one("#needspanel", Static).update("\n".join(rows) if rows else "needs: …")
+        panel = self.query_one("#needspanel", Static)
+        panel.border_title = f"Needs · tick {snap.get('tick', 0)}"
+        panel.update("\n".join(rows) if rows else "needs: …")
 
     def _render(self, log: RichLog, event: dict) -> None:
         kind = event.get("kind")

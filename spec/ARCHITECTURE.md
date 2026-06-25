@@ -151,7 +151,7 @@ multi-agent is additive, not a rewrite:
   `ConsoleOutput` is the default sink (`status` a no-op). The method set foreshadows
   the event protocol below.
 - **Status event (v0.4):** `run()` emits a `status(snapshot)` **every tick** —
-  `{status, model, branch, needs, thresholds, hottest, cooldowns, stats}` where
+  `{status, model, branch, tick, needs, thresholds, hottest, cooldowns, stats}` where
   `stats = {turns, tokens_total, tokens_by_branch, last_tokens, last_latency,
   avg_latency}` (`SessionStats`). It's the live data the TUI status bar + needs panel
   render from; a precursor to the v1.1 WS `status` event.
