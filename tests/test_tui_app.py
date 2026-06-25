@@ -127,9 +127,10 @@ def test_app_status_bar_updates_from_status_event(tmp_path):
             bridge.emit({"kind": "status", "snapshot": snap})
             app._drain()  # deterministic: drain now instead of waiting for the timer
             await pilot.pause()
-            bar = str(app.query_one("#statusbar", Static).render())
-            assert "responding" in bar and "opus-4-8" in bar
-            assert "1 turns" in bar  # stats line rendered
+            status = str(app.query_one("#status", Static).render())
+            stats = str(app.query_one("#stats", Static).render())
+            assert "responding" in status and "opus-4-8" in status
+            assert "1 turns" in stats  # stats line rendered
             # needs/thresholds panel rendered the over-threshold need
             panel = str(app.query_one("#needspanel", Static).render())
             assert "novelty" in panel and "0.90/0.85" in panel and " !" in panel

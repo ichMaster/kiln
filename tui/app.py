@@ -37,13 +37,12 @@ _TECH_STYLE = "dim green"
 class KilnApp(App):
     """Thin client: log + input line, wired to the engine through the bridge."""
 
-    TITLE = "kiln"
-    SUB_TITLE = "Agnika"
+    TITLE = "kiln — Agnika"
 
     CSS = """
-    #statusbar { dock: top; height: 2; padding: 0 1; background: $panel; color: $text-muted; }
+    #status, #stats { height: 1; padding: 0 2; background: $panel; color: $text-muted; }
     #needspanel {
-        dock: top; height: auto; padding: 0 1;
+        height: auto; padding: 0 1;
         border-bottom: solid $panel; color: $text-muted;
     }
     RichLog { height: 1fr; padding: 0 1; }
@@ -76,8 +75,9 @@ class KilnApp(App):
         self._transcript: list[str] = []  # plain-text mirror of the log (for Ctrl+O)
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)  # standard top bar: title + clock + command palette
-        yield Static("status: starting…", id="statusbar")
+        yield Header()  # standard top bar: title + command palette (Lumi-style, no clock)
+        yield Static("status: starting…", id="status")
+        yield Static("stats: …", id="stats")
         yield Static("needs: …", id="needspanel")
         yield RichLog(markup=True, wrap=True, highlight=False)
         yield Input(placeholder="Type a message…  (Ctrl+Q — quit)")
@@ -109,7 +109,8 @@ class KilnApp(App):
                 self._render(log, event)
 
     def _update_status(self, snap: dict) -> None:
-        self.query_one("#statusbar", Static).update(f"{status_line1(snap)}\n{status_line2(snap)}")
+        self.query_one("#status", Static).update(status_line1(snap))
+        self.query_one("#stats", Static).update(status_line2(snap))
         rows = needs_panel_lines(snap)
         self.query_one("#needspanel", Static).update("\n".join(rows) if rows else "needs: …")
 
