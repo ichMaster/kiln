@@ -62,11 +62,24 @@ def _bar(level: float, width: int = 10) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
+def need_color(level: float, threshold: float | None) -> str:
+    """Color by closeness to the trigger threshold: green (calm) -> yellow -> red (at/over)."""
+    if not threshold:
+        return "white"
+    ratio = level / threshold
+    if ratio >= 1.0:
+        return "red"
+    if ratio >= 0.8:
+        return "yellow"
+    return "green"
+
+
 def needs_panel_lines(snap: dict) -> list[str]:
     """
-    One row per need: `* name  ███░░░░░░░ level/threshold ! cdN`.
-    `*` marks the hottest need, `!` an at/over-threshold need, `cdN` an active cooldown.
-    This is where Lumi shows model reasoning — kiln shows the motivational substrate.
+    One row per need: `* name  ███░░░░░░░ level/threshold ! cdN`, the bar colored by
+    closeness to the threshold (green -> yellow -> red). `*` marks the hottest need,
+    `!` an at/over-threshold need, `cdN` an active cooldown. This is where Lumi shows
+    model reasoning — kiln shows the motivational substrate.
     """
     needs = snap.get("needs", {})
     thresholds = snap.get("thresholds", {})
@@ -80,5 +93,6 @@ def needs_panel_lines(snap: dict) -> list[str]:
         flag = " !" if (thr is not None and level >= thr) else ""
         cd = cooldowns.get(name, 0)
         cd_s = f" cd{cd}" if cd else ""
-        rows.append(f"{mark}{name:<10} {_bar(level)} {level:.2f}{thr_s}{flag}{cd_s}")
+        color = need_color(level, thr)
+        rows.append(f"{mark}{name:<10} [{color}]{_bar(level)}[/] {level:.2f}{thr_s}{flag}{cd_s}")
     return rows

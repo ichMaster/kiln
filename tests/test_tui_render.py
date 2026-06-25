@@ -10,6 +10,7 @@ from __future__ import annotations
 from tui.render import (
     agent_label,
     fmt_tok,
+    need_color,
     needs_panel_lines,
     short_model,
     status_line1,
@@ -121,6 +122,26 @@ def test_needs_panel_below_threshold_no_flag():
     connection = next(r for r in rows if "connection" in r)
     assert " !" not in connection
     assert "0.50/0.80" in connection
+
+
+def test_need_color_bands():
+    assert need_color(0.4, 0.8) == "green"  # ratio 0.5 — calm
+    assert need_color(0.7, 0.8) == "yellow"  # ratio 0.875 — approaching
+    assert need_color(0.8, 0.8) == "red"  # ratio 1.0 — at threshold
+    assert need_color(0.9, 0.8) == "red"  # over threshold
+    assert need_color(0.5, None) == "white"  # no threshold
+    assert need_color(0.5, 0) == "white"  # zero threshold
+
+
+def test_needs_panel_colors_bar_by_closeness():
+    over = needs_panel_lines(
+        _snap(needs={"intensity": 1.0}, thresholds={"intensity": 0.75}, hottest=["intensity", 1.0])
+    )
+    assert "[red]" in over[0]
+    calm = needs_panel_lines(
+        _snap(needs={"rest": 0.1}, thresholds={"rest": 0.9}, hottest=["", 0.0])
+    )
+    assert "[green]" in calm[0]
 
 
 # --- chat-log polish: labels + per-turn tech line --------------------------
