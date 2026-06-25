@@ -1,6 +1,15 @@
 kiln — Release Notes
 ====================
 
+Version 0.2.0 (2026-06-25)
+---------------------------
+- Restructured into an installable kiln/ package with a `kiln` console entry and pyproject.toml (dynamic version from VERSION); dropped requirements.txt (KILN-001)
+- Brain seam — both brains behind a mockable Brain interface (LiveBrain/MockBrain); the core no longer touches the SDK/CLI directly (KILN-002)
+- Output seam — the engine writes replies through an Output port instead of print, readying the v0.3 TUI bus (KILN-006)
+- Test suite — 55 pytest tests (unit + contract + integration) running entirely on a mock brain; zero paid calls (KILN-003)
+- Tooling — ruff lint+format config and an advisory mypy stub; codebase formatted clean (KILN-004)
+- CI — GitHub Actions runs ruff + pytest on push/PR across Python 3.10/3.12, no API key (KILN-005)
+
 Version 0.1.0 (2026-06-25)
 ---------------------------
 - Needs-driven chat engine: a loop of cheap local ticks; the LLM "brain" fires only on user input or a need crossing its threshold
