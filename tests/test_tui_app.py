@@ -131,8 +131,10 @@ def test_app_status_bar_updates_from_status_event(tmp_path):
             stats = str(app.query_one("#stats", Static).render())
             assert "responding" in status and "opus-4-8" in status
             assert "1 turns" in stats  # stats line rendered
-            # needs/thresholds panel rendered the over-threshold need
-            panel = str(app.query_one("#needspanel", Static).render())
+            # needs/thresholds panel: its own bordered box (title "Needs") with the over-threshold need
+            needs = app.query_one("#needspanel", Static)
+            assert needs.border_title == "Needs"
+            panel = str(needs.render())
             assert "novelty" in panel and "0.90/0.85" in panel and " !" in panel
 
     asyncio.run(scenario())

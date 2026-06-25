@@ -71,8 +71,8 @@ class KilnApp(App):
     CSS = """
     #status, #stats { height: 1; padding: 0 2; background: $panel; color: $text-muted; }
     #needspanel {
-        height: auto; padding: 0 1;
-        border-bottom: solid $panel; color: $text-muted;
+        height: auto; padding: 0 1; margin: 1 1 0 1;
+        border: round $primary-darken-3; color: $text-muted;
     }
     RichLog { height: 1fr; padding: 0 1; }
     #prompt {
@@ -112,7 +112,10 @@ class KilnApp(App):
         yield Header()  # standard top bar: title + command palette (Lumi-style, no clock)
         yield Static("status: starting…", id="status")
         yield Static("stats: …", id="stats")
-        yield Static("needs: …", id="needspanel")
+        needs = Static("needs: …", id="needspanel")
+        needs.border_title = "Needs"
+        needs.border_subtitle = "level / threshold · * hottest · ! over · cdN cooldown"
+        yield needs
         yield RichLog(markup=True, wrap=True, highlight=False)
         prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
         prompt.border_title = "You"
