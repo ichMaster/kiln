@@ -1,6 +1,14 @@
 kiln — Release Notes
 ====================
 
+Version 0.3.0 (2026-06-25)
+---------------------------
+- Terminal UI client (Textual): scrollable reply log + fixed input line; launch with `kiln --tui` (new `tui` extra) (KILN-011)
+- Echo-free bridge bus (tui/bridge.py) decoupling the tick loop from the UI thread — the engine keeps ticking and self-triggering in the background while the UI renders (KILN-007/011)
+- TuiOutput / TuiChannel adapters plug the Textual client into the v0.2 Output/Channel seams — engine core unchanged (KILN-008/009)
+- Slash-command output now flows through the Output seam (no more direct print), so every client captures it (KILN-010)
+- Test suite 55 -> 80 (all on a mock brain, zero paid calls); CI installs the tui extra
+
 Version 0.2.0 (2026-06-25)
 ---------------------------
 - Restructured into an installable kiln/ package with a `kiln` console entry and pyproject.toml (dynamic version from VERSION); dropped requirements.txt (KILN-001)
