@@ -11,9 +11,9 @@ def test_no_trigger_below_threshold():
 
 
 def test_fires_on_upward_crossing_with_its_action():
-    # novelty thr 0.85 -> action 'deep'
+    # novelty thr 0.85 -> action 'tool' (delegates to the session-wiki sub-agent)
     fired = select_self_trigger(State(needs={"novelty": 0.90}), TriggerBook())
-    assert fired == ("novelty", "deep")
+    assert fired == ("novelty", "tool")
 
 
 def test_hysteresis_one_fire_while_staying_above():

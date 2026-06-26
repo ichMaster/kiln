@@ -37,12 +37,12 @@ State is a set of needs, each `0..1` (`state/needs.json`). Two forces: slow
 
 ### Drift and what each need means
 
-| Need | What it means | Drift/tick (`DRIFT`) |
-|---|---|---|
-| `connection` | the urge for contact | +0.020 |
-| `rest` | accumulated fatigue | +0.010 |
-| `novelty` | the need for something new | +0.015 |
-| `intensity` | emotional tension | +0.030 |
+| Need | What it means | Drift/tick (`DRIFT`) | Role |
+|---|---|---|---|
+| `connection` | the urge for contact | +0.0020 | the **cheap chat** driver — fires most often |
+| `novelty` | the need for something new | +0.0012 | the **expensive deep** driver — leads the deep turn |
+| `intensity` | emotional tension | +0.0008 | discharged by every deep turn; hovers, rarely leads |
+| `rest` | accumulated fatigue | +0.0004 | mostly activity-driven; recovers in silence, rarely fires |
 
 ### Closure by events (`SATIATION`)
 
@@ -51,16 +51,27 @@ A Claude call (`deep`) satiates more deeply than cheap chat.
 
 | Event | connection | rest | novelty | intensity |
 |---|---|---|---|---|
-| `chat` — Haiku reply (Anthropic SDK) | −0.50 | — | −0.10 | −0.10 |
-| `deep` — Claude CLI reply (reasoning/tools) | −0.50 | −0.15 | −0.40 | −0.35 |
-| `idle` — silence (a tick without a reply) | — | −0.05 | −0.02 |
+| `chat` — Haiku reply (Anthropic SDK) | −0.50 | +0.01 | −0.05 | −0.08 |
+| `deep` — Claude CLI reply (reasoning/tools) | −0.40 | +0.04 | −0.45 | −0.40 |
+| `idle` — silence (a tick without a reply) | — | −0.005 | — | +0.0003 |
 
-Contact (of any kind) eases `connection`. But it is `deep` specifically that closes `novelty`
-(learned something new) and `rest` (the hard work is done), and discharges
-`intensity` the most. Hence the natural cycle: needs accumulate → push toward the expensive
-`deep` → it eases them deeply → a long stretch of cheap chat and silence.
+The resets are **large relative to drift**, so one event clearly satisfies a need (a calm,
+minute-scale cadence) rather than leaving it hovering just under threshold and re-firing every
+few seconds. Contact (of any kind) eases `connection`. `deep` is the "filling meal": it closes
+`novelty` and discharges `intensity` the most — and it **tires** (`rest` *rises*, it does not
+fall). `idle` (silence) is what recovers `rest`, and being unanswered builds a little
+`intensity` (restlessness). Hence the cycle: needs accumulate → push toward the expensive `deep`
+→ it eases them deeply (and tires) → a long stretch of cheap chat and silence (which rests).
 
 `apply_satiation` clamps levels at `0.0`; `drift` clamps them at `1.0`.
+
+**The novelty self-trigger is special.** Its `NEED_TRIGGERS` action is `"tool"`, which delegates
+the whole reach-out to a **named Claude Code sub-agent** (`brain.tool` → `claude -p --agent
+session-wiki`). That sub-agent reads the recent session, picks one curiosity topic, fetches a
+**Wikipedia** fact, and returns a single Ukrainian paragraph in Agnika's voice — which becomes her
+reach-out. Satiation-wise it still counts as a `deep` event, so the rule becomes, for novelty: *a
+new fact arrived → novelty closes.* (`MockBrain.tool` returns canned text, so dry-run and tests make
+no network/subprocess calls; any need can name its own agent via `action: "tool"`.)
 
 ## Classification and routing
 

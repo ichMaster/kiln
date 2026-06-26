@@ -18,12 +18,35 @@ import json
 import subprocess
 from typing import Protocol, runtime_checkable
 
-from .config import CHAT_MODEL, DEEP_MODEL, DEEP_TOOLS
+from .config import AGENTS_DIR, CHAT_MODEL, DEEP_MODEL, DEEP_TOOLS
 from .history import to_messages, to_transcript
 from .usage import _cli_error_detail, usage_record
 
 # usage: {model, input, output, total} or None
 Usage = dict | None
+
+
+def _agent_meta(agent: str) -> dict:
+    """Parse a Claude Code agent file's YAML frontmatter (top-level `key: value` lines only).
+
+    Used by `claude -p --agent <agent>`: kiln reads the agent's `.claude/agents/<agent>.md`
+    frontmatter to learn its `model` and `tools` (the agent file is the single source of
+    truth). Indented continuation lines (e.g. a folded `description: >-`) are skipped.
+    """
+    meta: dict[str, str] = {}
+    try:
+        text = (AGENTS_DIR / f"{agent}.md").read_text(encoding="utf-8")
+    except OSError:
+        return meta
+    if not text.startswith("---"):
+        return meta
+    block = text.partition("---")[2].partition("---")[0]  # between the two fences
+    for line in block.splitlines():
+        if not line[:1].strip() or ":" not in line:  # skip indented/continuation lines
+            continue
+        key, _, val = line.partition(":")
+        meta[key.strip()] = val.strip()
+    return meta
 
 
 @runtime_checkable
@@ -38,6 +61,11 @@ class Brain(Protocol):
         self, prompt: str, history: list[dict], system: str, with_tools: bool
     ) -> tuple[str, Usage]:
         """A deep turn (reasoning or tools); history goes into the prompt as a transcript."""
+        ...
+
+    def tool(self, agent: str, history: list[dict], system: str) -> tuple[str, Usage]:
+        """Run a named Claude Code sub-agent (`claude -p --agent <agent>`); the recent
+        history goes in as a transcript. Used by "tool" self-triggers (e.g. session-wiki)."""
         ...
 
 
@@ -107,6 +135,45 @@ class LiveBrain:
             return result.stdout.strip(), None  # unexpected output — as is
         return (data.get("result") or "").strip(), usage_record(DEEP_MODEL, data.get("usage"))
 
+    def tool(self, agent: str, history: list[dict], system: str) -> tuple[str, Usage]:
+        # Run the named sub-agent via `claude -p --agent <agent>`: Claude Code loads
+        # .claude/agents/<agent>.md (its body IS the system prompt). We read that file's
+        # frontmatter only to pass --allowedTools (headless permission) and to label usage
+        # with its model. The recent conversation goes in as a transcript; canon/memory ride
+        # on --append-system-prompt. Degrades to "(<agent> error: …)" — never crashes the loop.
+        meta = _agent_meta(agent)
+        model = meta.get("model", "sonnet")
+        tools = [t.strip() for t in meta.get("tools", "").split(",") if t.strip()]
+        convo = to_transcript(history) if history else "(no conversation yet)"
+        prompt = (
+            "Recent conversation (your source material):\n"
+            + convo
+            + "\n\nRun your agent instructions over this conversation. Output ONLY your "
+            "final deliverable — no preamble, no narration, no description of your steps, "
+            "no commentary before or after it."
+        )
+        cmd = ["claude", "-p", "--agent", agent, "--output-format", "json"]
+        if system:
+            cmd += ["--append-system-prompt", system]
+        if tools:
+            cmd += ["--allowedTools", ",".join(tools)]
+        # --allowedTools is variadic (<tools...>), so a trailing positional prompt would be
+        # swallowed as another tool name. Pass the prompt via stdin to avoid that.
+        try:
+            result = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=180)
+        except Exception as e:  # timeout / process failed to start
+            return f"({agent} error: {e})", None
+        if result.returncode != 0:
+            return (
+                f"({agent} error: claude CLI {result.returncode}: {_cli_error_detail(result)})",
+                None,
+            )
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return result.stdout.strip(), None
+        return (data.get("result") or "").strip(), usage_record(model, data.get("usage"))
+
 
 class MockBrain:
     """
@@ -125,3 +192,8 @@ class MockBrain:
         prior = len(history) - 1 if history else 0
         text = f"(dry-run deep: transcript={prior} turns, tools={with_tools})"
         return text, usage_record(DEEP_MODEL, {"input_tokens": 20, "output_tokens": 30})
+
+    def tool(self, agent: str, history: list[dict], system: str) -> tuple[str, Usage]:
+        text = f"(dry-run tool[{agent}]: turns={len(history)})"
+        model = _agent_meta(agent).get("model", "sonnet")
+        return text, usage_record(model, {"input_tokens": 16, "output_tokens": 24})

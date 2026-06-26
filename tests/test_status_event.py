@@ -13,6 +13,7 @@ from kiln.config import CHAT_MODEL, DEEP_MODEL
 from kiln.engine import State, TriggerBook, _status_snapshot
 from kiln.output import ConsoleOutput
 from kiln.stats import SessionStats
+from kiln.usage import usage_record
 
 SNAPSHOT_KEYS = {
     "status",
@@ -76,7 +77,7 @@ def test_status_snapshot_shape():
     assert snap["tick"] == 7
     assert snap["needs"] == {"connection": 0.5, "novelty": 0.9}
     assert snap["thresholds"]  # populated from NEED_TRIGGERS
-    assert snap["actions"]["novelty"] == "deep"  # NEED_TRIGGERS action for the need
+    assert snap["actions"]["novelty"] == "tool"  # NEED_TRIGGERS action for the need
     assert snap["cooldowns"] == {"novelty": 3}  # rest (0) filtered out
     assert snap["hottest"][0] == "novelty"
 
@@ -180,3 +181,32 @@ def test_run_status_reflects_a_turn(monkeypatch, tmp_path):
     assert last["branch"] == "chat"
     assert last["stats"]["turns"] == 1
     assert last["stats"]["tokens_total"] == 20  # MockBrain chat usage: 8 + 12
+
+
+def test_run_novelty_selftrigger_routes_to_tool_agent(monkeypatch, tmp_path):
+    """With no user input, a novelty crossing reaches out via its named "tool" sub-agent."""
+    import kiln.engine as eng
+
+    _isolate(monkeypatch, eng, tmp_path)
+    # novelty already over its 0.85 threshold -> the novelty self-trigger fires on tick 1
+    monkeypatch.setattr(
+        eng,
+        "load_state",
+        lambda *a, **k: eng.State(
+            needs={"connection": 0.0, "rest": 0.0, "novelty": 0.95, "intensity": 0.0}
+        ),
+    )
+    monkeypatch.setattr(eng, "load_prompts", lambda *a, **k: {"novelty": ["розкажи щось нове"]})
+
+    class ToolSpyBrain(MockBrain):
+        calls: list = []
+
+        def tool(self, agent, history, system):
+            type(self).calls.append(agent)
+            return "НОВИЙ ФАКТ", usage_record("sonnet", {"input_tokens": 1, "output_tokens": 1})
+
+    rec = StatusRecorder()
+    eng.run(ticks=1, live=False, channel=eng.ScriptedChannel({}), brain=ToolSpyBrain(), output=rec)
+    assert ToolSpyBrain.calls == ["session-wiki"]  # routed to the named sub-agent, not deep
+    assert rec.replies == ["НОВИЙ ФАКТ"]  # the agent's paragraph is emitted as the reach-out
+    assert rec.statuses[-1]["branch"] == "tool"

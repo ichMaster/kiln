@@ -52,6 +52,17 @@ def test_respond_tools_route_label():
     assert out["route"].startswith("TOOLS/")
 
 
+def test_respond_tool_closes_novelty():
+    # A "tool" reach-out (named sub-agent) closes novelty like a deep "filling meal".
+    st = State(needs={"novelty": 0.90})
+    out = respond(
+        "розкажи щось нове", st, [], "sys", MockBrain(), force="tool", agent="session-wiki"
+    )
+    assert out["class"] == "tool"
+    assert out["route"] == "TOOL/session-wiki"
+    assert st.needs["novelty"] == pytest.approx(0.90 + SATIATION["deep"]["novelty"])
+
+
 def test_respond_full_turn_is_offline():
     """An end-to-end turn on the mock makes no network/subprocess calls."""
     import kiln.brain as brainmod

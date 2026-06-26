@@ -24,7 +24,7 @@ def test_drift_catch_up_multiplies_by_ticks():
 
 def test_drift_clamps_at_one():
     st = State(needs={"intensity": 0.99})
-    drift(st, ticks=10)
+    drift(st, ticks=1000)  # plenty to exceed 1.0 for any positive drift -> clamps
     assert st.needs["intensity"] == 1.0
 
 

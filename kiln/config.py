@@ -47,40 +47,50 @@ load_dotenv()  # read .env BEFORE the settings are defined below
 TICK_SECONDS = float(os.environ.get("TICK_SECONDS", "0.5"))
 
 # Self-triggers: EACH need has its own threshold and action (branch) on crossing.
-#   action: "chat" -> cheap Haiku; "deep" -> Claude (Opus).
-# connection/rest are closed by contact/pause -> cheap chat is enough;
-# novelty/intensity need substance/discharge -> deep.
+#   action: "chat" -> cheap Haiku; "deep" -> Claude (Opus); "idle" -> stay quiet;
+#           "tool" -> run a named Claude Code sub-agent (key "agent") via
+#                     `claude -p --agent <agent>` (.claude/agents/<agent>.md).
+# connection is eased by contact -> cheap chat is the FREQUENT driver;
+# intensity needs discharge -> deep; novelty reaches out through the session-wiki
+# sub-agent (a fresh external fact); rest is recovered by silence -> idle (rarely crosses).
 NEED_TRIGGERS = {
     "connection": {"threshold": 0.80, "action": "chat"},
     "rest": {"threshold": 0.90, "action": "idle"},
-    "novelty": {"threshold": 0.85, "action": "deep"},
+    "novelty": {"threshold": 0.85, "action": "tool", "agent": "session-wiki"},
     "intensity": {"threshold": 0.75, "action": "deep"},
 }
 SELF_COOLDOWN = int(
     os.environ.get("SELF_COOLDOWN", "5")
 )  # silent ticks after a self-trigger (per need)
 
-# Per-tick drift for EACH need separately (how much is added every tick).
-# intensity accumulates fastest, rest the slowest.
+# Per-tick drift for EACH need separately (added every tick). Stated in TICKS (the
+# needs-panel counter) so it's independent of TICK_SECONDS. connection drives the cheap
+# chat; novelty drives the expensive deep (kept slow so Opus stays rare); intensity is
+# discharged by every deep turn, so it hovers below its threshold rather than leading;
+# rest barely time-drifts (fatigue is activity-driven). Pure-idle cadence: chat and deep
+# each fire ~every 400 ticks (interactions make the exact gap differ from naive math).
 DRIFT = {
-    "connection": 0.020,
-    "rest": 0.010,
-    "novelty": 0.015,
-    "intensity": 0.030,
+    "connection": 0.0020,  # chat driver — 0->0.80 in ~400 ticks
+    "rest": 0.0004,  # minimal time drift — fatigue mostly comes from activity (deep/chat)
+    "novelty": 0.0012,  # deep driver (leads) — bar swings the full 0..0.85
+    "intensity": 0.0008,  # discharged by every deep turn — hovers ~0.7, rarely the lead
 }
 
-# Closing needs by events. Negative values = lowering the level.
+# Closing needs by events. Negative = lowering the level. The reset is LARGE relative
+# to drift, so one event clearly satisfies the need (a calm, minute-scale cadence)
+# instead of leaving it hovering just under threshold and re-firing every few seconds.
 #
 # Key idea: WHICH branch answered DETERMINES which needs were closed.
-#   - chat (Haiku) gives contact, but barely satiates novelty/discharge;
-#   - reasoning/tools (Claude CLI) is the "filling meal": closes novelty, rest, intensity.
+#   - chat (Haiku) gives contact: closes connection hard, barely touches the rest;
+#   - reasoning/tools (Claude CLI) is the "filling meal": closes novelty + intensity
+#     hard (and TIRES — rest rises, not falls).
 SATIATION = {
-    # event "answered via chat"
-    "chat": {"connection": -0.50, "rest": +0.05, "novelty": -0.10, "intensity": -0.10},
-    # event "answered via reasoning or tools" (Claude call)
-    "deep": {"connection": -0.50, "rest": +0.15, "novelty": -0.40, "intensity": -0.35},
-    # event "silence" (tick with no answer): rest + cooling of tension
-    "idle": {"connection": -0, "rest": -0.05, "novelty": -0, "intensity": +0.05},
+    # answered via chat (Haiku) — contact
+    "chat": {"connection": -0.50, "rest": +0.01, "novelty": -0.05, "intensity": -0.08},
+    # answered via reasoning/tools (Claude/Opus) — the "filling meal" (and tiring)
+    "deep": {"connection": -0.40, "rest": +0.04, "novelty": -0.45, "intensity": -0.40},
+    # silence (a tick with no reply): rest recovers; being unanswered builds mild restlessness
+    "idle": {"connection": 0, "rest": -0.005, "novelty": 0, "intensity": +0.0003},
 }
 
 # --- Classification / routing -----------------------------------------------
@@ -93,6 +103,11 @@ DEEP_MODEL = os.environ.get("DEEP_MODEL", "claude-opus-4-8")  # Claude CLI for r
 # Tools/skills allowed on the reasoning branch (example).
 DEEP_TOOLS = ["Read", "Write", "Bash"]
 DEEP_SKILLS: list[str] = []  # e.g. ["search", "summarize"]
+
+# "tool" self-triggers run a named Claude Code sub-agent (see NEED_TRIGGERS and
+# brain.LiveBrain.tool): `claude -p --agent <agent>` loads .claude/agents/<agent>.md,
+# whose frontmatter supplies the model and allowed tools — kiln only needs the directory.
+AGENTS_DIR = PROJECT_ROOT / ".claude" / "agents"
 
 # Canon (persona/voice) is taken from state/canon.md; this is just a fallback.
 DEFAULT_CANON = (

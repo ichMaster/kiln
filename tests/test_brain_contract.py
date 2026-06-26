@@ -60,6 +60,13 @@ def test_mockbrain_deep_contract():
     assert set(usage) == USAGE_KEYS
 
 
+def test_mockbrain_tool_contract():
+    text, usage = MockBrain().tool("session-wiki", [{"role": "user", "text": "привіт"}], "sys")
+    assert isinstance(text, str) and text
+    assert set(usage) == USAGE_KEYS
+    assert usage["total"] == usage["input"] + usage["output"]
+
+
 def test_both_brains_satisfy_protocol():
     # runtime_checkable Protocol: structural conformance to the seam.
     assert isinstance(MockBrain(), Brain)
@@ -82,6 +89,10 @@ class RecordingBrain:
     def deep(self, prompt, history, system, with_tools):
         self.calls.append(("deep", with_tools))
         return "DEEP-REPLY", usage_record(DEEP_MODEL, {"input_tokens": 2, "output_tokens": 2})
+
+    def tool(self, agent, history, system):
+        self.calls.append(("tool", agent))
+        return "TOOL-REPLY", usage_record("sonnet", {"input_tokens": 3, "output_tokens": 3})
 
 
 def test_respond_chat_routes_to_brain_chat():
@@ -108,6 +119,23 @@ def test_respond_force_deep_bypasses_classify():
     out = respond("будь-що", State(needs={}), [], "sys", brain, force="deep")
     assert brain.calls == [("deep", False)]
     assert out["class"] == "deep"
+
+
+def test_respond_force_tool_routes_to_named_agent():
+    brain = RecordingBrain()
+    out = respond(
+        "розкажи щось нове",
+        State(needs={"novelty": 0.9}),
+        [],
+        "sys",
+        brain,
+        force="tool",
+        agent="session-wiki",
+    )
+    assert brain.calls == [("tool", "session-wiki")]
+    assert out["class"] == "tool"
+    assert out["reply"] == "TOOL-REPLY"
+    assert out["route"] == "TOOL/session-wiki"
 
 
 def test_respond_with_mock_never_touches_subprocess(monkeypatch):

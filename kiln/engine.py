@@ -235,10 +235,12 @@ def respond(
     system: str,
     brain: Brain,
     force: str | None = None,
+    agent: str | None = None,
 ) -> dict:
-    # force ("chat"|"deep") picks the branch directly (for self-triggers and /ask),
+    # force ("chat"|"deep"|"tool") picks the branch directly (for self-triggers and /ask),
     # otherwise normal classification. We call the model ONLY through brain (seam):
     # the core knows nothing about the SDK or the CLI. usage arrives with the text.
+    # `agent` names the sub-agent for the "tool" branch (from NEED_TRIGGERS).
     cls = force if force else classify(prompt, state)
 
     # The user's current turn goes into the shared history before the call.
@@ -248,6 +250,14 @@ def respond(
         reply, usage = brain.chat(history, system)
         route = f"CHAT/{CHAT_MODEL.split('-')[1]}"  # e.g. CHAT/haiku
         event = "chat"
+    elif cls == "tool":
+        # A "tool" self-trigger runs a named Claude Code sub-agent (e.g. novelty ->
+        # session-wiki, an external Wikipedia fact). It closes needs like a deep "filling
+        # meal", so the satiation event is 'deep'. NB: distinct from the "tools" class below
+        # (deep + --allowedTools); here the whole turn is delegated to a sub-agent by name.
+        reply, usage = brain.tool(agent or "", history, system)
+        route = f"TOOL/{agent}"  # e.g. TOOL/session-wiki (the agent IS the trace label)
+        event = "deep"
     elif cls in ("think", "deep"):
         reply, usage = brain.deep(prompt, history, system, with_tools=False)
         route = f"THINK/{DEEP_MODEL.split('-')[1]}"  # e.g. THINK/opus
@@ -278,7 +288,9 @@ def _status_snapshot(
     # what addresses each need (the self-trigger branch)
     actions = {name: cfg["action"] for name, cfg in NEED_TRIGGERS.items()}
     cooldowns = {name: c for name, c in tg.cooldown.items() if c > 0}
-    model = CHAT_MODEL if branch == "chat" else DEEP_MODEL  # deep model is the headline default
+    # headline model for the status bar follows the last branch (deep/Opus is the default;
+    # a "tool" branch runs a sub-agent whose own model is shown on the reply label instead)
+    model = CHAT_MODEL if branch == "chat" else DEEP_MODEL
     return {
         "status": status,
         "model": model,
@@ -324,10 +336,10 @@ def run(
     tg = TriggerBook()  # trigger hysteresis + cooldown
     stats = SessionStats()  # session token/turn/latency totals (for the status bar)
 
-    def _turn(prompt: str, force: str | None = None) -> dict:
+    def _turn(prompt: str, force: str | None = None, agent: str | None = None) -> dict:
         # One model turn, timed; folds tokens + latency into the session stats.
         t0 = time.monotonic()
-        out = respond(prompt, state, history, system, brain, force=force)
+        out = respond(prompt, state, history, system, brain, force=force, agent=agent)
         stats.record(out["class"], out.get("usage"), time.monotonic() - t0)
         return out
 
@@ -374,7 +386,10 @@ def run(
                     status_label, branch = "responding", out["class"]
             elif fired is not None:
                 prompt = pick_prompt(prompts, fired)
-                out = _turn(prompt, force=faction)
+                # A "tool" action delegates the whole reach-out to a named sub-agent
+                # (e.g. novelty -> session-wiki); every other need uses its action directly.
+                agent = NEED_TRIGGERS[fired].get("agent") if faction == "tool" else None
+                out = _turn(prompt, force=faction, agent=agent)
                 output.agent(out["reply"], is_self=True, model=out["route"].split("/")[-1])
                 output.usage(out.get("usage"), stats.last_latency)
                 status_label, branch = "responding", out["class"]

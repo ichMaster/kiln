@@ -82,6 +82,12 @@ behind the **`Brain` seam** (`brain.py`), each method returning `(text, usage)`:
 - **deep** → **Opus** via `claude -p` (`LiveBrain.deep`, subprocess,
   `--output-format json` for text + token usage). Reasoning and tools
   (`--allowedTools`).
+- **tool** → a **named Claude Code sub-agent** via `claude -p --agent <agent>`
+  (`LiveBrain.tool`; the agent's `.claude/agents/<agent>.md` supplies its system prompt,
+  model, and tools — kiln reads the frontmatter only for `--allowedTools` + usage labeling).
+  A `NEED_TRIGGERS` entry with `action: "tool"` names the agent — e.g. **novelty →
+  `session-wiki`**, which reads the recent session, fetches an external Wikipedia fact, and
+  returns one Ukrainian paragraph; satiation-wise it counts as a `deep` event.
 - **mock** → `MockBrain` returns deterministic canned text + a synthetic usage
   record (no network, no subprocess); the dry-run demo and the whole test suite run
   on it — **zero paid calls**.
@@ -142,10 +148,11 @@ multi-agent is additive, not a rewrite:
   (SDK `msg.usage` / CLI `data.usage`).
 - **Needs:** `state/needs.json` = `{need: level(0..1)}`.
 - **Canon:** `state/canon.md` → the system prompt (fallback `DEFAULT_CANON`).
-- **Brain seam:** `Brain.chat(history, system)` and `Brain.deep(prompt, history,
-  system, with_tools)` each return `(text, usage)`; `LiveBrain` (SDK + CLI) and
-  `MockBrain` implement it; model ids are config. `respond()` calls the model only
-  through this seam.
+- **Brain seam:** `Brain.chat(history, system)`, `Brain.deep(prompt, history, system,
+  with_tools)`, and `Brain.tool(agent, history, system)` each return `(text, usage)`;
+  `LiveBrain` (SDK + CLI + named sub-agents) and `MockBrain` implement it; model ids are
+  config. `respond()` calls the model only through this seam (classes
+  `chat | think | tools | tool`, the last delegating to a named `.claude/agents/<agent>`).
 - **Output seam:** `Output` with `user(text)` / `agent(text, is_self, lead)` /
   `usage(dict, latency?)` / `notice(text)` / `status(snapshot)`; the core emits through it,
   `ConsoleOutput` is the default sink (`status` a no-op). The method set foreshadows
