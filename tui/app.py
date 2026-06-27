@@ -35,6 +35,7 @@ _USER_STYLE = "bold cyan"  # "you" name
 _BOT_STYLE = "bold green"  # "Agnika" name
 _SELF_STYLE = "bold green"  # "Agnika (self)" name — same weight, marked by the (self) suffix
 _MODEL_STYLE = "dark_green"  # the (model) tag next to the name
+_NOTICE_STYLE = "grey50"  # notices / system lines + command output — grey
 
 
 class ChatInput(TextArea):
@@ -176,7 +177,7 @@ class KilnApp(App):
             log.write(escape(text))
             self._transcript.append(f"{name}{f' ({model})' if model else ''}: {text}")
         elif kind == "notice":
-            log.write(escape(event["text"]))
+            log.write(f"[{_NOTICE_STYLE}]{escape(event['text'])}[/]")
             self._transcript.append(event["text"])
         elif kind == "user":  # echo-free: not expected (TuiOutput.user is a no-op)
             log.write(f"[{_USER_STYLE}]you:[/] {escape(event['text'])}")

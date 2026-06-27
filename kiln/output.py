@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from .usage import BOT_COLOR, BOT_NAME, USER_COLOR, _c, print_tech
+from .usage import BOT_COLOR, BOT_NAME, NOTICE_COLOR, USER_COLOR, _c, print_tech
 
 
 @runtime_checkable
@@ -62,7 +62,7 @@ class ConsoleOutput:
         print_tech(usage, latency)
 
     def notice(self, text: str) -> None:
-        print(text)
+        print(_c(text, NOTICE_COLOR))
 
     def status(self, snapshot: dict) -> None:
         # The console has no live bar — the per-tick status is a no-op here.

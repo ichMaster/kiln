@@ -33,6 +33,7 @@ def usage_record(model: str, usage) -> dict:
 USER_COLOR = "\033[1;36m"  # you — bright cyan
 BOT_COLOR = "\033[1;32m"  # bot — bright green
 TECH_COLOR = "\033[2;32m"  # technical line — dim green
+NOTICE_COLOR = "\033[90m"  # notices / system lines + command output — grey (bright black)
 COLOR_RESET = "\033[0m"
 
 
