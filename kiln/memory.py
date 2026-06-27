@@ -12,19 +12,23 @@ from __future__ import annotations
 import json
 import random
 import re
+import subprocess
 from pathlib import Path
 
 from .config import (
     CANON_FILE,
     CHAT_MODEL,
+    DEEP_MODEL,
     DEFAULT_CANON,
     HISTORY_DIR,
     MEMORY_FILE,
     PROMPTS_FILE,
     REST_MESSAGE,
+    claude_env,
 )
 from .history import to_transcript
 from .store import load_store, save_store
+from .usage import _cli_error_detail
 
 
 def load_prompts() -> dict[str, list[str]]:
@@ -117,6 +121,62 @@ def summarize(history: list[dict], live: bool) -> str:
         print(f"[exit] summary failed: {e}")
         return ""
     return next((b.text for b in msg.content if b.type == "text"), "").strip()
+
+
+def _parse_facts(stdout: str) -> list[str]:
+    """Pull the fact list from `claude -p` JSON output: its `result` is a JSON array of strings
+    (tolerating a code fence / surrounding prose); falls back to a bullet/line list."""
+    try:
+        result = json.loads(stdout).get("result", "")
+    except json.JSONDecodeError:
+        result = stdout
+    result = (result or "").strip()
+    if not result:
+        return []
+    start, end = result.find("["), result.rfind("]")
+    if start != -1 and end > start:
+        try:
+            arr = json.loads(result[start : end + 1])
+            if isinstance(arr, list):
+                return [str(x).strip() for x in arr if str(x).strip()]
+        except json.JSONDecodeError:
+            pass
+    return [ln.strip().lstrip("-•*").strip() for ln in result.splitlines() if ln.strip()]
+
+
+def extract_facts(history: list[dict], existing_facts: list[str], live: bool) -> list[str]:
+    """Extract durable **facts about the user** from the cleaned session via `claude -p` on
+    DEEP_MODEL (Opus + extended thinking; API key stripped → subscription). The model is shown
+    the facts already known and asked for ONLY new ones. Returns a list of new fact strings.
+    Dry-run — a stub (`[]`). On CLI error — `[]` (the exit path must never crash)."""
+    if not history:
+        return []
+    transcript = to_transcript(history)
+    known = "\n".join(f"- {t}" for t in existing_facts if t.strip()) or "(немає)"
+    prompt = (
+        "Ось розмова з користувачем. Випиши СТІЙКІ факти про користувача (хто він, уподобання, "
+        "життя, плани, стосунки) — це довготривала пам'ять, а не переказ розмови. Поверни ЛИШЕ "
+        "нові факти, яких ще немає у списку відомих, як JSON-масив рядків українською (порожній "
+        f"масив [], якщо нічого нового).\n\nВідомі факти:\n{known}\n\nРозмова:\n{transcript}"
+    )
+    if not live:
+        return []  # dry-run stub — no model call
+    # Opus via claude -p; claude_env() turns on extended thinking and strips the API key (so it
+    # bills via the CLI login — Opus is never called via the API key). Distinct from the Haiku
+    # session summary: facts are the durable layer and warrant Opus.
+    cmd = ["claude", "-p", "--model", DEEP_MODEL, "--output-format", "json", prompt]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180, env=claude_env())
+    except Exception as e:  # timeout / process failed to start
+        print(f"[exit] fact extraction failed: {e}")
+        return []
+    if result.returncode != 0:
+        # Don't crash the exit over facts — the transcript + summary are already saved.
+        print(
+            f"[exit] fact extraction failed (CLI {result.returncode}: {_cli_error_detail(result)})"
+        )
+        return []
+    return _parse_facts(result.stdout)
 
 
 def prune_history(turns: list[dict]) -> list[dict]:

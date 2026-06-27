@@ -54,6 +54,7 @@ from .config import (
 from .history import ROLE_BOT, ROLE_USER
 from .memory import (
     build_system,
+    extract_facts,
     load_canon,
     load_memory,
     load_prompts,
@@ -63,7 +64,7 @@ from .memory import (
 )
 from .output import ConsoleOutput, Output
 from .stats import SessionStats
-from .store import load_store, save_store
+from .store import add_facts, load_store, save_store
 
 # === State ==================================================================
 
@@ -467,6 +468,7 @@ def run(
             # its raw turns (the RAG corpus) FIRST — before the (possibly failing) summary —
             # so a summary failure can't lose the transcript. The session id is the start time.
             ended = _dt.datetime.now().isoformat(timespec="seconds")
+            stamp = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
             store = load_store()
             store["sessions"].append(
                 {
@@ -481,10 +483,17 @@ def run(
             save_store(store)  # transcript safe before summarizing
             summary = summarize(cleaned, live)
             if summary:
-                stamp = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
                 store["summaries"].append({"session_id": started, "stamp": stamp, "text": summary})
+                save_store(store)
+            # KILN-023: extract durable user facts (Opus + thinking) and fold them in (deduped).
+            existing_facts = [f.get("text", "") for f in store.get("facts", [])]
+            added_facts = add_facts(
+                store, extract_facts(cleaned, existing_facts, live), started, stamp
+            )
+            if added_facts:
                 save_store(store)
             output.notice(
                 f"[exit] stored session {started} ({len(cleaned)} turns)"
-                f"{' + summary' if summary else ''} -> {STORE_FILE.name}"
+                f"{' + summary' if summary else ''}"
+                f"{f' + {added_facts} facts' if added_facts else ''} -> {STORE_FILE.name}"
             )

@@ -134,6 +134,7 @@ def _isolate(monkeypatch, eng, tmp_path):
     monkeypatch.setattr(eng, "save_state", lambda *a, **k: None)
     monkeypatch.setattr(eng, "load_store", lambda *a, **k: empty_store())
     monkeypatch.setattr(eng, "summarize", lambda *a, **k: "")
+    monkeypatch.setattr(eng, "extract_facts", lambda *a, **k: [])  # no real claude -p in tests
     monkeypatch.setattr(eng, "save_store", lambda *a, **k: None)
 
 
@@ -209,6 +210,37 @@ def test_run_session_close_writes_to_store(monkeypatch, tmp_path):
     sid = s["sessions"][0]["id"]
     assert s["messages"].get(sid)  # the raw turns are stored (the RAG corpus)
     assert len(s["summaries"]) == 1 and s["summaries"][0]["text"] == "ПІДСУМОК"
+
+
+def test_run_session_close_extracts_facts(monkeypatch, tmp_path):
+    """KILN-023: closing a session folds extracted facts into the store, deduped against existing."""
+    import kiln.engine as eng
+    from kiln import store as kstore
+
+    _isolate(monkeypatch, eng, tmp_path)
+    store_path = tmp_path / "store.json"
+    # pre-seed one fact so we exercise the dedupe path on close
+    seeded = kstore.empty_store()
+    kstore.add_facts(seeded, ["Віталік пише агентів"], "old", "2026-06-01")
+    kstore.save_store(seeded, store_path)
+    monkeypatch.setattr(eng, "load_store", lambda: kstore.load_store(store_path))
+    monkeypatch.setattr(eng, "save_store", lambda s: kstore.save_store(s, store_path))
+    # the model "extracts" one repeat (deduped) + one new fact
+    monkeypatch.setattr(
+        eng, "extract_facts", lambda *a, **k: ["Віталік пише агентів", "Любить шахи"]
+    )
+
+    eng.run(
+        ticks=2,
+        live=False,
+        channel=eng.ScriptedChannel({1: "привіт"}),
+        brain=MockBrain(),
+        output=StatusRecorder(),
+    )
+    facts = kstore.load_store(store_path)["facts"]
+    texts = [f["text"] for f in facts]
+    assert texts == ["Віталік пише агентів", "Любить шахи"]  # repeat deduped, new appended
+    assert facts[0]["source_session"] == "old"  # origin kept on the deduped one
 
 
 def test_run_noise_only_session_not_stored(monkeypatch, tmp_path):

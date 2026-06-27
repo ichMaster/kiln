@@ -5,7 +5,7 @@ One JSON file holds the whole cross-session record, mirroring Lumi's `.lumi/stor
   - `sessions`:  ``[{id, started_at, ended_at, mode, turns}]`` — one per closed session;
   - `messages`:  ``{session_id: [{role, text}, …]}`` — the raw turns (the RAG corpus);
   - `summaries`: ``[{session_id, stamp, text}]`` — one summary per session;
-  - `facts`:     ``[{id, text, first_seen, last_seen, source_session}]`` — durable user facts (v0.6).
+  - `facts`:     ``[{id, text, first_seen, last_seen, source_session}]`` — durable user facts.
 
 Writes are **atomic** (temp file + ``os.replace``) and keep a ``.bak`` of the previous good
 file, so a crash mid-write never corrupts the store. A corrupt `store.json` is recovered from
