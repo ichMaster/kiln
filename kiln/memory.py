@@ -20,6 +20,7 @@ from .config import (
     CHAT_MODEL,
     DEEP_MODEL,
     DEFAULT_CANON,
+    FACTS_DIGEST_LINES,
     HISTORY_DIR,
     MEMORY_FILE,
     PROMPTS_FILE,
@@ -177,6 +178,42 @@ def extract_facts(history: list[dict], existing_facts: list[str], live: bool) ->
         )
         return []
     return _parse_facts(result.stdout)
+
+
+def digest_facts(live: bool) -> str:
+    """Condense ALL stored user facts to a compact view of who the user is — at most
+    FACTS_DIGEST_LINES lines (Lumi's `facts_digests`) — via `claude -p` on DEEP_MODEL (Opus +
+    extended thinking; API key stripped → subscription). Read-only (no store writes). No facts
+    → "". Dry-run — a stub. On CLI error — "" (start must never crash). The line cap is enforced
+    defensively after the call."""
+    facts = [
+        f.get("text", "") for f in load_store().get("facts", []) if (f.get("text") or "").strip()
+    ]
+    if not facts:
+        return ""
+    listing = "\n".join(f"- {t}" for t in facts)
+    prompt = (
+        f"Ось факти про користувача. Стисни їх до щонайбільше {FACTS_DIGEST_LINES} рядків — "
+        "актуальний, дедуплікований портрет користувача українською (по одному факту в рядку, "
+        f"без вступів і нумерації).\n\n{listing}"
+    )
+    if not live:
+        return f"(dry-run facts digest: {len(facts)} facts)"
+    cmd = ["claude", "-p", "--model", DEEP_MODEL, "--output-format", "json", prompt]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180, env=claude_env())
+    except Exception as e:  # timeout / process failed to start
+        print(f"[start] facts digest failed: {e}")
+        return ""
+    if result.returncode != 0:
+        print(f"[start] facts digest failed (CLI {result.returncode}: {_cli_error_detail(result)})")
+        return ""
+    try:
+        text = (json.loads(result.stdout).get("result") or "").strip()
+    except json.JSONDecodeError:
+        text = result.stdout.strip()
+    lines = [ln for ln in text.splitlines() if ln.strip()]  # enforce the cap (model may overshoot)
+    return "\n".join(lines[:FACTS_DIGEST_LINES])
 
 
 def prune_history(turns: list[dict]) -> list[dict]:

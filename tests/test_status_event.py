@@ -213,7 +213,7 @@ def test_run_session_close_writes_to_store(monkeypatch, tmp_path):
 
 
 def test_run_session_close_extracts_facts(monkeypatch, tmp_path):
-    """KILN-023: closing a session folds extracted facts into the store, deduped against existing."""
+    """KILN-023: closing a session folds extracted facts into the store, deduped."""
     import kiln.engine as eng
     from kiln import store as kstore
 

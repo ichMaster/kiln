@@ -87,7 +87,7 @@ def test_v05_store_without_facts_is_healed(tmp_path):
     p.write_text(
         json.dumps(
             {
-                "sessions": [{"id": "s1", "started_at": "a", "ended_at": "b", "mode": "live", "turns": 1}],
+                "sessions": [{"id": "s1", "started_at": "a", "ended_at": "b", "mode": "x", "turns": 1}],
                 "messages": {"s1": [{"role": "user", "text": "hi"}]},
                 "summaries": [{"session_id": "s1", "stamp": "x", "text": "t"}],
             }

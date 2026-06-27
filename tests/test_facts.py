@@ -1,9 +1,27 @@
-"""Unit: extract_facts() on Opus via `claude -p` (thinking on, key stripped) + the parser (KILN-023)."""
+"""Unit: fact extraction + digest on Opus via `claude -p`, and the parser (KILN-023/024)."""
 
 from __future__ import annotations
 
+import json
+
 import kiln.memory as mem
 from kiln.config import DEEP_MODEL, THINKING_TOKENS
+
+
+def _result(stdout, code=0):
+    return type("R", (), {"returncode": code, "stdout": stdout, "stderr": "boom"})()
+
+
+def _store_with_facts(texts):
+    return {
+        "sessions": [],
+        "messages": {},
+        "summaries": [],
+        "facts": [
+            {"id": f"f{i}", "text": t, "first_seen": "x", "last_seen": "x", "source_session": "s"}
+            for i, t in enumerate(texts, 1)
+        ],
+    }
 
 
 def test_extract_facts_dry_run_is_stub():
@@ -62,3 +80,52 @@ def test_parse_facts_line_fallback():
 def test_parse_facts_empty():
     assert mem._parse_facts('{"result": "[]"}') == []
     assert mem._parse_facts('{"result": ""}') == []
+
+
+# --- digest_facts (KILN-024) ---
+
+
+def test_digest_facts_empty_is_blank(monkeypatch):
+    monkeypatch.setattr(mem, "load_store", lambda *a, **k: _store_with_facts([]))
+    assert mem.digest_facts(live=True) == ""
+
+
+def test_digest_facts_dry_run_is_stub(monkeypatch):
+    monkeypatch.setattr(mem, "load_store", lambda *a, **k: _store_with_facts(["факт"]))
+    assert mem.digest_facts(live=False).startswith("(dry-run facts digest")
+
+
+def test_digest_facts_opus_thinking_no_key_and_line_cap(monkeypatch):
+    seen = {}
+    twelve = "\n".join(f"рядок {i}" for i in range(1, 13))  # 12 lines — over the cap
+
+    def _run(cmd, **kwargs):
+        seen["cmd"] = cmd
+        seen["env"] = kwargs.get("env")
+        return _result(json.dumps({"result": twelve}))
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-strip")
+    monkeypatch.setattr(mem, "load_store", lambda *a, **k: _store_with_facts(["a", "b"]))
+    monkeypatch.setattr(mem, "FACTS_DIGEST_LINES", 8)
+    monkeypatch.setattr(mem.subprocess, "run", _run)
+    out = mem.digest_facts(live=True)
+    assert len(out.splitlines()) == 8  # capped at FACTS_DIGEST_LINES
+    assert "--model" in seen["cmd"] and DEEP_MODEL in seen["cmd"]  # Opus via claude -p
+    assert seen["env"]["MAX_THINKING_TOKENS"] == str(THINKING_TOKENS)  # thinking ON
+    assert "ANTHROPIC_API_KEY" not in seen["env"]  # Opus never billed via the API key
+
+
+def test_digest_facts_respects_config_line_count(monkeypatch):
+    """The cap follows FACTS_DIGEST_LINES (overridable from .env)."""
+    monkeypatch.setattr(mem, "load_store", lambda *a, **k: _store_with_facts(["a"]))
+    monkeypatch.setattr(mem, "FACTS_DIGEST_LINES", 3)
+    monkeypatch.setattr(
+        mem.subprocess, "run", lambda *a, **k: _result(json.dumps({"result": "1\n2\n3\n4\n5"}))
+    )
+    assert len(mem.digest_facts(live=True).splitlines()) == 3
+
+
+def test_digest_facts_cli_error_is_blank(monkeypatch):
+    monkeypatch.setattr(mem, "load_store", lambda *a, **k: _store_with_facts(["a"]))
+    monkeypatch.setattr(mem.subprocess, "run", lambda *a, **k: _result("", code=1))
+    assert mem.digest_facts(live=True) == ""

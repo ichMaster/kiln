@@ -126,6 +126,10 @@ DEEP_MODEL = os.environ.get("DEEP_MODEL", "claude-opus-4-8")  # Claude CLI for r
 # interactive replies (thinking adds latency — it's a cap, the model uses up to this much).
 THINKING_TOKENS = int(os.environ.get("THINKING_TOKENS", "8000"))
 
+# v0.6 long memory: at start, all stored user `facts` are condensed (Opus) to at most this many
+# lines for the `## Facts about the user` system-prompt section. Tune via .env.
+FACTS_DIGEST_LINES = int(os.environ.get("FACTS_DIGEST_LINES", "8"))
+
 # Tools/skills allowed on the reasoning branch (example).
 DEEP_TOOLS = ["Read", "Write", "Bash"]
 DEEP_SKILLS: list[str] = []  # e.g. ["search", "summarize"]
