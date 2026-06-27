@@ -1,6 +1,11 @@
 kiln — Release Notes
 ====================
 
+Version 0.5.1 (2026-06-27)
+---------------------------
+- Add /prompt command — shows the system prompt (canon + memory) + the messages array sent to the model
+- Notices (system messages + slash-command output) now render grey in both console and TUI
+
 Version 0.5.0 (2026-06-27)
 ---------------------------
 - Short memory: a single .kiln/store.json holds all session state (sessions / messages / summaries), with atomic write + .bak recovery (KILN-017)
