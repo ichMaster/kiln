@@ -17,12 +17,12 @@ from .config import (
     CANON_FILE,
     DEEP_MODEL,
     DEFAULT_CANON,
-    MEMORY_FILE,
     PROMPTS_FILE,
     REST_MESSAGE,
     claude_env,
 )
 from .history import to_transcript
+from .store import load_store
 from .usage import _cli_error_detail
 
 
@@ -62,8 +62,18 @@ def pick_prompt(prompts: dict[str, list[str]], need: str) -> str:
 
 
 def load_memory() -> str:
-    """All previous conversation summaries as one text (or '')."""
-    return MEMORY_FILE.read_text(encoding="utf-8") if MEMORY_FILE.exists() else ""
+    """
+    All stored session summaries as one text blob (oldest→newest) for the system prompt.
+
+    Source is `.kiln/store.json` (v0.5); each summary becomes a `## Conversation <stamp>` block
+    — the same layout the old `memory.md` used, so `build_system` is unchanged. Empty store → "".
+    """
+    blocks = [
+        f"## Conversation {s.get('stamp', '')}\n{s.get('text', '')}".strip()
+        for s in load_store().get("summaries", [])
+        if (s.get("text") or "").strip()
+    ]
+    return "\n\n".join(blocks)
 
 
 def load_canon() -> str:
