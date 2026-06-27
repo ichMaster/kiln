@@ -211,6 +211,30 @@ def test_run_session_close_writes_to_store(monkeypatch, tmp_path):
     assert len(s["summaries"]) == 1 and s["summaries"][0]["text"] == "ПІДСУМОК"
 
 
+def test_run_noise_only_session_not_stored(monkeypatch, tmp_path):
+    """KILN-019: when the session prunes to nothing, the store stays empty (no session/summary)."""
+    import kiln.engine as eng
+    from kiln import store as kstore
+
+    _isolate(monkeypatch, eng, tmp_path)
+    store_path = tmp_path / "store.json"
+    monkeypatch.setattr(eng, "load_store", lambda: kstore.load_store(store_path))
+    monkeypatch.setattr(eng, "save_store", lambda s: kstore.save_store(s, store_path))
+    monkeypatch.setattr(eng, "prune_history", lambda h: [])  # everything was noise
+    monkeypatch.setattr(eng, "summarize", lambda *a, **k: "SHOULD-NOT-RUN")
+
+    rec = StatusRecorder()
+    eng.run(
+        ticks=2,
+        live=False,
+        channel=eng.ScriptedChannel({1: "привіт"}),
+        brain=MockBrain(),
+        output=rec,
+    )
+    s = kstore.load_store(store_path)
+    assert s["sessions"] == [] and s["summaries"] == [] and s["messages"] == {}
+
+
 def test_run_connection_reach_out_uses_novelty_model(monkeypatch, tmp_path):
     """connection fires the reach-out; high novelty (low intensity) makes it session-wiki."""
     import kiln.engine as eng

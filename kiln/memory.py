@@ -19,6 +19,7 @@ from .config import (
     DEFAULT_CANON,
     MEMORY_FILE,
     PROMPTS_FILE,
+    REST_MESSAGE,
     claude_env,
 )
 from .history import to_transcript
@@ -105,6 +106,21 @@ def summarize(history: list[dict], live: bool) -> str:
         return result.stdout.strip()
     # (summary usage is not shown in the feed — only the result)
     return (data.get("result") or "").strip()
+
+
+def prune_history(turns: list[dict]) -> list[dict]:
+    """
+    Drop what isn't real conversation before a session is stored (KILN-019): empty/whitespace
+    turns, slash-command echoes (text starting with '/'), and the resting notice (REST_MESSAGE).
+    Order is preserved. An all-noise session prunes to `[]` and is then skipped by the caller.
+    """
+    kept = []
+    for t in turns:
+        text = (t.get("text") or "").strip()
+        if not text or text.startswith("/") or text == REST_MESSAGE:
+            continue
+        kept.append(t)
+    return kept
 
 
 def build_system(canon: str, memory: str) -> str:

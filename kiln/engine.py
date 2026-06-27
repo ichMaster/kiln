@@ -58,6 +58,7 @@ from .memory import (
     load_memory,
     load_prompts,
     pick_prompt,
+    prune_history,
     summarize,
 )
 from .output import ConsoleOutput, Output
@@ -459,7 +460,9 @@ def run(
             t += 1
     finally:
         save_state(state)
-        if history:
+        # Review & prune to real conversation; an all-noise session is skipped entirely.
+        cleaned = prune_history(history)
+        if cleaned:
             # Everything closes into the single .kiln/store.json. We persist the session +
             # its raw turns (the RAG corpus) FIRST — before the (possibly failing) summary —
             # so a summary failure can't lose the transcript. The session id is the start time.
@@ -471,17 +474,17 @@ def run(
                     "started_at": started,
                     "ended_at": ended,
                     "mode": "live" if live else "dry",
-                    "turns": len(history),
+                    "turns": len(cleaned),
                 }
             )
-            store["messages"][started] = list(history)
+            store["messages"][started] = list(cleaned)
             save_store(store)  # transcript safe before summarizing
-            summary = summarize(history, live)
+            summary = summarize(cleaned, live)
             if summary:
                 stamp = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
                 store["summaries"].append({"session_id": started, "stamp": stamp, "text": summary})
                 save_store(store)
             output.notice(
-                f"[exit] stored session {started} ({len(history)} turns)"
+                f"[exit] stored session {started} ({len(cleaned)} turns)"
                 f"{' + summary' if summary else ''} -> {STORE_FILE.name}"
             )
