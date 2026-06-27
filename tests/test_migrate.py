@@ -71,3 +71,28 @@ def test_migrate_nothing_when_no_legacy(monkeypatch, tmp_path):
     _wire_store(monkeypatch, tmp_path)
     n = mem.migrate_legacy(memory_file=tmp_path / "nope.md", history_dir=tmp_path / "nohist")
     assert n == 0
+
+
+def test_migrate_handles_session_id_collisions(monkeypatch, tmp_path):
+    """Two files closed the same second (same inner 'session' stamp) keep DISTINCT messages."""
+    hist = tmp_path / "history"
+    hist.mkdir()
+    for suffix, who in [("", "a"), ("-2", "b")]:
+        (hist / f"session-2026-06-26_10-49-00{suffix}.json").write_text(
+            json.dumps(
+                {
+                    "session": "2026-06-26_10-49-00",  # SAME inner stamp -> the collision
+                    "started_at": "x",
+                    "ended_at": "y",
+                    "mode": "live",
+                    "turns": 1,
+                    "history": [{"role": "user", "text": who}],
+                }
+            ),
+            encoding="utf-8",
+        )
+    store_path = _wire_store(monkeypatch, tmp_path)
+    assert mem.migrate_legacy(memory_file=tmp_path / "none.md", history_dir=hist) == 2
+    s = kstore.load_store(store_path)
+    assert len(s["sessions"]) == 2 and len(s["messages"]) == 2  # no overwrite
+    assert {m[0]["text"] for m in s["messages"].values()} == {"a", "b"}  # both transcripts kept

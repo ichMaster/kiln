@@ -176,7 +176,10 @@ def migrate_legacy(memory_file: Path = MEMORY_FILE, history_dir: Path = HISTORY_
             rec = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        sid = rec.get("session") or path.stem
+        # Use the unique FILENAME (history/session-<stamp>[-N].json) as the id — the inner
+        # "session" stamp collides for same-second closes (the -2/-3 files), which would
+        # overwrite messages and lose turns. The filename is unique per file.
+        sid = path.stem.removeprefix("session-") or path.stem
         store["sessions"].append(
             {
                 "id": sid,
