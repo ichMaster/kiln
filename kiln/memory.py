@@ -1,9 +1,10 @@
 """
 kiln — canon/prompts loaders, the session summarizer, and the system-prompt builder.
 
-`summarize()` condenses a session via `claude -p` (Opus + thinking); the engine's close path
-writes the summary + raw turns into the single `.kiln/store.json` (store.py). On start the
-stored summaries load into the system prompt of every branch (`build_system`).
+`summarize()` condenses a session via the Anthropic Messages API (Haiku — cheap/fast, like the
+chat branch, not `claude -p`/Opus); the engine's close path writes the summary + raw turns into
+the single `.kiln/store.json` (store.py). On start the stored summaries load into the system
+prompt of every branch (`build_system`).
 """
 
 from __future__ import annotations
@@ -11,22 +12,19 @@ from __future__ import annotations
 import json
 import random
 import re
-import subprocess
 from pathlib import Path
 
 from .config import (
     CANON_FILE,
-    DEEP_MODEL,
+    CHAT_MODEL,
     DEFAULT_CANON,
     HISTORY_DIR,
     MEMORY_FILE,
     PROMPTS_FILE,
     REST_MESSAGE,
-    claude_env,
 )
 from .history import to_transcript
 from .store import load_store, save_store
-from .usage import _cli_error_detail
 
 
 def load_prompts() -> dict[str, list[str]]:
@@ -89,8 +87,9 @@ def load_canon() -> str:
 
 
 def summarize(history: list[dict], live: bool) -> str:
-    """Conversation summary via `claude -p` on DEEP_MODEL (Opus) with extended thinking ON.
-    In dry-run — a stub. Opus runs through the CLI with the API key stripped (subscription)."""
+    """Conversation summary via the Anthropic Messages API on CHAT_MODEL (Haiku) — cheap and
+    fast (~1-2s), billed through the API key like the chat branch, NOT via `claude -p`/Opus.
+    In dry-run — a stub."""
     if not history:
         return ""
     transcript = to_transcript(history)
@@ -100,25 +99,24 @@ def summarize(history: list[dict], live: bool) -> str:
     )
     if not live:
         return f"(dry-run summary: {len(history)} turns)"
-    # Opus via claude -p; claude_env() turns on extended thinking and strips the API key (so it
-    # bills via the CLI login — Opus is never called via the API key).
-    cmd = ["claude", "-p", "--model", DEEP_MODEL, "--output-format", "json", prompt]
+    # Invariant: the API-key (SDK) path is for the CHEAP model only — Opus is never billed via
+    # the API key (it runs only through `claude -p`). Skip rather than misbill on misconfig.
+    if "opus" in CHAT_MODEL.lower():
+        print(f"[exit] summary skipped: CHAT_MODEL '{CHAT_MODEL}' is Opus (set a cheap model)")
+        return ""
+    # Local import so dry-run/tests need no anthropic package (the live chat branch needs it).
+    from anthropic import Anthropic
+
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180, env=claude_env())
-    except Exception as e:  # timeout / process failed to start
+        msg = Anthropic().messages.create(
+            model=CHAT_MODEL,  # Haiku 4.5 — cheap and fast
+            max_tokens=512,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except Exception as e:  # network / limits / API error — don't crash exit; the turns are saved
         print(f"[exit] summary failed: {e}")
         return ""
-    if result.returncode != 0:
-        # Don't crash exit over a failed summary — the transcript is already saved.
-        detail = _cli_error_detail(result)
-        print(f"[exit] summary failed (CLI {result.returncode}: {detail})")
-        return ""
-    try:
-        data = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return result.stdout.strip()
-    # (summary usage is not shown in the feed — only the result)
-    return (data.get("result") or "").strip()
+    return next((b.text for b in msg.content if b.type == "text"), "").strip()
 
 
 def prune_history(turns: list[dict]) -> list[dict]:

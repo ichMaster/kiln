@@ -1,9 +1,9 @@
-"""Unit: summarize() runs on Opus via `claude -p` with thinking on and the API key stripped."""
+"""Unit: summarize() runs on Haiku via the Anthropic Messages API (cheap/fast, not claude -p)."""
 
 from __future__ import annotations
 
 import kiln.memory as mem
-from kiln.config import DEEP_MODEL, THINKING_TOKENS, claude_env
+from kiln.config import CHAT_MODEL, THINKING_TOKENS, claude_env
 
 
 def test_claude_env_strips_key_and_turns_on_thinking(monkeypatch):
@@ -25,23 +25,35 @@ def test_summarize_empty_history_is_empty():
     assert mem.summarize([], live=True) == ""
 
 
-def test_summarize_uses_opus_with_thinking_and_no_api_key(monkeypatch):
+def test_summarize_uses_haiku_via_messages_api(monkeypatch):
     seen = {}
 
-    class _R:
-        returncode = 0
-        stdout = '{"result": "підсумок"}'
-        stderr = ""
+    class _Block:
+        type = "text"
+        text = "підсумок"
 
-    def _run(cmd, **kwargs):
-        seen["cmd"] = cmd
-        seen["env"] = kwargs.get("env")
-        return _R()
+    class _Msg:
+        content = [_Block()]
 
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-should-be-stripped")
-    monkeypatch.setattr(mem.subprocess, "run", _run)
+    class _Messages:
+        def create(self, **kwargs):
+            seen.update(kwargs)
+            return _Msg()
+
+    class _Client:
+        def __init__(self, *a, **k):
+            self.messages = _Messages()
+
+    import anthropic
+
+    monkeypatch.setattr(anthropic, "Anthropic", _Client)
     out = mem.summarize([{"role": "user", "text": "привіт"}], live=True)
     assert out == "підсумок"
-    assert "--model" in seen["cmd"] and DEEP_MODEL in seen["cmd"]  # Opus, via claude -p
-    assert seen["env"]["MAX_THINKING_TOKENS"] == str(THINKING_TOKENS)  # thinking ON
-    assert "ANTHROPIC_API_KEY" not in seen["env"]  # Opus never billed via the API key
+    assert seen["model"] == CHAT_MODEL  # Haiku, via the Messages API (not claude -p / Opus)
+    assert seen["messages"][0]["role"] == "user"  # the transcript prompt goes in as a user message
+
+
+def test_summarize_refuses_opus_chat_model(monkeypatch):
+    """Guard the invariant: if CHAT_MODEL were Opus, summarize must NOT bill it via the API key."""
+    monkeypatch.setattr(mem, "CHAT_MODEL", "claude-opus-4-8")
+    assert mem.summarize([{"role": "user", "text": "привіт"}], live=True) == ""

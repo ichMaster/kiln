@@ -252,8 +252,8 @@ branches. This is how the engine "remembers" earlier conversations. `load_canon(
    history}`, `ensure_ascii=False`). It's saved **first**, so that a possible
    `summarize` failure can't swallow the transcript; a same-second collision is sidestepped with a `-2`,
    `-3`, … suffix.
-2. `summarize(history, live)` — a concise summary via `claude -p`
-   (in dry-run — a stub).
+2. `summarize(history, live)` — a concise summary via the Anthropic Messages API (Haiku —
+   cheap/fast, not `claude -p`/Opus) (in dry-run — a stub).
 3. `save_summary(text)` — appends the summary to `state/memory.md` with a date.
 
 `history` and `memory.md` are append-only, with no trimming yet.

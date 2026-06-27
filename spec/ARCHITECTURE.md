@@ -132,7 +132,7 @@ All cross-session state lives in **one `.kiln/store.json`** (`store.py`, v0.5) �
 Lumi-style sections:
 
 - **`summaries`** — `{session_id, stamp, text}`, one per session: at exit the (pruned) session
-  is summarized via `claude -p` (Opus + extended thinking) and appended; at start all summaries
+  is summarized via the Anthropic Messages API (Haiku — cheap/fast) and appended; at start all summaries
   load into the system prompt of every branch (`build_system`). What the agent *remembers*.
 - **`messages`** — `{session_id: [{role, text}]}`, the full turn list per session, written
   **before** the summary so a summary failure can't lose it. The **RAG corpus** (1.4).

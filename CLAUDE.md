@@ -116,9 +116,10 @@ classification, so they never reach a brain (`/status`, `/needs`, `/memory`, `/h
 `/ask <text>` forces deep, `/clear`, `/help`, `/quit`).
 
 **Cross-session memory** — on exit (incl. Ctrl-C, via `finally`) the session is summarized through
-`claude -p` (`summarize`) and appended to `state/memory.md` with a datestamp (`save_summary`). On
-start, all past summaries load into the system prompt of *both* branches (`load_memory` →
-`build_system`). `history` and `memory.md` are append-only — no trimming/windowing yet.
+the Anthropic Messages API (Haiku — cheap/fast, like the chat branch, not `claude -p`/Opus;
+`summarize`) and written, with the pruned turns, into `.kiln/store.json` (`save_store`). On
+start, all stored summaries load into the system prompt of *both* branches (`load_memory` →
+`build_system`). The store is append-only — no trimming/windowing yet.
 
 **Raw session transcripts (for RAG)** — also on exit, `save_session` writes the full turn list plus
 metadata (start/end time, `live`/`dry` mode, turn count) to `history/session-<stamp>.json`
