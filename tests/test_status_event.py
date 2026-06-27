@@ -135,6 +135,7 @@ def _isolate(monkeypatch, eng, tmp_path):
     monkeypatch.setattr(eng, "load_store", lambda *a, **k: empty_store())
     monkeypatch.setattr(eng, "summarize", lambda *a, **k: "")
     monkeypatch.setattr(eng, "extract_facts", lambda *a, **k: [])  # no real claude -p in tests
+    monkeypatch.setattr(eng, "digest_facts", lambda *a, **k: "")  # start-time facts digest off
     monkeypatch.setattr(eng, "save_store", lambda *a, **k: None)
 
 
@@ -241,6 +242,33 @@ def test_run_session_close_extracts_facts(monkeypatch, tmp_path):
     texts = [f["text"] for f in facts]
     assert texts == ["Віталік пише агентів", "Любить шахи"]  # repeat deduped, new appended
     assert facts[0]["source_session"] == "old"  # origin kept on the deduped one
+
+
+def test_run_start_injects_facts_digest_into_system(monkeypatch, tmp_path):
+    """KILN-025: run() start composes canon + memory + the facts digest into the system prompt."""
+    import kiln.engine as eng
+
+    _isolate(monkeypatch, eng, tmp_path)
+    monkeypatch.setattr(eng, "load_canon", lambda *a, **k: "CANON")
+    monkeypatch.setattr(eng, "load_memory", lambda *a, **k: "")
+    monkeypatch.setattr(eng, "digest_facts", lambda *a, **k: "Віталік любить шахи")
+
+    seen = {}
+
+    class RecordingBrain(MockBrain):
+        def chat(self, history, system):
+            seen["system"] = system
+            return super().chat(history, system)
+
+    eng.run(
+        ticks=2,
+        live=False,
+        channel=eng.ScriptedChannel({1: "привіт"}),
+        brain=RecordingBrain(),
+        output=StatusRecorder(),
+    )
+    assert "## Facts about the user" in seen["system"]  # the dedicated section is present
+    assert "Віталік любить шахи" in seen["system"]  # carrying the digest
 
 
 def test_run_noise_only_session_not_stored(monkeypatch, tmp_path):

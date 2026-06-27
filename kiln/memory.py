@@ -231,11 +231,18 @@ def prune_history(turns: list[dict]) -> list[dict]:
     return kept
 
 
-def build_system(canon: str, memory: str) -> str:
-    """System prompt = canon (persona) + long-term memory (if any)."""
-    if not memory.strip():
-        return canon
-    return canon + "\n\nДовга пам'ять про попередні розмови (для контексту):\n" + memory.strip()
+def build_system(canon: str, memory: str, facts: str = "") -> str:
+    """System prompt = canon (persona) + long-term memory summaries + the user-facts digest.
+
+    Each layer is optional and appended only when non-empty: the v0.5 memory block, then the v0.6
+    `## Facts about the user` section (durable facts, separate from the canon and the summaries).
+    With empty `memory` and `facts` the result is exactly `canon` — back-compatible with v0.5."""
+    out = canon
+    if memory.strip():
+        out += "\n\nДовга пам'ять про попередні розмови (для контексту):\n" + memory.strip()
+    if facts.strip():
+        out += "\n\n## Facts about the user\n" + facts.strip()
+    return out
 
 
 def _parse_memory_md(text: str):

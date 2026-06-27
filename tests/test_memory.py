@@ -54,3 +54,31 @@ def test_build_system_includes_store_summaries(monkeypatch):
 def test_build_system_empty_store_is_canon_only(monkeypatch):
     monkeypatch.setattr(mem, "load_store", lambda *a, **k: _store([]))
     assert mem.build_system("CANON", mem.load_memory()) == "CANON"
+
+
+# --- facts -> system prompt (KILN-025) ---
+
+
+def test_build_system_appends_facts_section():
+    """Contract: the facts digest lands under a dedicated `## Facts about the user` section,
+    separate from the canon and the memory summaries, and after the memory block."""
+    system = mem.build_system("CANON", "MEMORY-SUMMARIES", "FACTS-DIGEST")
+    assert "CANON" in system and "MEMORY-SUMMARIES" in system
+    assert "## Facts about the user" in system and "FACTS-DIGEST" in system
+    # ordering: canon, then memory, then the facts section
+    assert system.index("CANON") < system.index("MEMORY-SUMMARIES")
+    assert system.index("MEMORY-SUMMARIES") < system.index("## Facts about the user")
+
+
+def test_build_system_empty_facts_is_v05_backcompat():
+    """`facts=""` reproduces the v0.5 output (canon + memory) byte-for-byte."""
+    assert mem.build_system("CANON", "MEM", "") == mem.build_system("CANON", "MEM")
+    assert mem.build_system("CANON", "", "") == "CANON"  # nothing -> canon only
+
+
+def test_build_system_facts_without_memory():
+    """Facts attach even when there are no memory summaries (no empty memory block)."""
+    system = mem.build_system("CANON", "", "FACTS-DIGEST")
+    assert system.startswith("CANON")
+    assert "## Facts about the user\nFACTS-DIGEST" in system
+    assert "Довга пам'ять" not in system  # no memory section when memory is empty

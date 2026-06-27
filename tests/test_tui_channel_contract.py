@@ -44,6 +44,8 @@ def test_tuichannel_drives_a_turn(monkeypatch, tmp_path):
     monkeypatch.setattr(eng, "save_state", lambda *a, **k: None)
     monkeypatch.setattr(eng, "load_store", lambda *a, **k: empty_store())
     monkeypatch.setattr(eng, "summarize", lambda *a, **k: "")
+    monkeypatch.setattr(eng, "extract_facts", lambda *a, **k: [])  # no real claude -p in tests
+    monkeypatch.setattr(eng, "digest_facts", lambda *a, **k: "")  # start-time facts digest off
     monkeypatch.setattr(eng, "save_store", lambda *a, **k: None)
 
     b = Bridge()

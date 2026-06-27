@@ -167,7 +167,9 @@ multi-agent is additive, not a rewrite:
 - **Model usage:** `{model, input, output, total}` captured by `log_model`
   (SDK `msg.usage` / CLI `data.usage`).
 - **Needs:** `state/needs.json` = `{need: level(0..1)}`.
-- **Canon:** `state/canon.md` → the system prompt (fallback `DEFAULT_CANON`).
+- **Canon / system prompt:** `build_system(canon, memory, facts)` composes the system prompt of
+  every branch — `canon` (`state/canon.md`, fallback `DEFAULT_CANON`) + the v0.5 memory summaries
+  + the v0.6 `## Facts about the user` digest; each layer optional, `facts=""` is v0.5-equivalent.
 - **Store (v0.5–0.6):** `.kiln/store.json` = `{sessions: [{id, started_at, ended_at, mode, turns}],
   messages: {session_id: [{role, text}]}, summaries: [{session_id, stamp, text}],
   facts: [{id, text, first_seen, last_seen, source_session}]}`, via `store.load_store`/`save_store`

@@ -54,6 +54,7 @@ from .config import (
 from .history import ROLE_BOT, ROLE_USER
 from .memory import (
     build_system,
+    digest_facts,
     extract_facts,
     load_canon,
     load_memory,
@@ -359,8 +360,9 @@ def run(
     history: list[dict] = []  # shared conversation transcript for the session
     started = _dt.datetime.now().isoformat(timespec="seconds")  # session start (for transcript)
     canon = load_canon()  # persona/voice from state/canon.md
-    memory = load_memory()  # long-term memory from past sessions
-    system = build_system(canon, memory)  # canon + memory
+    memory = load_memory()  # long-term memory: summaries of past sessions
+    facts = digest_facts(live)  # v0.6 long memory: N-line digest of durable user facts
+    system = build_system(canon, memory, facts)  # canon + memory summaries + facts digest
     prompts = load_prompts()  # self-trigger prompts from state/prompts.md
     tg = TriggerBook()  # trigger hysteresis + cooldown
     stats = SessionStats()  # session token/turn/latency totals (for the status bar)
