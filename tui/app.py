@@ -205,12 +205,25 @@ class KilnApp(App):
         self._last_reply = ""
 
     def action_quit(self) -> None:
-        # Clean exit: ask the engine to end the loop (its finally saves the session),
-        # wait briefly, and close.
+        # Ask the engine to end its loop; its `finally` saves the session AND summarizes it
+        # (Opus + extended thinking, ~10-20s). Don't block the UI on that — joining with a
+        # short timeout used to kill the summary. Show "saving…" and poll until the engine
+        # thread finishes (with a hard cap), then exit; the _drain timer keeps rendering.
         self.bridge.submit("/quit")
-        if self._engine_thread is not None:
-            self._engine_thread.join(timeout=2.0)
-        self.exit()
+        try:
+            self.query_one("#status", Static).update("status: saving session (summarizing)…")
+        except NoMatches:
+            pass
+        self._quit_polls = 0
+        self._quit_timer = self.set_interval(0.2, self._await_engine_then_exit)
+
+    def _await_engine_then_exit(self) -> None:
+        self._quit_polls += 1
+        thread_done = self._engine_thread is None or not self._engine_thread.is_alive()
+        if thread_done or self._quit_polls > 1000:  # ~200s cap (summarize times out at 180s)
+            if self._quit_timer is not None:
+                self._quit_timer.stop()
+            self.exit()
 
 
 def main() -> None:
