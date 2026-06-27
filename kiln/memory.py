@@ -12,17 +12,20 @@ import json
 import random
 import re
 import subprocess
+from pathlib import Path
 
 from .config import (
     CANON_FILE,
     DEEP_MODEL,
     DEFAULT_CANON,
+    HISTORY_DIR,
+    MEMORY_FILE,
     PROMPTS_FILE,
     REST_MESSAGE,
     claude_env,
 )
 from .history import to_transcript
-from .store import load_store
+from .store import load_store, save_store
 from .usage import _cli_error_detail
 
 
@@ -138,3 +141,53 @@ def build_system(canon: str, memory: str) -> str:
     if not memory.strip():
         return canon
     return canon + "\n\nДовга пам'ять про попередні розмови (для контексту):\n" + memory.strip()
+
+
+def _parse_memory_md(text: str):
+    """Yield (stamp, summary_text) from legacy memory.md `## Conversation <stamp>` blocks."""
+    for block in re.split(r"^## Conversation ", text, flags=re.MULTILINE):
+        block = block.strip()
+        if not block:
+            continue
+        stamp, _, body = block.partition("\n")
+        body = body.strip()
+        if body:
+            yield stamp.strip(), body
+
+
+def migrate_legacy(memory_file: Path = MEMORY_FILE, history_dir: Path = HISTORY_DIR) -> int:
+    """
+    One-shot, idempotent import of the legacy `state/memory.md` summaries and
+    `history/session-*.json` transcripts into `.kiln/store.json` (KILN-021). Guarded by the
+    store's own non-emptiness — a store that already has data is left untouched, so re-runs
+    are no-ops. Returns the count imported (0 if nothing to do / already migrated). The legacy
+    files are left in place (read-only); the engine no longer writes them.
+    """
+    store = load_store()
+    if store["sessions"] or store["summaries"] or store["messages"]:
+        return 0  # already migrated / in use
+    imported = 0
+    if memory_file.exists():
+        for stamp, body in _parse_memory_md(memory_file.read_text(encoding="utf-8")):
+            store["summaries"].append({"session_id": stamp, "stamp": stamp, "text": body})
+            imported += 1
+    for path in sorted(history_dir.glob("session-*.json")) if history_dir.exists() else []:
+        try:
+            rec = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        sid = rec.get("session") or path.stem
+        store["sessions"].append(
+            {
+                "id": sid,
+                "started_at": rec.get("started_at", ""),
+                "ended_at": rec.get("ended_at", ""),
+                "mode": rec.get("mode", ""),
+                "turns": rec.get("turns", len(rec.get("history", []))),
+            }
+        )
+        store["messages"][sid] = rec.get("history", [])
+        imported += 1
+    if imported:
+        save_store(store)
+    return imported

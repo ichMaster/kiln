@@ -21,6 +21,7 @@ from .engine import (
     run,
     save_state,
 )
+from .memory import migrate_legacy
 
 
 def _run_tui() -> None:
@@ -65,6 +66,7 @@ def _demo() -> None:
 
 
 def main() -> None:
+    migrate_legacy()  # one-shot: fold legacy memory.md + history/*.json into .kiln/store.json
     if "--tui" in sys.argv[1:]:
         _run_tui()
         return
