@@ -12,13 +12,11 @@ client (console today, TUI/web later) receives the result. handle_command() retu
 
 from __future__ import annotations
 
-from .history import ROLE_USER
-from .memory import load_memory
 from .output import Output
 
 # Canonical list of implemented slash commands — the single source for both /help
 # and the TUI hint line, so they never advertise a command kiln doesn't have.
-COMMANDS = ("status", "needs", "self", "memory", "history", "ask", "clear", "help", "quit")
+COMMANDS = ("status", "needs", "self", "ask", "clear", "help", "quit")
 
 
 def command_hints() -> str:
@@ -60,18 +58,6 @@ def handle_command(line: str, state, history: list[dict], system: str, live: boo
         # first; she still answers you. Per-session (not persisted).
         state.self_messages = not state.self_messages
         output.notice(f"[self] proactive self-messages: {'on' if state.self_messages else 'off'}")
-
-    elif cmd == "memory":
-        mem = load_memory().strip()
-        output.notice("[memory]\n" + (mem if mem else "(empty)"))
-
-    elif cmd == "history":
-        if not history:
-            output.notice("[history] (empty)")
-        else:
-            for h in history[-10:]:
-                who = "USER" if h["role"] == ROLE_USER else "BOT "
-                output.notice(f"  {who}: {h['text']}")
 
     elif cmd == "ask":
         # Forced Claude call (deep), bypassing the classifier.

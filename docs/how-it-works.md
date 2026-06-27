@@ -292,12 +292,11 @@ A line starting with `/` is intercepted **before** classification
 |---|---|
 | `/status` | turns, the hottest need, mode, all needs |
 | `/needs` | current need levels |
-| `/memory` | contents of long-term memory (`memory.md`) |
-| `/history` | the latest turns of the session stream |
+| `/self` | toggle proactive self-messages on/off |
 | `/ask <text>` | a forced Claude call (deep), past the classifier |
 | `/clear` | clear the session history |
 | `/help` | the list of commands |
-| `/quit` | exit (the summary and transcript are saved regardless) |
+| `/quit` | exit (the session closes into `.kiln/store.json`) |
 
 ## Extension points ("Next")
 

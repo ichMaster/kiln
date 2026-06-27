@@ -101,8 +101,8 @@ features. Lumi's header is the visual reference; kiln drops what it doesn't have
 - **Chat log polish.** `you` / `Agnika` / tech colors, self-trigger replies marked,
   and a per-turn token + latency line under each reply.
 - **Input box + command hints — implemented only.** The fixed input with a hint line
-  listing **only the slash commands kiln actually has** (`/status /needs /memory
-  /history /ask /clear /help /quit`); no Lumi commands kiln lacks (`/style /mood
+  listing **only the slash commands kiln actually has** (`/status /needs /self /ask
+  /clear /help /quit`); no Lumi commands kiln lacks (`/style /mood
   /model /biorhythm …`).
 - **Keybinding footer — implemented only.** `Ctrl+Q` quit, `Ctrl+Y` copy last reply,
   `Ctrl+O` copy all, `Ctrl+L` clear screen. (Dictate / sound / palette / mouse-select
