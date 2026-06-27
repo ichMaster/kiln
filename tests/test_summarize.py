@@ -57,3 +57,28 @@ def test_summarize_refuses_opus_chat_model(monkeypatch):
     """Guard the invariant: if CHAT_MODEL were Opus, summarize must NOT bill it via the API key."""
     monkeypatch.setattr(mem, "CHAT_MODEL", "claude-opus-4-8")
     assert mem.summarize([{"role": "user", "text": "привіт"}], live=True) == ""
+
+
+def test_summarize_prompt_uses_configured_sentence_count(monkeypatch):
+    """The summary prompt asks for SUMMARY_SENTENCES sentences (overridable from .env)."""
+    seen = {}
+
+    class _Block:
+        type = "text"
+        text = "x"
+
+    class _Messages:
+        def create(self, **kwargs):
+            seen.update(kwargs)
+            return type("M", (), {"content": [_Block()]})()
+
+    class _Client:
+        def __init__(self, *a, **k):
+            self.messages = _Messages()
+
+    import anthropic
+
+    monkeypatch.setattr(anthropic, "Anthropic", _Client)
+    monkeypatch.setattr(mem, "SUMMARY_SENTENCES", 3)
+    mem.summarize([{"role": "user", "text": "привіт"}], live=True)
+    assert "3 речень" in seen["messages"][0]["content"]  # the configured length

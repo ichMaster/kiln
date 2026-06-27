@@ -130,6 +130,13 @@ THINKING_TOKENS = int(os.environ.get("THINKING_TOKENS", "8000"))
 # lines for the `## Facts about the user` system-prompt section. Tune via .env.
 FACTS_DIGEST_LINES = int(os.environ.get("FACTS_DIGEST_LINES", "8"))
 
+# How many of the most recent session summaries load into the system prompt (load_memory):
+# 0 = all (no cap); N = only the last N. Bounds prompt growth as the store accumulates sessions.
+MEMORY_SUMMARIES = int(os.environ.get("MEMORY_SUMMARIES", "0"))
+
+# Target length of each session summary, in sentences (the summarize prompt).
+SUMMARY_SENTENCES = int(os.environ.get("SUMMARY_SENTENCES", "5"))
+
 # Tools/skills allowed on the reasoning branch (example).
 DEEP_TOOLS = ["Read", "Write", "Bash"]
 DEEP_SKILLS: list[str] = []  # e.g. ["search", "summarize"]

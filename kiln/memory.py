@@ -23,8 +23,10 @@ from .config import (
     FACTS_DIGEST_LINES,
     HISTORY_DIR,
     MEMORY_FILE,
+    MEMORY_SUMMARIES,
     PROMPTS_FILE,
     REST_MESSAGE,
+    SUMMARY_SENTENCES,
     claude_env,
 )
 from .history import to_transcript
@@ -73,10 +75,14 @@ def load_memory() -> str:
 
     Source is `.kiln/store.json` (v0.5); each summary becomes a `## Conversation <stamp>` block
     — the same layout the old `memory.md` used, so `build_system` is unchanged. Empty store → "".
+    `MEMORY_SUMMARIES` (0 = all, N = the last N) bounds how many enter the prompt.
     """
+    summaries = load_store().get("summaries", [])
+    if MEMORY_SUMMARIES > 0:
+        summaries = summaries[-MEMORY_SUMMARIES:]  # keep only the most recent N
     blocks = [
         f"## Conversation {s.get('stamp', '')}\n{s.get('text', '')}".strip()
-        for s in load_store().get("summaries", [])
+        for s in summaries
         if (s.get("text") or "").strip()
     ]
     return "\n\n".join(blocks)
@@ -99,8 +105,8 @@ def summarize(history: list[dict], live: bool) -> str:
         return ""
     transcript = to_transcript(history)
     prompt = (
-        "Стисло підсумуй цю розмову українською (3-5 речень): про що говорили, "
-        "які висновки, що варто пам'ятати наступного разу.\n\n" + transcript
+        f"Стисло підсумуй цю розмову українською (до {SUMMARY_SENTENCES} речень): про що "
+        "говорили, які висновки, що варто пам'ятати наступного разу.\n\n" + transcript
     )
     if not live:
         return f"(dry-run summary: {len(history)} turns)"

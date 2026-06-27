@@ -82,3 +82,27 @@ def test_build_system_facts_without_memory():
     assert system.startswith("CANON")
     assert "## Facts about the user\nFACTS-DIGEST" in system
     assert "Довга пам'ять" not in system  # no memory section when memory is empty
+
+
+# --- MEMORY_SUMMARIES cap (how many summaries enter the prompt) ---
+
+
+def _four_summaries():
+    texts = ["перша", "друга", "третя", "четверта"]
+    rows = [{"session_id": f"s{i}", "stamp": str(i), "text": t} for i, t in enumerate(texts)]
+    return _store(rows)
+
+
+def test_load_memory_caps_to_last_n_summaries(monkeypatch):
+    monkeypatch.setattr(mem, "load_store", lambda *a, **k: _four_summaries())
+    monkeypatch.setattr(mem, "MEMORY_SUMMARIES", 2)
+    blob = mem.load_memory()
+    assert "третя" in blob and "четверта" in blob  # the last 2 kept
+    assert "перша" not in blob and "друга" not in blob  # older dropped
+
+
+def test_load_memory_zero_means_all(monkeypatch):
+    monkeypatch.setattr(mem, "load_store", lambda *a, **k: _four_summaries())
+    monkeypatch.setattr(mem, "MEMORY_SUMMARIES", 0)
+    blob = mem.load_memory()
+    assert all(t in blob for t in ("перша", "друга", "третя", "четверта"))  # 0 = all
