@@ -12,11 +12,12 @@ client (console today, TUI/web later) receives the result. handle_command() retu
 
 from __future__ import annotations
 
+from .history import to_messages
 from .output import Output
 
 # Canonical list of implemented slash commands — the single source for both /help
 # and the TUI hint line, so they never advertise a command kiln doesn't have.
-COMMANDS = ("status", "needs", "self", "ask", "clear", "help", "quit")
+COMMANDS = ("status", "needs", "self", "prompt", "ask", "clear", "help", "quit")
 
 
 def command_hints() -> str:
@@ -58,6 +59,18 @@ def handle_command(line: str, state, history: list[dict], system: str, live: boo
         # first; she still answers you. Per-session (not persisted).
         state.self_messages = not state.self_messages
         output.notice(f"[self] proactive self-messages: {'on' if state.self_messages else 'off'}")
+
+    elif cmd == "prompt":
+        # Show exactly what the brain receives this turn: the system prompt (canon + long-term
+        # memory) and the conversation as the messages array sent to the model.
+        output.notice("[prompt] ── system ──")
+        output.notice(system)
+        msgs = to_messages(history)
+        output.notice(f"[prompt] ── messages ({len(msgs)}) ──")
+        if not msgs:
+            output.notice("  (no messages yet)")
+        for m in msgs:
+            output.notice(f"  [{m['role']}] {m['content']}")
 
     elif cmd == "ask":
         # Forced Claude call (deep), bypassing the classifier.

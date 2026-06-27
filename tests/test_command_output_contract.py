@@ -71,6 +71,17 @@ def test_clear_clears_history_and_notifies():
     assert any("[clear]" in n for n in out.notices)
 
 
+def test_prompt_shows_system_and_messages():
+    out = RecordingOutput()
+    history = [{"role": "user", "text": "привіт"}, {"role": "assistant", "text": "вітаю"}]
+    action = handle_command("/prompt", State(needs={}), history, "SYSTEM-PROMPT", False, out)
+    assert action == "handled"
+    joined = "\n".join(out.notices)
+    assert "SYSTEM-PROMPT" in joined  # the system prompt is shown
+    assert "привіт" in joined and "вітаю" in joined  # both messages are shown
+    assert "messages (2)" in joined  # with the count
+
+
 def test_unknown_command_notifies():
     out = RecordingOutput()
     handle_command("/wat", State(needs={}), [], "sys", False, out)

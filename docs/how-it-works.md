@@ -293,6 +293,7 @@ A line starting with `/` is intercepted **before** classification
 | `/status` | turns, the hottest need, mode, all needs |
 | `/needs` | current need levels |
 | `/self` | toggle proactive self-messages on/off |
+| `/prompt` | the system prompt (canon + memory) + the messages sent to the model |
 | `/ask <text>` | a forced Claude call (deep), past the classifier |
 | `/clear` | clear the session history |
 | `/help` | the list of commands |
