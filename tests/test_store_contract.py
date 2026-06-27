@@ -1,22 +1,23 @@
 """
-Contract + unit: the `.kiln/store.json` persistence store (KILN-017).
+Contract + unit: the `.kiln/store.json` persistence store (KILN-017, +`facts` KILN-022).
 
-Pins the store schema (sessions/messages/summaries), atomic write + `.bak`, and corrupt-file
-recovery — all against a tmp_path store (no real `.kiln/`, zero paid calls).
+Pins the store schema (sessions/messages/summaries/facts), atomic write + `.bak`, corrupt-file
+recovery, and the `add_facts` dedupe — all against a tmp_path store (no real `.kiln/`, zero paid
+calls).
 """
 
 from __future__ import annotations
 
 import json
 
-from kiln.store import empty_store, load_store, save_store
+from kiln.store import add_facts, empty_store, load_store, save_store
 
-STORE_KEYS = {"sessions", "messages", "summaries"}
+STORE_KEYS = {"sessions", "messages", "summaries", "facts"}
 
 
 def test_empty_store_shape():
     assert set(empty_store()) == STORE_KEYS
-    assert empty_store() == {"sessions": [], "messages": {}, "summaries": []}
+    assert empty_store() == {"sessions": [], "messages": {}, "summaries": [], "facts": []}
 
 
 def test_missing_file_loads_fresh(tmp_path):
@@ -29,6 +30,15 @@ def test_round_trip_preserves_all_sections(tmp_path):
         "sessions": [{"id": "s1", "started_at": "a", "ended_at": "b", "mode": "live", "turns": 2}],
         "messages": {"s1": [{"role": "user", "text": "привіт"}]},
         "summaries": [{"session_id": "s1", "stamp": "2026-06-27", "text": "підсумок"}],
+        "facts": [
+            {
+                "id": "f1",
+                "text": "Віталік пише агентів",
+                "first_seen": "2026-06-27",
+                "last_seen": "2026-06-27",
+                "source_session": "s1",
+            }
+        ],
     }
     save_store(store, p)
     assert load_store(p) == store
@@ -67,8 +77,46 @@ def test_heals_missing_sections(tmp_path):
         encoding="utf-8",
     )
     store = load_store(p)
-    assert set(store) == STORE_KEYS  # sessions/messages added back
+    assert set(store) == STORE_KEYS  # sessions/messages/facts added back
     assert store["summaries"] and store["sessions"] == [] and store["messages"] == {}
+
+
+def test_v05_store_without_facts_is_healed(tmp_path):
+    """A v0.5-shaped store (no `facts` key) loads forward, healed to facts: []."""
+    p = tmp_path / "store.json"
+    p.write_text(
+        json.dumps(
+            {
+                "sessions": [{"id": "s1", "started_at": "a", "ended_at": "b", "mode": "live", "turns": 1}],
+                "messages": {"s1": [{"role": "user", "text": "hi"}]},
+                "summaries": [{"session_id": "s1", "stamp": "x", "text": "t"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    store = load_store(p)
+    assert store["facts"] == [] and store["sessions"] and store["summaries"]
+
+
+def test_add_facts_appends_new_and_dedupes_repeats():
+    store = empty_store()
+    n = add_facts(store, ["Віталік пише агентів", "Любить шахи"], "s1", "2026-06-27")
+    assert n == 2
+    assert [f["id"] for f in store["facts"]] == ["f1", "f2"]
+    assert store["facts"][0]["first_seen"] == store["facts"][0]["last_seen"] == "2026-06-27"
+    assert store["facts"][0]["source_session"] == "s1"
+    # a repeat (normalized: case/space-insensitive) updates last_seen, adds no row
+    n2 = add_facts(store, ["  віталік   ПИШЕ агентів  "], "s2", "2026-06-28")
+    assert n2 == 0 and len(store["facts"]) == 2
+    assert store["facts"][0]["last_seen"] == "2026-06-28"  # bumped
+    assert store["facts"][0]["first_seen"] == "2026-06-27"  # origin kept
+    assert store["facts"][0]["source_session"] == "s1"  # origin kept
+
+
+def test_add_facts_skips_empty_and_returns_count():
+    store = empty_store()
+    assert add_facts(store, ["", "   ", "реальний факт"], "s1", "x") == 1
+    assert len(store["facts"]) == 1 and store["facts"][0]["text"] == "реальний факт"
 
 
 def p_b_t(tmp_path):

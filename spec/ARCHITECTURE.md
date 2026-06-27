@@ -128,7 +128,7 @@ algorithm in [`docs/how-it-works.md`](../docs/how-it-works.md).
 ## Memory and transcripts (+ RAG)
 
 All cross-session state lives in **one `.kiln/store.json`** (`store.py`, v0.5) — written
-**atomically** (temp + `os.replace`) with a `.bak`, recovered on corruption — in three
+**atomically** (temp + `os.replace`) with a `.bak`, recovered on corruption — in four
 Lumi-style sections:
 
 - **`summaries`** — `{session_id, stamp, text}`, one per session: at exit the (pruned) session
@@ -137,6 +137,10 @@ Lumi-style sections:
 - **`messages`** — `{session_id: [{role, text}]}`, the full turn list per session, written
   **before** the summary so a summary failure can't lose it. The **RAG corpus** (1.4).
 - **`sessions`** — `{id, started_at, ended_at, mode, turns}`, the per-session index.
+- **`facts`** (v0.6) — `{id, text, first_seen, last_seen, source_session}`, durable **facts about
+  the user** (who they are, preferences, life), deduped by normalized text (`add_facts`).
+  Extracted on close and digested into the system prompt (v0.6) — distinct from `summaries`
+  (what was *discussed*); these are stable facts carried forward indefinitely.
 
 (Legacy `state/memory.md` summaries + `history/session-*.json` transcripts are migrated into
 the store and retired across v0.5; the `state/` knobs — canon/prompts/needs — stay put.)
@@ -164,9 +168,10 @@ multi-agent is additive, not a rewrite:
   (SDK `msg.usage` / CLI `data.usage`).
 - **Needs:** `state/needs.json` = `{need: level(0..1)}`.
 - **Canon:** `state/canon.md` → the system prompt (fallback `DEFAULT_CANON`).
-- **Store (v0.5):** `.kiln/store.json` = `{sessions: [{id, started_at, ended_at, mode, turns}],
-  messages: {session_id: [{role, text}]}, summaries: [{session_id, stamp, text}]}`, via
-  `store.load_store`/`save_store` (atomic write + `.bak`; corrupt → recover from `.bak` or fresh).
+- **Store (v0.5–0.6):** `.kiln/store.json` = `{sessions: [{id, started_at, ended_at, mode, turns}],
+  messages: {session_id: [{role, text}]}, summaries: [{session_id, stamp, text}],
+  facts: [{id, text, first_seen, last_seen, source_session}]}`, via `store.load_store`/`save_store`
+  (atomic write + `.bak`; corrupt → recover from `.bak` or fresh; missing sections healed).
 - **Brain seam:** `Brain.chat(history, system)`, `Brain.deep(prompt, history, system,
   with_tools)`, and `Brain.tool(agent, history, system)` each return `(text, usage)`;
   `LiveBrain` (SDK + CLI + named sub-agents) and `MockBrain` implement it; model ids are

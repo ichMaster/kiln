@@ -4,7 +4,8 @@ kiln — the single persistence store (`.kiln/store.json`).
 One JSON file holds the whole cross-session record, mirroring Lumi's `.lumi/store.json`:
   - `sessions`:  ``[{id, started_at, ended_at, mode, turns}]`` — one per closed session;
   - `messages`:  ``{session_id: [{role, text}, …]}`` — the raw turns (the RAG corpus);
-  - `summaries`: ``[{session_id, stamp, text}]`` — one summary per session.
+  - `summaries`: ``[{session_id, stamp, text}]`` — one summary per session;
+  - `facts`:     ``[{id, text, first_seen, last_seen, source_session}]`` — durable user facts (v0.6).
 
 Writes are **atomic** (temp file + ``os.replace``) and keep a ``.bak`` of the previous good
 file, so a crash mid-write never corrupts the store. A corrupt `store.json` is recovered from
@@ -23,8 +24,45 @@ from .config import STORE_FILE
 
 
 def empty_store() -> dict:
-    """A fresh, empty store with all three sections."""
-    return {"sessions": [], "messages": {}, "summaries": []}
+    """A fresh, empty store with all four sections."""
+    return {"sessions": [], "messages": {}, "summaries": [], "facts": []}
+
+
+def _norm(text: str) -> str:
+    """Normalized key for fact dedupe: lower-cased, whitespace-collapsed."""
+    return " ".join((text or "").lower().split())
+
+
+def add_facts(store: dict, texts, session_id: str, stamp: str) -> int:
+    """
+    Append durable user facts to the store's `facts`, deduped by normalized text. A text that
+    matches an existing fact bumps its `last_seen` (its origin `source_session` is kept); a new
+    text is appended as `{id, text, first_seen, last_seen, source_session}` with a fresh id and
+    `first_seen == last_seen == stamp`. Returns the count of NEW facts added. Order preserved.
+    """
+    facts = store.setdefault("facts", [])
+    index = {_norm(f.get("text", "")): f for f in facts}
+    added = 0
+    for text in texts:
+        text = (text or "").strip()
+        if not text:
+            continue
+        key = _norm(text)
+        existing = index.get(key)
+        if existing is not None:
+            existing["last_seen"] = stamp  # seen again; origin (source_session) unchanged
+            continue
+        fact = {
+            "id": f"f{len(facts) + 1}",
+            "text": text,
+            "first_seen": stamp,
+            "last_seen": stamp,
+            "source_session": session_id,
+        }
+        facts.append(fact)
+        index[key] = fact
+        added += 1
+    return added
 
 
 def _read(path: Path) -> dict | None:
@@ -58,6 +96,8 @@ def load_store(path: Path = STORE_FILE) -> dict:
         store["messages"] = data["messages"]
     if isinstance(data.get("summaries"), list):
         store["summaries"] = data["summaries"]
+    if isinstance(data.get("facts"), list):  # v0.5 stores have no `facts` — healed to []
+        store["facts"] = data["facts"]
     return store
 
 
