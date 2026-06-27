@@ -127,15 +127,19 @@ algorithm in [`docs/how-it-works.md`](../docs/how-it-works.md).
 
 ## Memory and transcripts (+ RAG)
 
-Two cross-session lines, kept distinct:
+All cross-session state lives in **one `.kiln/store.json`** (`store.py`, v0.5) — written
+**atomically** (temp + `os.replace`) with a `.bak`, recovered on corruption — in three
+Lumi-style sections:
 
-- **Summaries** (`memory.md`) — at exit the session is summarized via `claude -p`
-  and appended with a datestamp (`save_summary`); at start all summaries load into
-  the system prompt of both branches (`load_memory` → `build_system`). What the
-  agent *remembers*.
-- **Raw transcripts** (`history/session-*.json`) — the full turn list + metadata,
-  one file per session (`save_session`), saved **before** the summary so a summary
-  failure can't lose it. The **RAG corpus** (1.4).
+- **`summaries`** — `{session_id, stamp, text}`, one per session: at exit the (pruned) session
+  is summarized via `claude -p` (Opus + extended thinking) and appended; at start all summaries
+  load into the system prompt of every branch (`build_system`). What the agent *remembers*.
+- **`messages`** — `{session_id: [{role, text}]}`, the full turn list per session, written
+  **before** the summary so a summary failure can't lose it. The **RAG corpus** (1.4).
+- **`sessions`** — `{id, started_at, ended_at, mode, turns}`, the per-session index.
+
+(Legacy `state/memory.md` summaries + `history/session-*.json` transcripts are migrated into
+the store and retired across v0.5; the `state/` knobs — canon/prompts/needs — stay put.)
 
 **RAG (planned, port from Lumi):** embed transcripts → vector store → recall
 relevant past fragments per turn, alongside the summaries. Lumi has it built:
@@ -160,6 +164,9 @@ multi-agent is additive, not a rewrite:
   (SDK `msg.usage` / CLI `data.usage`).
 - **Needs:** `state/needs.json` = `{need: level(0..1)}`.
 - **Canon:** `state/canon.md` → the system prompt (fallback `DEFAULT_CANON`).
+- **Store (v0.5):** `.kiln/store.json` = `{sessions: [{id, started_at, ended_at, mode, turns}],
+  messages: {session_id: [{role, text}]}, summaries: [{session_id, stamp, text}]}`, via
+  `store.load_store`/`save_store` (atomic write + `.bak`; corrupt → recover from `.bak` or fresh).
 - **Brain seam:** `Brain.chat(history, system)`, `Brain.deep(prompt, history, system,
   with_tools)`, and `Brain.tool(agent, history, system)` each return `(text, usage)`;
   `LiveBrain` (SDK + CLI + named sub-agents) and `MockBrain` implement it; model ids are

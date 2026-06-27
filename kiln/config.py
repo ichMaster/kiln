@@ -25,6 +25,9 @@ PROMPTS_FILE = STATE_DIR / "prompts.md"  # self-trigger prompts per need
 HISTORY_DIR = PROJECT_ROOT / "history"  # raw session transcripts (JSON, for RAG)
 ENV_FILE = PROJECT_ROOT / ".env"  # local configuration (models + calibration)
 
+KILN_DIR = PROJECT_ROOT / ".kiln"  # unified store dir (Lumi-style; shared with later phases)
+STORE_FILE = KILN_DIR / "store.json"  # the single persistence store (sessions/messages/summaries)
+
 
 def load_dotenv(path: Path = ENV_FILE) -> None:
     """Minimal .env loader (KEY=VALUE) with no third-party dependencies.
