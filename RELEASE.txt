@@ -1,6 +1,17 @@
 kiln — Release Notes
 ====================
 
+Version 0.4.2 (2026-06-27)
+---------------------------
+- Reach-out model: only connection self-triggers; intensity/novelty choose the brain (deep / session-wiki / chat) for both self-messages and user turns
+- /self command toggles proactive self-messages; status bar shows self:on/off
+- Rest gate: too tired -> stops answering, says "мені треба відпочити" once, wakes at REST_WAKE
+- session-wiki reach-out via `claude -p --agent`; per-agent satiation that drops novelty
+- Opus is never called via the API key: chat (SDK) refuses Opus; every `claude -p` call runs with ANTHROPIC_API_KEY stripped (subscription); fixed the variadic --allowedTools/stdin bug (deep + tool)
+- Extended thinking ON for every `claude -p` call (deep / tool / summarize); session summaries on Opus
+- Roadmap: added 0.6 (short memory — .kiln/store.json) and 0.7 (long memory — user facts)
+- Needs recalibration; test suite 107 -> 136 (mock brain, zero paid calls)
+
 Version 0.4.1 (2026-06-25)
 ---------------------------
 - Lumi-style top bar: standard Textual Header + two status/stats lines
