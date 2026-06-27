@@ -114,16 +114,9 @@ features. Lumi's header is the visual reference; kiln drops what it doesn't have
 **DoD:** the TUI shows a live **status bar** and a **needs/thresholds panel** that
 update each tick; per-turn tokens + latency and session totals are visible; the
 command-hint line and keybinding footer list **only implemented features**; copy
-reply / copy all works. Full cost/`$` analytics stays in v0.5.
+reply / copy all works. Full cost/`$` analytics stays in v0.7.
 
-### 0.5 Tokens report — 🟡
-**Goal:** per-turn and per-session cost visibility.
-**Done:** per-execution `· model · in→out tok (total)` (`usage.py`).
-**Tasks:** session aggregate (sum, by branch, `$` from the CLI's `total_cost_usd`);
-persist for analytics.
-**DoD:** a session shows total tokens + cost by branch.
-
-### 0.6 Short memory — unified `.kiln/store.json` — ⬜
+### 0.5 Short memory — unified `.kiln/store.json` — ⬜
 **Goal:** replace the scattered, append-only persistence (`state/memory.md` +
 `history/session-*.json`, no pruning) with a single **`.kiln/store.json`** — Lumi-style
 (`sessions` / `messages` / `summaries`) — holding a **cleaned** session history and
@@ -157,11 +150,11 @@ summaries instead of raw transcript.
 real conversation; legacy `state/memory.md` + `history/*.json` are migrated in; closing a
 session writes one summary; and every new session's system prompt carries all prior summaries.
 
-### 0.7 Long memory — user facts (`store.json` `facts`) — ⬜
-**Goal:** a durable **facts-about-the-user** layer on top of 0.6's store. On session close,
+### 0.6 Long memory — user facts (`store.json` `facts`) — ⬜
+**Goal:** a durable **facts-about-the-user** layer on top of 0.5's store. On session close,
 extract facts from the session via Opus; persist them in `.kiln/store.json` (`facts`); and on
 each start, digest **all** facts down to N lines (Opus) into a dedicated **system-prompt
-section**. Distinct from 0.6's per-session *summaries* (what was discussed) — these are stable
+section**. Distinct from 0.5's per-session *summaries* (what was discussed) — these are stable
 facts about the user (who they are, preferences, life), carried forward indefinitely. Both
 Opus calls run with **extended thinking on**, the API key stripped (subscription).
 **Tasks:**
@@ -169,14 +162,14 @@ Opus calls run with **extended thinking on**, the API key stripped (subscription
   `claude -p` on **Opus + extended thinking** (`MAX_THINKING_TOKENS`; key stripped) to extract
   durable **facts about the user**, deduped against the facts already stored.
 - **Persist facts in the store.** Save them to `.kiln/store.json` under a **`facts`** key
-  (id, text, first/last-seen, source session) — alongside 0.6's
+  (id, text, first/last-seen, source session) — alongside 0.5's
   `sessions`/`messages`/`summaries`. Mirrors Lumi's `facts`.
 - **Digest facts on session start.** On start, send **all** stored facts to `claude -p`
   (Opus + thinking) to condense them to **N lines** (`FACTS_DIGEST_LINES`) — a compact, current
   view of who the user is (Lumi's `facts_digests`).
 - **Facts → system prompt (new section).** Inject that N-line digest into the system prompt of
   every branch under a dedicated **`## Facts about the user`** section, separate from the canon
-  and the 0.6 memory summaries (`build_system`).
+  and the 0.5 memory summaries (`build_system`).
 - **Tests.** Fact extraction is invoked on close; facts round-trip in the store and dedupe; the
   start-time digest condenses to ≤ N lines; the system prompt carries the facts section — all on
   a **mock brain** (zero paid calls). Both Opus calls strip the API key (asserted on the
@@ -184,6 +177,47 @@ Opus calls run with **extended thinking on**, the API key stripped (subscription
 **DoD:** closing a session extracts user facts (Opus + thinking) into `.kiln/store.json`;
 starting one digests all facts to N lines (Opus + thinking) and injects them as a dedicated
 system-prompt section; both Opus calls bill via the subscription, never the API key.
+
+### 0.7 Tokens & cost report (Lumi-style) — 🟡
+**Goal:** full cost visibility at three levels — **per turn** (live), **per session**
+(totals + `$`), and **cross-session** (a persistent ledger + a generated Markdown report).
+Modeled on Lumi's `.lumi/usage-ledger.jsonl` + `.lumi/usage-report.md`: an append-only
+per-session ledger and a regenerated report with an overall cost summary, a per-bucket
+breakdown (input / output / cache read / cache write with rates + cache-savings), and
+rollups by month / ISO week / day plus a recent-sessions table.
+**Done:** per-turn `· model · in→out tok (total)` line (`usage.py`); the `SessionStats`
+accumulator (turns / total / by-branch / last / avg-latency) on the status bar (v0.4).
+**Tasks:**
+- **Capture cache tokens.** Extend `usage_record` to also carry `cache_read` /
+  `cache_write` (the SDK `usage` has `cache_read_input_tokens` /
+  `cache_creation_input_tokens`; the `claude -p` JSON `usage` has the same) — today only
+  input/output are kept. Per-turn line gains a `· cache r/w` segment where present.
+- **Per-session ledger (`.kiln/usage-ledger.jsonl`).** On session close, append **one JSON
+  line per session**: `session_id`, `model`(s), `started_at`/`ended_at`, `turns`, `input`,
+  `output`, `cache_read`, `cache_write`, `cache_ttl`, and `cost_usd` — using the CLI's actual
+  `total_cost_usd` for `claude -p` turns, an estimate for the SDK/chat turns. Append-only,
+  mirrors Lumi's ledger. (Establishes the `.kiln/` dir shared with 0.5's `store.json`.)
+- **Cost estimation.** A small per-model price table (input, output, cache read = 10 % of
+  input, cache write = 1.25×/2× of input by TTL); estimate `$` per bucket and per session.
+  Prefer the CLI's actual `total_cost_usd` where available; clearly label estimates as
+  estimates (not a billing source of truth), as Lumi does.
+- **Generated report (`.kiln/usage-report.md`).** (Re)generate from the ledger on session
+  close (and on demand via a command): **Overall** (est. cost, total tokens with the four
+  buckets, sessions, turns); a **cost-breakdown** table (bucket / tokens / rate / cost /
+  share) with a cache-savings note; rollups **by month / ISO week / day**; and a
+  **recent-sessions** table (started, session, model, turns, buckets, total, est. cost) —
+  matching Lumi's section layout.
+- **`/usage` command.** Show the session-so-far totals + `$` and the path to the report
+  (TUI + console, through the Output seam); `/report` regenerates the Markdown.
+- **Config knob.** `USAGE_REPORT` (on by default) to enable/disable ledger + report writing,
+  like Lumi's `usage_report` flag.
+- **Tests.** Ledger appends exactly one line per session; cost-estimation math (incl. the
+  cache rates) is correct; the report regenerates from a fixture ledger with right overall
+  totals and by-day/week/month aggregation — all on fixtures/mock (zero paid calls).
+**DoD:** each session appends a `.kiln/usage-ledger.jsonl` line; `.kiln/usage-report.md`
+regenerates with the overall summary, per-bucket cost breakdown (cache-aware), and
+by-month/week/day + recent-sessions tables (Lumi layout); per-turn and per-session token +
+`$` stay visible live; `/usage` shows the session cost and report path.
 
 ## v1 — Engine (the tick-server & hub foundation)
 
