@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from kiln.brain import MockBrain
 from kiln.output import ConsoleOutput, Output
+from kiln.store import empty_store
 
 USAGE_KEYS = {"model", "input", "output", "total"}
 
@@ -67,9 +68,9 @@ def test_run_routes_turn_through_output_port(monkeypatch, tmp_path):
         ),
     )
     monkeypatch.setattr(eng, "save_state", lambda *a, **k: None)
-    monkeypatch.setattr(eng, "save_session", lambda *a, **k: tmp_path / "s.json")
+    monkeypatch.setattr(eng, "load_store", lambda *a, **k: empty_store())
     monkeypatch.setattr(eng, "summarize", lambda *a, **k: "")
-    monkeypatch.setattr(eng, "save_summary", lambda *a, **k: None)
+    monkeypatch.setattr(eng, "save_store", lambda *a, **k: None)
 
     cap = CapturingOutput()
     eng.run(

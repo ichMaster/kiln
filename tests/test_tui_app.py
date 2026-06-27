@@ -17,6 +17,7 @@ import threading
 import pytest
 
 from kiln.brain import MockBrain
+from kiln.store import empty_store
 from tui.bridge import Bridge
 from tui.channel import TuiChannel
 from tui.output import TuiOutput
@@ -32,9 +33,9 @@ def _isolate_persistence(monkeypatch, eng, tmp_path):
         ),
     )
     monkeypatch.setattr(eng, "save_state", lambda *a, **k: None)
-    monkeypatch.setattr(eng, "save_session", lambda *a, **k: tmp_path / "s.json")
+    monkeypatch.setattr(eng, "load_store", lambda *a, **k: empty_store())
     monkeypatch.setattr(eng, "summarize", lambda *a, **k: "")
-    monkeypatch.setattr(eng, "save_summary", lambda *a, **k: None)
+    monkeypatch.setattr(eng, "save_store", lambda *a, **k: None)
 
 
 def test_engine_runs_on_thread_driven_by_bridge(monkeypatch, tmp_path):

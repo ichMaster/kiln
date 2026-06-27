@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from kiln.brain import MockBrain
 from kiln.output import Output
+from kiln.store import empty_store
 from tui.bridge import Bridge
 from tui.output import TuiOutput
 
@@ -49,9 +50,9 @@ def test_run_turn_emits_to_outbox(monkeypatch, tmp_path):
         ),
     )
     monkeypatch.setattr(eng, "save_state", lambda *a, **k: None)
-    monkeypatch.setattr(eng, "save_session", lambda *a, **k: tmp_path / "s.json")
+    monkeypatch.setattr(eng, "load_store", lambda *a, **k: empty_store())
     monkeypatch.setattr(eng, "summarize", lambda *a, **k: "")
-    monkeypatch.setattr(eng, "save_summary", lambda *a, **k: None)
+    monkeypatch.setattr(eng, "save_store", lambda *a, **k: None)
 
     b = Bridge()
     eng.run(

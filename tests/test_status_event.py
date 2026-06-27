@@ -13,6 +13,7 @@ from kiln.config import CHAT_MODEL, DEEP_MODEL, REST_MESSAGE
 from kiln.engine import State, TriggerBook, _status_snapshot
 from kiln.output import ConsoleOutput
 from kiln.stats import SessionStats
+from kiln.store import empty_store
 from kiln.usage import usage_record
 
 SNAPSHOT_KEYS = {
@@ -131,9 +132,9 @@ def _isolate(monkeypatch, eng, tmp_path):
         ),
     )
     monkeypatch.setattr(eng, "save_state", lambda *a, **k: None)
-    monkeypatch.setattr(eng, "save_session", lambda *a, **k: tmp_path / "s.json")
+    monkeypatch.setattr(eng, "load_store", lambda *a, **k: empty_store())
     monkeypatch.setattr(eng, "summarize", lambda *a, **k: "")
-    monkeypatch.setattr(eng, "save_summary", lambda *a, **k: None)
+    monkeypatch.setattr(eng, "save_store", lambda *a, **k: None)
 
 
 def test_run_emits_status_every_tick(monkeypatch, tmp_path):
@@ -182,6 +183,32 @@ def test_run_status_reflects_a_turn(monkeypatch, tmp_path):
     assert last["branch"] == "chat"
     assert last["stats"]["turns"] == 1
     assert last["stats"]["tokens_total"] == 20  # MockBrain chat usage: 8 + 12
+
+
+def test_run_session_close_writes_to_store(monkeypatch, tmp_path):
+    """KILN-018: closing a session writes one session + its messages + one summary to the store."""
+    import kiln.engine as eng
+    from kiln import store as kstore
+
+    _isolate(monkeypatch, eng, tmp_path)  # isolates state; store + summarize overridden below
+    store_path = tmp_path / "store.json"
+    monkeypatch.setattr(eng, "load_store", lambda: kstore.load_store(store_path))
+    monkeypatch.setattr(eng, "save_store", lambda s: kstore.save_store(s, store_path))
+    monkeypatch.setattr(eng, "summarize", lambda *a, **k: "ПІДСУМОК")
+
+    rec = StatusRecorder()
+    eng.run(
+        ticks=2,
+        live=False,
+        channel=eng.ScriptedChannel({1: "привіт"}),
+        brain=MockBrain(),
+        output=rec,
+    )
+    s = kstore.load_store(store_path)
+    assert len(s["sessions"]) == 1 and s["sessions"][0]["turns"] >= 2
+    sid = s["sessions"][0]["id"]
+    assert s["messages"].get(sid)  # the raw turns are stored (the RAG corpus)
+    assert len(s["summaries"]) == 1 and s["summaries"][0]["text"] == "ПІДСУМОК"
 
 
 def test_run_connection_reach_out_uses_novelty_model(monkeypatch, tmp_path):

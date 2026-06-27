@@ -8,6 +8,7 @@ reaches the engine through run() and yields a reply (MockBrain, zero paid calls)
 from __future__ import annotations
 
 from kiln.brain import MockBrain
+from kiln.store import empty_store
 from tui.bridge import Bridge
 from tui.channel import TuiChannel
 from tui.output import TuiOutput
@@ -41,9 +42,9 @@ def test_tuichannel_drives_a_turn(monkeypatch, tmp_path):
         ),
     )
     monkeypatch.setattr(eng, "save_state", lambda *a, **k: None)
-    monkeypatch.setattr(eng, "save_session", lambda *a, **k: tmp_path / "s.json")
+    monkeypatch.setattr(eng, "load_store", lambda *a, **k: empty_store())
     monkeypatch.setattr(eng, "summarize", lambda *a, **k: "")
-    monkeypatch.setattr(eng, "save_summary", lambda *a, **k: None)
+    monkeypatch.setattr(eng, "save_store", lambda *a, **k: None)
 
     b = Bridge()
     b.submit("привіт")  # input queued before the loop starts

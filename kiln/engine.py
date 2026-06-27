@@ -37,7 +37,6 @@ from .config import (
     CHAT_MODEL,
     DEEP_MODEL,
     DRIFT,
-    MEMORY_FILE,
     NEED_TRIGGERS,
     REACH_OUT_MODELS,
     REACH_OUT_NEED,
@@ -46,6 +45,7 @@ from .config import (
     SATIATION,
     SELF_COOLDOWN,
     STATE_DIR,
+    STORE_FILE,
     THINK_HINTS,
     THINK_THRESHOLD,
     TICK_SECONDS,
@@ -58,12 +58,11 @@ from .memory import (
     load_memory,
     load_prompts,
     pick_prompt,
-    save_session,
-    save_summary,
     summarize,
 )
 from .output import ConsoleOutput, Output
 from .stats import SessionStats
+from .store import load_store, save_store
 
 # === State ==================================================================
 
@@ -461,12 +460,28 @@ def run(
     finally:
         save_state(state)
         if history:
-            # We save the raw transcript FIRST — it's the most important (for RAG)
-            # and must not depend on a (possibly failing) summarize call.
-            session_path = save_session(history, live, started)
+            # Everything closes into the single .kiln/store.json. We persist the session +
+            # its raw turns (the RAG corpus) FIRST — before the (possibly failing) summary —
+            # so a summary failure can't lose the transcript. The session id is the start time.
+            ended = _dt.datetime.now().isoformat(timespec="seconds")
+            store = load_store()
+            store["sessions"].append(
+                {
+                    "id": started,
+                    "started_at": started,
+                    "ended_at": ended,
+                    "mode": "live" if live else "dry",
+                    "turns": len(history),
+                }
+            )
+            store["messages"][started] = list(history)
+            save_store(store)  # transcript safe before summarizing
             summary = summarize(history, live)
-            save_summary(summary)
+            if summary:
+                stamp = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+                store["summaries"].append({"session_id": started, "stamp": stamp, "text": summary})
+                save_store(store)
             output.notice(
-                f"[exit] saved summary ({len(history)} turns) -> {MEMORY_FILE.name}; "
-                f"transcript -> history/{session_path.name}"
+                f"[exit] stored session {started} ({len(history)} turns)"
+                f"{' + summary' if summary else ''} -> {STORE_FILE.name}"
             )
