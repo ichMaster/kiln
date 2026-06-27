@@ -41,6 +41,16 @@ def test_status_emits_via_notice_not_print(capsys):
     assert capsys.readouterr().out == ""  # nothing printed directly (no print)
 
 
+def test_self_command_toggles_self_messages_and_notifies():
+    out = RecordingOutput()
+    st = State(needs={})
+    assert st.self_messages is True  # default on
+    assert handle_command("/self", st, [], "sys", False, out) == "handled"
+    assert st.self_messages is False and any("off" in n for n in out.notices)
+    handle_command("/self", st, [], "sys", False, out)  # toggles back
+    assert st.self_messages is True and any("on" in n for n in out.notices)
+
+
 def test_needs_emits_via_notice():
     out = RecordingOutput()
     handle_command("/needs", State(needs={"connection": 0.5}), [], "sys", False, out)

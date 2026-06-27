@@ -1,55 +1,77 @@
-"""Unit: self-triggers — hysteresis (one fire per crossing) + cooldown."""
+"""Unit: the reach-out — only connection self-triggers; intensity/novelty pick the brain."""
 
 from __future__ import annotations
 
 from kiln.config import SELF_COOLDOWN
-from kiln.engine import State, TriggerBook, select_self_trigger
+from kiln.engine import State, TriggerBook, reach_out_branch, select_self_trigger
+
+# --- select_self_trigger: ONLY connection fires (hysteresis + cooldown) ------
 
 
-def test_no_trigger_below_threshold():
-    assert select_self_trigger(State(needs={"novelty": 0.5}), TriggerBook()) == (None, None)
+def test_no_trigger_below_connection_threshold():
+    assert select_self_trigger(State(needs={"connection": 0.5}), TriggerBook()) is None
 
 
-def test_fires_on_upward_crossing_with_its_action():
-    # novelty thr 0.85 -> action 'tool' (delegates to the session-wiki sub-agent)
-    fired = select_self_trigger(State(needs={"novelty": 0.90}), TriggerBook())
-    assert fired == ("novelty", "tool")
+def test_fires_on_connection_upward_crossing():
+    assert select_self_trigger(State(needs={"connection": 0.85}), TriggerBook()) == "connection"
+
+
+def test_only_connection_self_triggers():
+    # novelty/intensity over their own thresholds do NOT self-initiate
+    st = State(needs={"connection": 0.0, "novelty": 0.95, "intensity": 0.95})
+    assert select_self_trigger(st, TriggerBook()) is None
 
 
 def test_hysteresis_one_fire_while_staying_above():
     tg = TriggerBook()
-    st = State(needs={"intensity": 0.80})  # above threshold 0.75
-    assert select_self_trigger(st, tg)[0] == "intensity"  # fired
-    # stays above threshold -> does not fire again (hysteresis discharged)
-    assert select_self_trigger(st, tg) == (None, None)
-    assert select_self_trigger(st, tg) == (None, None)
+    st = State(needs={"connection": 0.85})  # above threshold 0.80
+    assert select_self_trigger(st, tg) == "connection"  # fired
+    assert select_self_trigger(st, tg) is None  # hysteresis discharged
+    assert select_self_trigger(st, tg) is None
 
 
 def test_hysteresis_rearms_after_drop_below():
     tg = TriggerBook()
-    st = State(needs={"connection": 0.85})  # above 0.80 -> action 'chat'
-    assert select_self_trigger(st, tg) == ("connection", "chat")
+    st = State(needs={"connection": 0.85})
+    assert select_self_trigger(st, tg) == "connection"
     st.needs["connection"] = 0.50  # dropped below -> re-arm
     for _ in range(SELF_COOLDOWN + 1):  # also let the cooldown drain
         select_self_trigger(st, tg)
     st.needs["connection"] = 0.85  # second upward crossing
-    assert select_self_trigger(st, tg) == ("connection", "chat")
+    assert select_self_trigger(st, tg) == "connection"
 
 
 def test_cooldown_blocks_refire_until_drained():
     tg = TriggerBook()
-    st = State(needs={"novelty": 0.90})
-    assert select_self_trigger(st, tg)[0] == "novelty"  # fired, cooldown = SELF_COOLDOWN
-    st.needs["novelty"] = 0.0
-    assert select_self_trigger(st, tg) == (None, None)  # re-armed, cooldown ticking down
-    st.needs["novelty"] = 0.90  # above threshold again, but cooldown still running
-    blocked = [select_self_trigger(st, tg)[0] for _ in range(SELF_COOLDOWN - 2)]
+    st = State(needs={"connection": 0.85})
+    assert select_self_trigger(st, tg) == "connection"  # fired, cooldown = SELF_COOLDOWN
+    st.needs["connection"] = 0.0
+    assert select_self_trigger(st, tg) is None  # re-armed, cooldown ticking down
+    st.needs["connection"] = 0.85  # above threshold again, but cooldown still running
+    blocked = [select_self_trigger(st, tg) for _ in range(SELF_COOLDOWN - 2)]
     assert all(x is None for x in blocked)  # silence until the cooldown drains
-    assert select_self_trigger(st, tg)[0] == "novelty"  # cooldown = 0 -> fired again
+    assert select_self_trigger(st, tg) == "connection"  # cooldown = 0 -> fired again
 
 
-def test_largest_overshoot_fires_first():
-    tg = TriggerBook()
-    # intensity overshoots by 0.20 (0.95-0.75); novelty by 0.05 (0.90-0.85)
-    st = State(needs={"intensity": 0.95, "novelty": 0.90})
-    assert select_self_trigger(st, tg)[0] == "intensity"
+# --- reach_out_branch: intensity/novelty shape WHICH brain answers ----------
+
+
+def test_reach_out_chat_when_calm():
+    # neither intensity nor novelty over threshold -> connection's baseline (chat)
+    assert reach_out_branch(State(needs={"connection": 0.85})) == ("chat", None)
+
+
+def test_reach_out_deep_when_intensity_high():
+    st = State(needs={"connection": 0.85, "intensity": 0.80})  # intensity >= 0.75
+    assert reach_out_branch(st) == ("deep", None)
+
+
+def test_reach_out_session_wiki_when_novelty_high():
+    st = State(needs={"connection": 0.85, "novelty": 0.90})  # novelty >= 0.85, intensity low
+    assert reach_out_branch(st) == ("tool", "session-wiki")
+
+
+def test_reach_out_intensity_wins_over_novelty():
+    # both high -> intensity has priority (REACH_OUT_MODELS order)
+    st = State(needs={"connection": 0.85, "intensity": 0.80, "novelty": 0.95})
+    assert reach_out_branch(st) == ("deep", None)

@@ -65,24 +65,31 @@ fall). `idle` (silence) is what recovers `rest`, and being unanswered builds a l
 
 `apply_satiation` clamps levels at `0.0`; `drift` clamps them at `1.0`.
 
-**The novelty self-trigger is special.** Its `NEED_TRIGGERS` action is `"tool"`, which delegates
-the whole reach-out to a **named Claude Code sub-agent** (`brain.tool` → `claude -p --agent
-session-wiki`). That sub-agent reads the recent session, picks one curiosity topic, fetches a
-**Wikipedia** fact, and returns a single Ukrainian paragraph in Agnika's voice — which becomes her
-reach-out. Satiation-wise it still counts as a `deep` event, so the rule becomes, for novelty: *a
-new fact arrived → novelty closes.* (`MockBrain.tool` returns canned text, so dry-run and tests make
-no network/subprocess calls; any need can name its own agent via `action: "tool"`.)
+**Only connection self-triggers; the other needs pick the brain.** When **connection** crosses its
+threshold she reaches out, and `reach_out_branch(state)` chooses the model: `intensity` over its
+threshold → deep/Opus, else `novelty` over its → the **`session-wiki`** sub-agent (`brain.tool` →
+`claude -p --agent session-wiki`), else a light `chat`. The session-wiki sub-agent reads the recent
+session, picks a curiosity topic, fetches a **Wikipedia** fact, and returns a single Ukrainian
+paragraph in Agnika's voice — her reach-out. So Opus and session-wiki **never self-initiate**; they
+only shape a connection-driven message. Satiation is **per-agent** — `SATIATION["session-wiki"]`
+drops `novelty` hard (and barely tires, unlike an opus `deep` turn), falling back to the `deep`
+event for any agent without its own entry. (`MockBrain.tool` returns canned text, so dry-run and
+tests make no network/subprocess calls.)
 
 ## Classification and routing
 
-When the brain does kick in on **user input**, `classify(prompt, state)`
-returns `chat | think | tools`:
+When the brain kicks in on **user input**, `classify(prompt, state)` returns
+`(class, agent)`, class ∈ `chat | think | tools | tool`, in priority order:
 
-1. there are explicit **tool markers** (`TOOL_HINTS`: `файл`, `запусти`, `пошук`…)
-   → `tools`;
-2. there are **reasoning markers** (`THINK_HINTS`: `чому`, `поясни`, `проаналізуй`…)
-   **OR** a high state weight → `think`;
-3. otherwise → `chat`.
+1. explicit **tool markers** (`TOOL_HINTS`: `файл`, `запусти`, `пошук`…) → `tools`
+   (deep + `--allowedTools`);
+2. explicit **reasoning markers** (`THINK_HINTS`: `чому`, `поясни`, `проаналізуй`…) → `think`;
+3. **ambient high needs pick the deeper brain** — the same map as a self-trigger
+   (`REACH_OUT_MODELS`): `intensity ≥ 0.75` → `deep` (opus); else `novelty ≥ 0.85` → `tool`
+   (`session-wiki`). So when she's intense or curious, even a plain user turn gets the deeper
+   brain, not cheap chat;
+4. a high **state weight** → `think`;
+5. otherwise → `chat`.
 
 State weight:
 
@@ -90,27 +97,27 @@ State weight:
 turn_weight = 0.55 * intensity + 0.45 * connection      # clamped to 0..1
 ```
 
-If `turn_weight >= THINK_THRESHOLD` (0.45) or there are markers — the turn goes to `deep`,
-otherwise — to `chat`. `respond()` maps the class to a branch and to a satiation event:
-`chat → "chat"`, `think`/`tools → "deep"`.
+`respond()` maps the class to a branch and a satiation event: `chat → "chat"`,
+`think`/`tools → "deep"`, `tool → its per-agent event` (e.g. `session-wiki`).
 
-> **Self-triggers bypass classification.** Their branch is set in advance in
-> `NEED_TRIGGERS` and passed to `respond(force=...)`.
+> **Self-triggers bypass classification.** The branch is chosen by `reach_out_branch`
+> (not message markers) and passed to `respond(force=...)`.
 
 ## Self-triggers (the engine speaks up on its own)
 
-When a need crosses **its** threshold, the engine initiates a turn on its own
-(`select_self_trigger`). Each need has its own threshold and branch (`NEED_TRIGGERS`):
+Only **connection** (`REACH_OUT_NEED`) self-triggers a proactive message — when it crosses its
+threshold (loneliness), the engine initiates a turn (`select_self_trigger`). **Which brain answers**
+is then chosen by her other needs at that moment (`reach_out_branch`):
 
-| Need | Threshold | Branch when fired |
+| Condition at fire time | Branch | Why |
 |---|---|---|
-| `connection` | 0.80 | chat (Haiku) |
-| `rest` | 0.90 | chat (Haiku) |
-| `novelty` | 0.85 | deep (Claude) |
-| `intensity` | 0.75 | deep (Claude) |
+| `intensity ≥ 0.75` | deep (Opus) | tense → a deep reply |
+| else `novelty ≥ 0.85` | `session-wiki` (Sonnet) | curious → a fresh external fact |
+| else | chat (Haiku) | calm → light contact |
 
-Contact needs (connection/rest) are closed by cheap chat; substantive ones
-(novelty/intensity) — by a deep call.
+So Opus and session-wiki **never self-initiate** — they only *shape* a connection-driven reach-out
+(`intensity` also routes *user* turns to Opus via `turn_weight`). `rest` crossing drives the **rest
+gate** (sleep), not a message. Priority order is `REACH_OUT_MODELS = (intensity, novelty)`.
 
 ### Trigger state (`TriggerBook`)
 

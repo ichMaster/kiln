@@ -18,7 +18,7 @@ from .output import Output
 
 # Canonical list of implemented slash commands — the single source for both /help
 # and the TUI hint line, so they never advertise a command kiln doesn't have.
-COMMANDS = ("status", "needs", "memory", "history", "ask", "clear", "help", "quit")
+COMMANDS = ("status", "needs", "self", "memory", "history", "ask", "clear", "help", "quit")
 
 
 def command_hints() -> str:
@@ -54,6 +54,12 @@ def handle_command(line: str, state, history: list[dict], system: str, live: boo
 
     elif cmd == "needs":
         output.notice(f"[needs] {_fmt_needs(state)}")
+
+    elif cmd == "self":
+        # Toggle proactive self-messages (the connection reach-out). Off -> she never writes
+        # first; she still answers you. Per-session (not persisted).
+        state.self_messages = not state.self_messages
+        output.notice(f"[self] proactive self-messages: {'on' if state.self_messages else 'off'}")
 
     elif cmd == "memory":
         mem = load_memory().strip()

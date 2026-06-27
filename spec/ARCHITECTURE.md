@@ -85,17 +85,25 @@ behind the **`Brain` seam** (`brain.py`), each method returning `(text, usage)`:
 - **tool** → a **named Claude Code sub-agent** via `claude -p --agent <agent>`
   (`LiveBrain.tool`; the agent's `.claude/agents/<agent>.md` supplies its system prompt,
   model, and tools — kiln reads the frontmatter only for `--allowedTools` + usage labeling).
-  A `NEED_TRIGGERS` entry with `action: "tool"` names the agent — e.g. **novelty →
-  `session-wiki`**, which reads the recent session, fetches an external Wikipedia fact, and
-  returns one Ukrainian paragraph; satiation-wise it counts as a `deep` event.
+  A `NEED_TRIGGERS` entry with `action: "tool"` names the agent — **`session-wiki`**, chosen by
+  `reach_out_branch` when a connection reach-out fires with high `novelty`. It reads the recent
+  session, fetches an external Wikipedia fact, and returns one Ukrainian paragraph; satiation is
+  **per-agent** (`SATIATION["session-wiki"]` drops `novelty`), falling back to `deep` otherwise.
 - **mock** → `MockBrain` returns deterministic canned text + a synthetic usage
   record (no network, no subprocess); the dry-run demo and the whole test suite run
   on it — **zero paid calls**.
 
-`classify(prompt, state)` → `chat | think | tools` from message markers
-(`TOOL_HINTS`/`THINK_HINTS`) **and** a state weight (`0.55·intensity +
-0.45·connection` vs `THINK_THRESHOLD`). `respond()` maps the class to a branch and
-to a satiation **event** (`chat | deep | idle`). Both branches share one system
+**Cost/auth invariant: Opus never touches the API key.** The API-key (SDK) path is the
+cheap-Haiku `chat` branch only — `LiveBrain.chat` refuses to run an Opus model (`_is_opus`).
+Everything Opus/Sonnet goes through `claude -p`, which is spawned with `ANTHROPIC_API_KEY`
+**stripped from its environment** (`_claude_env`), so it bills via the CLI's own login
+(subscription/OAuth), never the API key.
+
+`classify(prompt, state)` → `(class, agent)`, class ∈ `chat | think | tools | tool`: explicit
+markers (`TOOL_HINTS`/`THINK_HINTS`) win, then **ambient high needs pick the deeper brain like a
+self-trigger** (`intensity ≥ thr` → `deep`, else `novelty ≥ thr` → `session-wiki`), then a state
+weight (`0.55·intensity + 0.45·connection` vs `THINK_THRESHOLD`), else `chat`. `respond()` maps the
+class to a branch and a satiation **event** (`chat | deep | idle | <agent>`). Both branches share one system
 prompt (canon + long-term memory). A deep failure degrades to `(deep error: …)` —
 never crashes the loop.
 
@@ -108,10 +116,14 @@ what closed** — `deep` is the "filling meal" (closes novelty/rest/intensity ha
 need → pushes to expensive `deep` → which discharges it → a long cheap stretch.
 That cycle is what conserves Opus.
 
-A **self-trigger** fires when a need crosses its own threshold (`NEED_TRIGGERS`),
-guarded by **hysteresis** (one fire per upward crossing; re-arms below threshold)
-and a **cooldown** (`SELF_COOLDOWN` silent ticks). Full algorithm in
-[`docs/how-it-works.md`](../docs/how-it-works.md).
+A **self-trigger** (proactive message) fires only when `REACH_OUT_NEED` (**connection** =
+loneliness) crosses its threshold — guarded by **hysteresis** (one fire per upward crossing;
+re-arms below) and a **cooldown** (`SELF_COOLDOWN` ticks). **Which brain answers** the reach-out
+is shaped by her other needs at that moment (`reach_out_branch`): `intensity` over its threshold
+→ deep/Opus, else `novelty` over its → `session-wiki`, else a light `chat`. So Opus and
+`session-wiki` **never self-initiate** — `intensity` only otherwise routes *user* turns to Opus
+via `turn_weight`. `rest` crossing drives the **rest gate** (sleep), not a message. Full
+algorithm in [`docs/how-it-works.md`](../docs/how-it-works.md).
 
 ## Memory and transcripts (+ RAG)
 

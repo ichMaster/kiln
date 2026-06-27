@@ -25,14 +25,15 @@ def agent_label(is_self: bool) -> str:
 
 
 def status_line1(snap: dict) -> str:
-    """Top status line: status · model · branch · hottest need."""
+    """Top status line: status · model · branch · hottest need · self-messages mode."""
     status = snap.get("status", "idle")
     model = short_model(snap.get("model", ""))
     branch = snap.get("branch") or "—"
     hottest = snap.get("hottest") or ["", 0.0]
     need, level = hottest[0], hottest[1]
     hot = f"{need} {level:.2f}" if need else "—"
-    return f"status: {status} · {model} · {branch} · hottest: {hot}"
+    self_mode = "on" if snap.get("self_messages", True) else "off"
+    return f"status: {status} · {model} · {branch} · hottest: {hot} · self:{self_mode}"
 
 
 def status_line2(snap: dict) -> str:

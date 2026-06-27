@@ -52,14 +52,21 @@ def test_respond_tools_route_label():
     assert out["route"].startswith("TOOLS/")
 
 
-def test_respond_tool_closes_novelty():
-    # A "tool" reach-out (named sub-agent) closes novelty like a deep "filling meal".
+def test_respond_tool_uses_per_agent_satiation():
+    # session-wiki has its OWN satiation entry (drops novelty), not the deep fallback.
     st = State(needs={"novelty": 0.90})
     out = respond(
         "розкажи щось нове", st, [], "sys", MockBrain(), force="tool", agent="session-wiki"
     )
     assert out["class"] == "tool"
     assert out["route"] == "TOOL/session-wiki"
+    assert st.needs["novelty"] == pytest.approx(0.90 + SATIATION["session-wiki"]["novelty"])
+
+
+def test_respond_tool_unknown_agent_falls_back_to_deep():
+    # an agent with no SATIATION entry falls back to the deep "filling meal"
+    st = State(needs={"novelty": 0.90})
+    respond("x", st, [], "sys", MockBrain(), force="tool", agent="no-such-agent")
     assert st.needs["novelty"] == pytest.approx(0.90 + SATIATION["deep"]["novelty"])
 
 

@@ -123,6 +123,68 @@ reply / copy all works. Full cost/`$` analytics stays in v0.5.
 persist for analytics.
 **DoD:** a session shows total tokens + cost by branch.
 
+### 0.6 Short memory — unified `.kiln/store.json` — ⬜
+**Goal:** replace the scattered, append-only persistence (`state/memory.md` +
+`history/session-*.json`, no pruning) with a single **`.kiln/store.json`** — Lumi-style
+(`sessions` / `messages` / `summaries`) — holding a **cleaned** session history and
+**per-session summaries that load into the system prompt**. This is kiln's "short memory":
+the recent conversation is kept tidy, and everything older is carried forward as compact
+summaries instead of raw transcript.
+**Tasks:**
+- **Single-file store (`.kiln/store.json`).** One JSON owned by a small `store` module
+  (atomic write + `.bak`), mirroring Lumi's `.lumi/store.json`: `sessions` (id, start/end,
+  mode, turn count), `messages` (turns per session), `summaries`. Replaces the
+  `state/memory.md` + `history/*.json` split; the `state/` knobs (canon/prompts/needs) stay.
+- **Review & prune the current history.** Before a session is stored, review it and drop
+  what isn't real conversation — slash-command echoes, empty / `/`-prefixed lines, the
+  resting notice, accidental noise (and noise-only sessions) — so only meaningful turns
+  persist. Rule-based first; may later use the model to judge relevance.
+- **Migrate existing data.** A one-shot migration that folds the current `state/memory.md`
+  summaries and all `history/session-*.json` transcripts into `.kiln/store.json` losslessly,
+  and migrates the in-flight conversation on first run.
+- **Summarize on every session close.** On exit (incl. Ctrl-C, via `finally`), summarize the
+  *cleaned* session through `claude -p` on **Opus with extended thinking on**
+  (`MAX_THINKING_TOKENS`; the API key is stripped → subscription billing) and append it to the
+  store's `summaries` — every closed session yields exactly one summary.
+- **Summaries → system prompt.** On start, load **all** prior `summaries` from the store into
+  the system prompt of every branch (`build_system`), so each new session opens with compact
+  memory of all previous ones.
+- **Tests.** Store round-trips (save→load, atomic + `.bak`); the prune step removes
+  non-conversation entries; migration folds legacy files in losslessly; a session close
+  writes exactly one summary; the system prompt includes prior summaries — all on a **mock
+  brain** (zero paid calls).
+**DoD:** all session state lives in one `.kiln/store.json`; the kept history is pruned to
+real conversation; legacy `state/memory.md` + `history/*.json` are migrated in; closing a
+session writes one summary; and every new session's system prompt carries all prior summaries.
+
+### 0.7 Long memory — user facts (`store.json` `facts`) — ⬜
+**Goal:** a durable **facts-about-the-user** layer on top of 0.6's store. On session close,
+extract facts from the session via Opus; persist them in `.kiln/store.json` (`facts`); and on
+each start, digest **all** facts down to N lines (Opus) into a dedicated **system-prompt
+section**. Distinct from 0.6's per-session *summaries* (what was discussed) — these are stable
+facts about the user (who they are, preferences, life), carried forward indefinitely. Both
+Opus calls run with **extended thinking on**, the API key stripped (subscription).
+**Tasks:**
+- **Extract facts on session close.** On exit, send the (cleaned) session history to
+  `claude -p` on **Opus + extended thinking** (`MAX_THINKING_TOKENS`; key stripped) to extract
+  durable **facts about the user**, deduped against the facts already stored.
+- **Persist facts in the store.** Save them to `.kiln/store.json` under a **`facts`** key
+  (id, text, first/last-seen, source session) — alongside 0.6's
+  `sessions`/`messages`/`summaries`. Mirrors Lumi's `facts`.
+- **Digest facts on session start.** On start, send **all** stored facts to `claude -p`
+  (Opus + thinking) to condense them to **N lines** (`FACTS_DIGEST_LINES`) — a compact, current
+  view of who the user is (Lumi's `facts_digests`).
+- **Facts → system prompt (new section).** Inject that N-line digest into the system prompt of
+  every branch under a dedicated **`## Facts about the user`** section, separate from the canon
+  and the 0.6 memory summaries (`build_system`).
+- **Tests.** Fact extraction is invoked on close; facts round-trip in the store and dedupe; the
+  start-time digest condenses to ≤ N lines; the system prompt carries the facts section — all on
+  a **mock brain** (zero paid calls). Both Opus calls strip the API key (asserted on the
+  captured subprocess env).
+**DoD:** closing a session extracts user facts (Opus + thinking) into `.kiln/store.json`;
+starting one digests all facts to N lines (Opus + thinking) and injects them as a dedicated
+system-prompt section; both Opus calls bill via the subscription, never the API key.
+
 ## v1 — Engine (the tick-server & hub foundation)
 
 ### 1.1 Tick-server: engine = WS/HTTP server, clients attach — ⬜

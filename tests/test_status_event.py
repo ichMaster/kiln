@@ -9,7 +9,7 @@ emits it to the bus. All against a mock brain — zero paid calls.
 from __future__ import annotations
 
 from kiln.brain import MockBrain
-from kiln.config import CHAT_MODEL, DEEP_MODEL
+from kiln.config import CHAT_MODEL, DEEP_MODEL, REST_MESSAGE
 from kiln.engine import State, TriggerBook, _status_snapshot
 from kiln.output import ConsoleOutput
 from kiln.stats import SessionStats
@@ -25,6 +25,7 @@ SNAPSHOT_KEYS = {
     "actions",
     "hottest",
     "cooldowns",
+    "self_messages",
     "stats",
 }
 STATS_KEYS = {
@@ -183,20 +184,20 @@ def test_run_status_reflects_a_turn(monkeypatch, tmp_path):
     assert last["stats"]["tokens_total"] == 20  # MockBrain chat usage: 8 + 12
 
 
-def test_run_novelty_selftrigger_routes_to_tool_agent(monkeypatch, tmp_path):
-    """With no user input, a novelty crossing reaches out via its named "tool" sub-agent."""
+def test_run_connection_reach_out_uses_novelty_model(monkeypatch, tmp_path):
+    """connection fires the reach-out; high novelty (low intensity) makes it session-wiki."""
     import kiln.engine as eng
 
     _isolate(monkeypatch, eng, tmp_path)
-    # novelty already over its 0.85 threshold -> the novelty self-trigger fires on tick 1
+    # connection over its 0.80 threshold -> reach-out fires; novelty over 0.85 -> session-wiki
     monkeypatch.setattr(
         eng,
         "load_state",
         lambda *a, **k: eng.State(
-            needs={"connection": 0.0, "rest": 0.0, "novelty": 0.95, "intensity": 0.0}
+            needs={"connection": 0.95, "rest": 0.0, "novelty": 0.95, "intensity": 0.0}
         ),
     )
-    monkeypatch.setattr(eng, "load_prompts", lambda *a, **k: {"novelty": ["розкажи щось нове"]})
+    monkeypatch.setattr(eng, "load_prompts", lambda *a, **k: {"connection": ["озвись"]})
 
     class ToolSpyBrain(MockBrain):
         calls: list = []
@@ -207,6 +208,162 @@ def test_run_novelty_selftrigger_routes_to_tool_agent(monkeypatch, tmp_path):
 
     rec = StatusRecorder()
     eng.run(ticks=1, live=False, channel=eng.ScriptedChannel({}), brain=ToolSpyBrain(), output=rec)
-    assert ToolSpyBrain.calls == ["session-wiki"]  # routed to the named sub-agent, not deep
-    assert rec.replies == ["НОВИЙ ФАКТ"]  # the agent's paragraph is emitted as the reach-out
+    assert ToolSpyBrain.calls == ["session-wiki"]  # connection fired; novelty chose the model
+    assert rec.replies == ["НОВИЙ ФАКТ"]
     assert rec.statuses[-1]["branch"] == "tool"
+
+
+def test_run_self_messages_off_suppresses_reach_out(monkeypatch, tmp_path):
+    """With /self off (self_messages=False), a connection crossing does NOT reach out."""
+    import kiln.engine as eng
+
+    _isolate(monkeypatch, eng, tmp_path)
+    monkeypatch.setattr(
+        eng,
+        "load_state",
+        lambda *a, **k: eng.State(
+            needs={"connection": 0.95, "rest": 0.0, "novelty": 0.0, "intensity": 0.0},
+            self_messages=False,
+        ),
+    )
+    brain = _CountingBrain()
+    rec = StatusRecorder()
+    eng.run(ticks=1, live=False, channel=eng.ScriptedChannel({}), brain=brain, output=rec)
+    assert brain.calls == 0  # no proactive reach-out
+    assert rec.replies == []
+    assert rec.statuses[-1]["self_messages"] is False  # surfaced for the status bar
+
+
+def test_run_connection_reach_out_is_chat_when_calm(monkeypatch, tmp_path):
+    """connection fires; with calm intensity/novelty it answers via cheap chat, not opus."""
+    import kiln.engine as eng
+
+    _isolate(monkeypatch, eng, tmp_path)
+    monkeypatch.setattr(
+        eng,
+        "load_state",
+        lambda *a, **k: eng.State(
+            needs={"connection": 0.95, "rest": 0.0, "novelty": 0.0, "intensity": 0.0}
+        ),
+    )
+    monkeypatch.setattr(eng, "load_prompts", lambda *a, **k: {"connection": ["озвись"]})
+    rec = StatusRecorder()
+    eng.run(ticks=1, live=False, channel=eng.ScriptedChannel({}), brain=MockBrain(), output=rec)
+    assert rec.statuses[-1]["branch"] == "chat"  # baseline reach-out, no opus
+    assert any("dry-run chat" in r for r in rec.replies)
+
+
+# --- rest gate: too tired to answer ----------------------------------------
+
+
+class _CountingBrain(MockBrain):
+    """MockBrain that counts every brain call — to prove the gate skips the brain."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def chat(self, history, system):
+        self.calls += 1
+        return super().chat(history, system)
+
+    def deep(self, prompt, history, system, with_tools):
+        self.calls += 1
+        return super().deep(prompt, history, system, with_tools)
+
+    def tool(self, agent, history, system):
+        self.calls += 1
+        return super().tool(agent, history, system)
+
+
+def _rest_state(rest):
+    return lambda *a, **k: State(
+        needs={"connection": 0.0, "rest": rest, "novelty": 0.0, "intensity": 0.0}
+    )
+
+
+def test_run_resting_says_rest_message_and_does_not_answer(monkeypatch, tmp_path):
+    """rest over its threshold -> a user message is met with REST_MESSAGE, brain untouched."""
+    import kiln.engine as eng
+
+    _isolate(monkeypatch, eng, tmp_path)
+    monkeypatch.setattr(eng, "load_state", _rest_state(0.95))
+    brain = _CountingBrain()
+    rec = StatusRecorder()
+    eng.run(
+        ticks=1, live=False, channel=eng.ScriptedChannel({0: "привіт"}), brain=brain, output=rec
+    )
+    assert brain.calls == 0  # she did not answer through any branch
+    assert rec.replies == [REST_MESSAGE]  # she said she needs to rest
+    assert rec.statuses[-1]["status"] == "resting"
+
+
+def test_run_resting_says_message_once_per_episode(monkeypatch, tmp_path):
+    """She says REST_MESSAGE once on entering rest, not to every message during it."""
+    import kiln.engine as eng
+
+    _isolate(monkeypatch, eng, tmp_path)
+    monkeypatch.setattr(eng, "load_state", _rest_state(0.95))
+    monkeypatch.setitem(eng.SATIATION["idle"], "rest", 0.0)  # no recovery -> stays resting
+    brain = _CountingBrain()
+    rec = StatusRecorder()
+    eng.run(
+        ticks=3,
+        live=False,
+        channel=eng.ScriptedChannel({0: "1", 1: "2", 2: "3"}),
+        brain=brain,
+        output=rec,
+    )
+    assert brain.calls == 0
+    assert rec.replies == [REST_MESSAGE]  # said ONCE, despite three messages
+    assert all(s["status"] == "resting" for s in rec.statuses)
+
+
+def test_run_resting_suppresses_self_trigger(monkeypatch, tmp_path):
+    """While resting, even a need over threshold does not reach out (no tool/deep call)."""
+    import kiln.engine as eng
+
+    _isolate(monkeypatch, eng, tmp_path)
+    # both rest (sleep) and novelty (would reach out) are over threshold -> rest wins
+    monkeypatch.setattr(
+        eng,
+        "load_state",
+        lambda *a, **k: State(
+            needs={"connection": 0.0, "rest": 0.95, "novelty": 0.95, "intensity": 0.0}
+        ),
+    )
+    brain = _CountingBrain()
+    rec = StatusRecorder()
+    eng.run(ticks=1, live=False, channel=eng.ScriptedChannel({}), brain=brain, output=rec)
+    assert brain.calls == 0  # self-trigger suppressed
+    assert rec.replies == [REST_MESSAGE]  # announced once on entering rest
+    assert rec.statuses[-1]["status"] == "resting"
+
+
+def test_run_resting_commands_still_work(monkeypatch, tmp_path):
+    """Slash commands are handled even while resting (e.g. /quit isn't locked out)."""
+    import kiln.engine as eng
+
+    _isolate(monkeypatch, eng, tmp_path)
+    monkeypatch.setattr(eng, "load_state", _rest_state(0.95))
+    brain = _CountingBrain()
+    rec = StatusRecorder()
+    eng.run(
+        ticks=2, live=False, channel=eng.ScriptedChannel({0: "/status"}), brain=brain, output=rec
+    )
+    assert brain.calls == 0
+    assert REST_MESSAGE not in rec.replies  # a command is not met with the rest line
+
+
+def test_run_rest_hysteresis_sleeps_then_wakes(monkeypatch, tmp_path):
+    """Once resting she stays resting (between threshold and REST_WAKE), then wakes."""
+    import kiln.engine as eng
+
+    _isolate(monkeypatch, eng, tmp_path)
+    monkeypatch.setattr(eng, "REST_WAKE", 0.80)
+    monkeypatch.setitem(eng.DRIFT, "rest", 0.0)
+    monkeypatch.setitem(eng.SATIATION["idle"], "rest", -0.10)  # recover 0.10/idle tick
+    monkeypatch.setattr(eng, "load_state", _rest_state(0.95))
+    rec = StatusRecorder()
+    eng.run(ticks=3, live=False, channel=eng.ScriptedChannel({}), brain=MockBrain(), output=rec)
+    # rest: 0.95 ->0.85 ->0.75; resting until rest <= 0.80, so it wakes on tick 3
+    assert [s["status"] for s in rec.statuses] == ["resting", "resting", "idle"]

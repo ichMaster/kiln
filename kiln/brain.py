@@ -18,12 +18,17 @@ import json
 import subprocess
 from typing import Protocol, runtime_checkable
 
-from .config import AGENTS_DIR, CHAT_MODEL, DEEP_MODEL, DEEP_TOOLS
+from .config import AGENTS_DIR, CHAT_MODEL, DEEP_MODEL, DEEP_TOOLS, claude_env
 from .history import to_messages, to_transcript
 from .usage import _cli_error_detail, usage_record
 
 # usage: {model, input, output, total} or None
 Usage = dict | None
+
+
+def _is_opus(model: str) -> bool:
+    """Whether a model id is an Opus model (the expensive tier)."""
+    return "opus" in model.lower()
 
 
 def _agent_meta(agent: str) -> dict:
@@ -73,6 +78,14 @@ class LiveBrain:
     """The real brain: Haiku via the SDK (chat) + Opus via `claude -p` (think/tools)."""
 
     def chat(self, history: list[dict], system: str) -> tuple[str, Usage]:
+        # Invariant: the API-key (SDK) path is for the CHEAP model only. Opus must NEVER be
+        # billed via the API key — it runs only through `claude -p` (deep/tool). Refuse here.
+        if _is_opus(CHAT_MODEL):
+            return (
+                f"(config error: CHAT_MODEL '{CHAT_MODEL}' is Opus; the API/chat branch must "
+                "not call Opus — Opus runs only via `claude -p`. Set CHAT_MODEL to a cheap model.)",
+                None,
+            )
         # Local import: dry-run/tests work without the anthropic package — it's
         # needed only by this live branch. Key comes from ANTHROPIC_API_KEY (.env -> os.environ).
         from anthropic import Anthropic
@@ -117,10 +130,18 @@ class LiveBrain:
         ]
         if with_tools and DEEP_TOOLS:
             cmd += ["--allowedTools", ",".join(DEEP_TOOLS)]
-        cmd.append(full_prompt)
-
+        # --allowedTools is variadic (<tools...>), so a trailing positional prompt would be
+        # swallowed as another tool name. Pass the prompt via stdin to avoid that. claude_env()
+        # turns on extended thinking and strips the API key (Opus bills via the CLI login).
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            result = subprocess.run(
+                cmd,
+                input=full_prompt,
+                capture_output=True,
+                text=True,
+                timeout=180,
+                env=claude_env(),
+            )
         except Exception as e:  # timeout / process failed to start
             return f"(deep error: {e})", None
         if result.returncode != 0:
@@ -158,9 +179,12 @@ class LiveBrain:
         if tools:
             cmd += ["--allowedTools", ",".join(tools)]
         # --allowedTools is variadic (<tools...>), so a trailing positional prompt would be
-        # swallowed as another tool name. Pass the prompt via stdin to avoid that.
+        # swallowed as another tool name. Pass the prompt via stdin to avoid that. claude_env()
+        # turns on extended thinking and strips the API key (sub-agent bills via the CLI login).
         try:
-            result = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=180)
+            result = subprocess.run(
+                cmd, input=prompt, capture_output=True, text=True, timeout=180, env=claude_env()
+            )
         except Exception as e:  # timeout / process failed to start
             return f"({agent} error: {e})", None
         if result.returncode != 0:

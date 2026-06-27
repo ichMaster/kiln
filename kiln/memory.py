@@ -14,7 +14,15 @@ import random
 import re
 import subprocess
 
-from .config import CANON_FILE, DEEP_MODEL, DEFAULT_CANON, HISTORY_DIR, MEMORY_FILE, PROMPTS_FILE
+from .config import (
+    CANON_FILE,
+    DEEP_MODEL,
+    DEFAULT_CANON,
+    HISTORY_DIR,
+    MEMORY_FILE,
+    PROMPTS_FILE,
+    claude_env,
+)
 from .history import to_transcript
 from .usage import _cli_error_detail
 
@@ -69,7 +77,8 @@ def load_canon() -> str:
 
 
 def summarize(history: list[dict], live: bool) -> str:
-    """Conversation summary via Claude (`claude -p`). In dry-run — a stub."""
+    """Conversation summary via `claude -p` on DEEP_MODEL (Opus) with extended thinking ON.
+    In dry-run — a stub. Opus runs through the CLI with the API key stripped (subscription)."""
     if not history:
         return ""
     transcript = to_transcript(history)
@@ -79,9 +88,11 @@ def summarize(history: list[dict], live: bool) -> str:
     )
     if not live:
         return f"(dry-run summary: {len(history)} turns)"
+    # Opus via claude -p; claude_env() turns on extended thinking and strips the API key (so it
+    # bills via the CLI login — Opus is never called via the API key).
     cmd = ["claude", "-p", "--model", DEEP_MODEL, "--output-format", "json", prompt]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180, env=claude_env())
     except Exception as e:  # timeout / process failed to start
         print(f"[exit] summary failed: {e}")
         return ""

@@ -147,3 +147,60 @@ def test_respond_with_mock_never_touches_subprocess(monkeypatch):
 
     monkeypatch.setattr(brainmod.subprocess, "run", _boom)
     respond("поясни, чому так", State(needs={}), [], "sys", MockBrain(), force="deep")
+
+
+# --- claude -p prompt delivery: stdin, NOT a positional arg ------------------
+# Regression guard: --allowedTools is variadic (<tools...>) and would swallow a trailing
+# positional prompt, so deep()/tool() must hand the prompt to claude via stdin.
+
+
+class _FakeProc:
+    returncode = 0
+    stdout = '{"result": "ok", "usage": {"input_tokens": 1, "output_tokens": 1}}'
+    stderr = ""
+
+
+def _capture_run(monkeypatch):
+    seen = {}
+    import kiln.brain as brainmod
+
+    def _run(cmd, **kwargs):
+        seen["cmd"] = cmd
+        seen["input"] = kwargs.get("input")
+        seen["env"] = kwargs.get("env")
+        return _FakeProc()
+
+    monkeypatch.setattr(brainmod.subprocess, "run", _run)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-should-be-stripped")
+    return seen
+
+
+def test_livebrain_deep_tools_passes_prompt_via_stdin(monkeypatch):
+    seen = _capture_run(monkeypatch)
+    LiveBrain().deep("ПРОМПТ", [], "sys", with_tools=True)
+    assert seen["input"] == "ПРОМПТ"  # prompt on stdin
+    assert "ПРОМПТ" not in seen["cmd"]  # never a positional arg
+    assert "--allowedTools" in seen["cmd"]  # the variadic flag that would have eaten it
+    assert "ANTHROPIC_API_KEY" not in seen["env"]  # Opus never bills via the API key
+    assert "MAX_THINKING_TOKENS" in seen["env"]  # extended thinking ON
+    assert "PATH" in seen["env"]  # but the rest of the env is preserved (CLI login etc.)
+
+
+def test_livebrain_tool_passes_prompt_via_stdin(monkeypatch):
+    seen = _capture_run(monkeypatch)
+    LiveBrain().tool("session-wiki", [{"role": "user", "text": "привіт"}], "sys")
+    assert seen["input"] and "привіт" in seen["input"]  # transcript+prompt on stdin
+    assert "--agent" in seen["cmd"] and "session-wiki" in seen["cmd"]
+    assert seen["input"] not in seen["cmd"]  # the prompt is not a positional arg
+    assert "ANTHROPIC_API_KEY" not in seen["env"]  # claude -p uses its own login, not the key
+    assert "MAX_THINKING_TOKENS" in seen["env"]  # extended thinking ON
+
+
+def test_livebrain_chat_refuses_opus_on_the_api_key(monkeypatch):
+    """The SDK/API-key path must never run Opus — it degrades with a clear config error."""
+    import kiln.brain as brainmod
+
+    monkeypatch.setattr(brainmod, "CHAT_MODEL", "claude-opus-4-8")
+    text, usage = brainmod.LiveBrain().chat([{"role": "user", "text": "привіт"}], "sys")
+    assert "Opus" in text and "claude -p" in text  # refused before any SDK call
+    assert usage is None
