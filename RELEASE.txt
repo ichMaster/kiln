@@ -1,6 +1,16 @@
 kiln — Release Notes
 ====================
 
+Version 0.5.0 (2026-06-27)
+---------------------------
+- Short memory: a single .kiln/store.json holds all session state (sessions / messages / summaries), with atomic write + .bak recovery (KILN-017)
+- Session close prunes noise, then writes the transcript + one summary to the store (KILN-018/019)
+- Legacy state/memory.md + history/*.json migrated in idempotently (lossless, collision-safe) and retired (KILN-021)
+- Stored summaries load into every new session's system prompt (KILN-020)
+- Session summaries now run on Haiku (Messages API) — ~2x faster than Opus, cost-guarded
+- TUI quit waits for the summary ("saving session…") instead of killing it after 2s
+- Removed the now-redundant /memory and /history commands
+
 Version 0.4.2 (2026-06-27)
 ---------------------------
 - Reach-out model: only connection self-triggers; intensity/novelty choose the brain (deep / session-wiki / chat) for both self-messages and user turns
