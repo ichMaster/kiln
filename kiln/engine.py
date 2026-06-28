@@ -54,6 +54,7 @@ from .config import (
     THINK_HINTS,
     THINK_THRESHOLD,
     THOUGHT_COOLDOWN,
+    THOUGHTS_ENABLED,
     TICK_SECONDS,
     TIMEZONE,
     TOOL_HINTS,
@@ -79,7 +80,7 @@ from .mood import biorhythm, mood_block
 from .output import ConsoleOutput, Output
 from .report import write_report
 from .stats import SessionStats
-from .store import add_facts, load_store, save_store
+from .store import add_facts, add_thought, load_store, save_store
 from .world import world_block
 
 # === State ==================================================================
@@ -415,6 +416,7 @@ def run(
     # current session's own turns already ride in the messages array / transcript, so they aren't
     # repeated here — this carries continuity from the last conversation instead)
     prompts = load_prompts()  # self-trigger prompts from state/prompts.md
+    store = load_store()  # v0.10: held for the session so thoughts persist as they form
     tg = TriggerBook()  # trigger hysteresis + cooldown
     stats = SessionStats()  # session token/turn/latency totals (for the status bar)
 
@@ -454,6 +456,24 @@ def run(
         stats.record(out["class"], out.get("usage"), time.monotonic() - t0)
         return out
 
+    def _think() -> dict | None:
+        # v0.10 inner monologue: a PRIVATE thought via the chat brain (Haiku). It is NOT a
+        # conversation turn — generated against an ephemeral history (so the real transcript is
+        # untouched), stored hidden, and it discharges `reflection`. Returns the stored thought
+        # record (KILN-043 decides whether to surface it), or None on an empty reply.
+        prompt = pick_prompt(prompts, "thought")  # a [thought] reflection prompt (state/prompts.md)
+        ephemeral = history + [turn(ROLE_USER, prompt)]  # don't pollute the real conversation
+        t0 = time.monotonic()
+        text, usage = brain.chat(ephemeral, _system())
+        stats.record("thought", usage, time.monotonic() - t0)
+        text = strip_leading_name(text).strip()
+        apply_satiation(state, "thought")  # the thought discharges «незібраність»
+        if not text:
+            return None
+        thought = add_thought(store, text, started, _now().isoformat(timespec="seconds"))
+        save_store(store)
+        return thought
+
     t = 0
     total_ticks = 0  # real ticks since session start (catch-up included — counts blocked time)
     branch: str | None = None  # last turn's class (chat/think/tools) for the status snapshot
@@ -486,11 +506,16 @@ def run(
                 resting, entered_rest = True, True
 
             user_msg = channel.poll()
-            # Priority: INPUT beats a self-trigger. No reach-out while resting, or when proactive
-            # self-messages are switched off (/self).
-            fired = None
-            if user_msg is None and not resting and state.self_messages:
-                fired = select_self_trigger(state, tg)  # connection reach-out (need name or None)
+            # Priority: INPUT > reach-out > thought > idle. No reach-out/thought while resting; the
+            # reach-out needs /self on; the thought (inner monologue) only when no reach-out fires.
+            fired = thought_fired = None
+            if user_msg is None and not resting:
+                if state.self_messages:
+                    fired = select_self_trigger(
+                        state, tg
+                    )  # connection reach-out (need name or None)
+                if fired is None and THOUGHTS_ENABLED:
+                    thought_fired = select_thought_trigger(state, tg)  # inner monologue (v0.10)
 
             status_label = "idle"
             if user_msg is not None:
@@ -538,6 +563,9 @@ def run(
                 output.usage(out.get("usage"), stats.last_latency)
                 status_label, branch = "responding", out["class"]
                 reached_out = True  # awaiting a reply; next reach-out acknowledges the silence
+            elif thought_fired is not None:
+                _think()  # private inner thought (Haiku) — stored hidden, discharges reflection
+                status_label = "thinking"  # nothing displayed (KILN-043 surfaces ~1/M)
             else:
                 apply_satiation(state, "idle")  # silence: rest + cooling down
                 # a silent tick isn't printed — check state via /status

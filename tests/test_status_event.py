@@ -452,6 +452,79 @@ def test_run_biorhythm_off_omits_sub_block(monkeypatch, tmp_path):
     assert "## Настрій" in seen[0] and "Біоритм дня:" not in seen[0]  # needs yes, biorhythm no
 
 
+def _thought_scenario(monkeypatch, eng, tmp_path, reflection=0.9):
+    """Isolate with a real tmp store + high reflection so a thought fires on an idle tick."""
+    from kiln import store as kstore
+
+    _isolate(monkeypatch, eng, tmp_path)
+    store_path = tmp_path / "store.json"
+    monkeypatch.setattr(eng, "load_store", lambda: kstore.load_store(store_path))
+    monkeypatch.setattr(eng, "save_store", lambda s: kstore.save_store(s, store_path))
+    monkeypatch.setattr(eng, "load_prompts", lambda: {"thought": ["поміркуй наодинці"]})
+    monkeypatch.setattr(
+        eng,
+        "load_state",
+        lambda *a, **k: eng.State(
+            needs={
+                "connection": 0.0,
+                "rest": 0.0,
+                "novelty": 0.0,
+                "intensity": 0.0,
+                "reflection": reflection,
+            }
+        ),
+    )
+    return store_path
+
+
+def test_run_thought_generated_stored_hidden(monkeypatch, tmp_path):
+    """KILN-042: a reflection crossing on an idle tick generates a thought — stored, hidden."""
+    import kiln.engine as eng
+    from kiln import store as kstore
+
+    monkeypatch.setattr(eng, "THOUGHTS_ENABLED", True)
+    store_path = _thought_scenario(monkeypatch, eng, tmp_path)
+    rec = StatusRecorder()
+    eng.run(ticks=2, live=False, channel=eng.ScriptedChannel({}), brain=MockBrain(), output=rec)
+    thoughts = kstore.load_store(store_path)["thoughts"]
+    assert len(thoughts) == 1 and thoughts[0]["shown"] is False  # one thought, hidden
+    assert thoughts[0]["text"]  # the (mock) thought text
+    assert rec.replies == []  # nothing displayed — not a conversation turn
+
+
+def test_run_thoughts_disabled_no_thought(monkeypatch, tmp_path):
+    import kiln.engine as eng
+    from kiln import store as kstore
+
+    monkeypatch.setattr(eng, "THOUGHTS_ENABLED", False)
+    store_path = _thought_scenario(monkeypatch, eng, tmp_path)
+    eng.run(
+        ticks=2,
+        live=False,
+        channel=eng.ScriptedChannel({}),
+        brain=MockBrain(),
+        output=StatusRecorder(),
+    )
+    assert kstore.load_store(store_path)["thoughts"] == []  # off -> no thoughts at all
+
+
+def test_run_user_input_preempts_thought(monkeypatch, tmp_path):
+    import kiln.engine as eng
+    from kiln import store as kstore
+
+    monkeypatch.setattr(eng, "THOUGHTS_ENABLED", True)
+    store_path = _thought_scenario(monkeypatch, eng, tmp_path)
+    # a user message on the FIRST poll (ScriptedChannel: tick 0) — input wins, no thought fires
+    eng.run(
+        ticks=1,
+        live=False,
+        channel=eng.ScriptedChannel({0: "привіт"}),
+        brain=MockBrain(),
+        output=StatusRecorder(),
+    )
+    assert kstore.load_store(store_path)["thoughts"] == []  # user input pre-empted the thought
+
+
 def test_self_prompt_appends_silence_note_only_when_reached_out():
     import kiln.engine as eng
 

@@ -141,6 +141,11 @@ THINK_THRESHOLD = float(os.environ.get("THINK_THRESHOLD", "0.45"))
 CHAT_MODEL = os.environ.get("CHAT_MODEL", "claude-haiku-4-5-20251001")  # simple API for chat
 DEEP_MODEL = os.environ.get("DEEP_MODEL", "claude-opus-4-8")  # Claude CLI for reasoning/tools
 
+# v0.10 inner monologue: the thought runs on the chat brain (Haiku). THOUGHTS_ENABLED is the master
+# switch; THOUGHT_MODEL is informational (= CHAT_MODEL — thoughts go through brain.chat).
+THOUGHTS_ENABLED = os.environ.get("THOUGHTS_ENABLED", "1") == "1"
+THOUGHT_MODEL = os.environ.get("THOUGHT_MODEL", CHAT_MODEL)
+
 # EVERY `claude -p` call (deep, tool, summarize) runs with extended thinking ON — this is the
 # budget passed as MAX_THINKING_TOKENS by claude_env(). Tune via .env; lower it for snappier
 # interactive replies (thinking adds latency — it's a cap, the model uses up to this much).
