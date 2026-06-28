@@ -382,6 +382,41 @@ def test_run_injects_world_block_per_turn(monkeypatch, tmp_path):
     assert "вчора питав" in seen[0]  # from the previous session, not the current one
 
 
+def test_self_prompt_appends_silence_note_only_when_reached_out():
+    import kiln.engine as eng
+
+    prompts = {"connection": ["озвися"]}
+    assert eng._self_prompt(prompts, "connection", reached_out=False) == "озвися"  # first: plain
+    again = eng._self_prompt(prompts, "connection", reached_out=True)
+    assert again.startswith("озвися ") and eng.SELF_SILENCE_NOTE in again  # repeat: + silence note
+
+
+def test_run_self_trigger_first_reach_out_has_no_silence_note(monkeypatch, tmp_path):
+    """KILN: the first reach-out uses a plain self-prompt (no 'you already wrote' note)."""
+    import kiln.engine as eng
+
+    _isolate(monkeypatch, eng, tmp_path)
+    monkeypatch.setattr(
+        eng,
+        "load_state",
+        lambda *a, **k: eng.State(
+            needs={"connection": 0.95, "rest": 0.0, "novelty": 0.0, "intensity": 0.0}
+        ),
+    )
+    captured = []
+
+    class RB(MockBrain):
+        def chat(self, history, system):
+            captured.append(history[-1]["text"])  # the injected self-prompt (last user turn)
+            return super().chat(history, system)
+
+    eng.run(
+        ticks=2, live=False, channel=eng.ScriptedChannel({}), brain=RB(), output=StatusRecorder()
+    )
+    assert captured  # a connection reach-out fired
+    assert eng.SELF_SILENCE_NOTE not in captured[0]  # first reach-out -> no silence note
+
+
 def test_run_world_awareness_off_no_section(monkeypatch, tmp_path):
     import kiln.engine as eng
 

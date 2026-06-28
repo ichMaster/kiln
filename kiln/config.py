@@ -81,6 +81,13 @@ SELF_COOLDOWN = int(
 REST_WAKE = float(os.environ.get("REST_WAKE", "0.85"))
 REST_MESSAGE = "мені треба відпочити"  # persona line (Ukrainian, intentional)
 
+# Appended to the self-trigger prompt when she ALREADY reached out and got no reply, so she
+# doesn't robotically repeat herself (persona-layer Ukrainian, intentional).
+SELF_SILENCE_NOTE = (
+    "(Ти вже озивалася першою, а відповіді ще нема. Не повторюйся: визнай тишу, "
+    "зміни тон або просто побудь поруч одним коротким рядком.)"
+)
+
 # Per-tick drift for EACH need separately (added every tick). Stated in TICKS (the
 # needs-panel counter) so it's independent of TICK_SECONDS. connection drives the cheap
 # chat; novelty drives the expensive deep (kept slow so Opus stays rare); intensity is

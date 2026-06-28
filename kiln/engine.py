@@ -45,6 +45,7 @@ from .config import (
     REST_WAKE,
     SATIATION,
     SELF_COOLDOWN,
+    SELF_SILENCE_NOTE,
     STATE_DIR,
     STORE_FILE,
     THINK_HINTS,
@@ -343,6 +344,14 @@ def _status_snapshot(
     }
 
 
+def _self_prompt(prompts: dict, need: str, reached_out: bool) -> str:
+    """The self-trigger (reach-out) prompt for a need. When `reached_out` (she already initiated
+    and the user hasn't replied since), append SELF_SILENCE_NOTE so consecutive reach-outs don't
+    robotically repeat — she acknowledges the silence instead."""
+    prompt = pick_prompt(prompts, need)
+    return f"{prompt} {SELF_SILENCE_NOTE}" if reached_out else prompt
+
+
 def _previous_session_turns() -> list[dict]:
     """The most recent CLOSED session's turn list, for the v0.8 world timeline. The current
     session's own turns already ride in the messages array / transcript, so the timeline carries
@@ -420,6 +429,7 @@ def run(
     total_ticks = 0  # real ticks since session start (catch-up included — counts blocked time)
     branch: str | None = None  # last turn's class (chat/think/tools) for the status snapshot
     resting = False  # rest gate: too tired to answer (recovers on idle; hysteresis vs REST_WAKE)
+    reached_out = False  # she self-initiated and the user hasn't replied since (anti-repeat)
     rest_threshold = NEED_TRIGGERS.get("rest", {}).get("threshold", 1.1)  # >1 -> never sleeps
     last_tick = time.monotonic()  # for catch-up drift over real time
     try:
@@ -469,31 +479,36 @@ def run(
                         output.agent(REST_MESSAGE, is_self=True)
                     apply_satiation(state, "idle")
                     status_label = "resting"
+                    reached_out = False  # the user replied (even while she rests)
                 elif isinstance(action, tuple):  # ("ask", text) -> forced deep
                     out = _turn(action[1], force="deep")
                     output.agent(out["reply"], lead=True, model=out["route"].split("/")[-1])
                     output.usage(out.get("usage"), stats.last_latency)
                     status_label, branch = "responding", out["class"]
+                    reached_out = False  # the user engaged
                 else:  # None -> normal turn
                     out = _turn(user_msg)
                     output.user(user_msg)
                     output.agent(out["reply"], model=out["route"].split("/")[-1])
                     output.usage(out.get("usage"), stats.last_latency)
                     status_label, branch = "responding", out["class"]
+                    reached_out = False  # the user replied
             elif resting:
                 if entered_rest:
                     output.agent(REST_MESSAGE, is_self=True)  # announce once on entering rest
                 apply_satiation(state, "idle")
                 status_label = "resting"
             elif fired is not None:
-                prompt = pick_prompt(prompts, fired)
                 # connection fired the reach-out; her other needs choose which brain answers
-                # (intensity -> deep/opus, novelty -> session-wiki, else chat).
+                # (intensity -> deep/opus, novelty -> session-wiki, else chat). If she already
+                # reached out and got no reply, the prompt tells her not to repeat (reached_out).
+                prompt = _self_prompt(prompts, fired, reached_out)
                 faction, agent = reach_out_branch(state)
                 out = _turn(prompt, force=faction, agent=agent)
                 output.agent(out["reply"], is_self=True, model=out["route"].split("/")[-1])
                 output.usage(out.get("usage"), stats.last_latency)
                 status_label, branch = "responding", out["class"]
+                reached_out = True  # awaiting a reply; next reach-out acknowledges the silence
             else:
                 apply_satiation(state, "idle")  # silence: rest + cooling down
                 # a silent tick isn't printed — check state via /status
