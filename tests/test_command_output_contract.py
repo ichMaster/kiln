@@ -76,6 +76,35 @@ def test_mood_off_when_no_section():
     assert any("no mood section" in n for n in out.notices)
 
 
+def test_thoughts_command_lists_recent_with_markers(monkeypatch):
+    import kiln.commands as cmds
+
+    monkeypatch.setattr(
+        cmds,
+        "load_store",
+        lambda: {
+            "thoughts": [
+                {"text": "тиха думка", "at": "2026-06-28T20:00:00", "shown": False},
+                {"text": "озвучена", "at": "2026-06-28T20:01:00", "shown": True},
+            ]
+        },
+    )
+    out = RecordingOutput()
+    assert handle_command("/thoughts", State(needs={}), [], "sys", False, out) == "handled"
+    joined = "\n".join(out.notices)
+    assert "тиха думка" in joined and "[внутрішня]" in joined  # internal
+    assert "озвучена" in joined and "[показана]" in joined  # surfaced
+
+
+def test_thoughts_command_empty(monkeypatch):
+    import kiln.commands as cmds
+
+    monkeypatch.setattr(cmds, "load_store", lambda: {"thoughts": []})
+    out = RecordingOutput()
+    handle_command("/thoughts", State(needs={}), [], "sys", False, out)
+    assert any("no thoughts yet" in n for n in out.notices)
+
+
 def test_help_lists_commands():
     out = RecordingOutput()
     handle_command("/help", State(needs={}), [], "sys", False, out)

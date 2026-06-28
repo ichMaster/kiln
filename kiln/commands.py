@@ -13,9 +13,10 @@ client (console today, TUI/web later) receives the result. handle_command() retu
 from __future__ import annotations
 
 from .config import USAGE_REPORT, USAGE_REPORT_FILE
-from .history import role_label, to_messages
+from .history import fmt_stamp, role_label, to_messages
 from .output import Output
 from .report import write_report
+from .store import load_store
 
 # Canonical list of implemented slash commands — the single source for both /help
 # and the TUI hint line, so they never advertise a command kiln doesn't have.
@@ -23,6 +24,7 @@ COMMANDS = (
     "status",
     "needs",
     "mood",
+    "thoughts",
     "self",
     "prompt",
     "usage",
@@ -78,6 +80,18 @@ def handle_command(
             output.notice("[mood] no mood section in the prompt (MOOD_AWARENESS=0)")
         else:
             output.notice(system[idx:].strip())
+
+    elif cmd == "thoughts":
+        # Her inner monologue (v0.10): the recent stored thoughts, each marked internal or surfaced.
+        thoughts = load_store().get("thoughts", [])
+        recent = thoughts[-15:]
+        if not recent:
+            output.notice("[thoughts] (no thoughts yet)")
+        else:
+            output.notice(f"[thoughts] {len(thoughts)} total · last {len(recent)}:")
+            for t in recent:
+                mark = "показана" if t.get("shown") else "внутрішня"
+                output.notice(f"  {fmt_stamp(t.get('at'))} [{mark}] {t.get('text', '')}")
 
     elif cmd == "self":
         # Toggle proactive self-messages (the connection reach-out). Off -> she never writes

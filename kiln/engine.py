@@ -57,6 +57,7 @@ from .config import (
     THOUGHT_COOLDOWN,
     THOUGHT_VISIBLE_EVERY,
     THOUGHTS_ENABLED,
+    THOUGHTS_IN_PROMPT,
     TICK_SECONDS,
     TIMEZONE,
     TOOL_HINTS,
@@ -77,6 +78,7 @@ from .memory import (
     pick_prompt,
     prune_history,
     summarize,
+    thoughts_block,
 )
 from .mood import biorhythm, mood_block
 from .output import ConsoleOutput, Output
@@ -445,17 +447,23 @@ def run(
     )  # the day's biorhythm — computed ONCE, static all session
 
     def _system() -> str:
-        # v0.8 world block + v0.9 mood block, composed PER TURN — the clock + needs stay live; the
-        # prior-session timeline and the day's biorhythm are static. Both off -> the static base.
+        # v0.8 world + v0.9 mood + v0.10 thoughts, composed PER TURN — the clock, needs, and the
+        # latest thoughts stay live; the prior-session timeline and the day's biorhythm are static.
+        # All off -> the static base.
         world = (
             world_block(_now(), USER_LOCATION, prev_turns, RECENT_MESSAGES)
             if WORLD_AWARENESS
             else ""
         )
         mood = mood_block(state.needs, session_bio if BIORHYTHM else None) if MOOD_AWARENESS else ""
-        if not world and not mood:
+        thoughts = (
+            thoughts_block(store["thoughts"], THOUGHTS_IN_PROMPT, {h["text"] for h in history})
+            if THOUGHTS_ENABLED
+            else ""
+        )
+        if not world and not mood and not thoughts:
             return base_system
-        return build_system(canon, memory, facts, world, mood)
+        return build_system(canon, memory, facts, world, mood, thoughts)
 
     def _turn(prompt: str, force: str | None = None, agent: str | None = None) -> dict:
         # One model turn, timed; folds tokens + latency into the session stats.

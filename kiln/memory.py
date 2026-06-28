@@ -272,15 +272,33 @@ def prune_history(turns: list[dict]) -> list[dict]:
     return kept
 
 
-def build_system(canon: str, memory: str, facts: str = "", world: str = "", mood: str = "") -> str:
+def thoughts_block(thoughts: list[dict], n: int, exclude_texts: set[str] | None = None) -> str:
+    """The v0.10 `## Думки` section: the last `n` (cross-session) thoughts as bullet lines, deduped
+    against `exclude_texts` (current-session turns already in the messages array, so a surfaced
+    thought isn't shown twice). `n <= 0` (off) / empty → ""."""
+    if n <= 0:
+        return ""
+    recent = thoughts[-n:]
+    exclude = exclude_texts or set()
+    lines = []
+    for t in recent:
+        text = (t.get("text") or "").strip()
+        if text and text not in exclude:
+            lines.append(f"- {text}")
+    return "## Думки\n" + "\n".join(lines) if lines else ""
+
+
+def build_system(
+    canon: str, memory: str, facts: str = "", world: str = "", mood: str = "", thoughts: str = ""
+) -> str:
     """System prompt = canon (persona) + long-term memory summaries + the user-facts digest +
-    the v0.8 world block + the v0.9 mood block.
+    the v0.8 world block + the v0.9 mood block + the v0.10 thoughts block.
 
     Each layer is optional and appended only when non-empty: the v0.5 memory block, the v0.6
     `## Facts about the user` section, the v0.8 `world` block (`## Зараз` + `## Повідомлення з
-    минулої сесії`), then the v0.9 `mood` block (`## Настрій` — needs + biorhythm); each carries its
-    own headers. With empty `memory`/`facts`/`world`/`mood` the result is exactly `canon`; with
-    empty `mood` it is byte-for-byte the v0.8 output."""
+    минулої сесії`), the v0.9 `mood` block (`## Настрій`), then the v0.10 `thoughts` block
+    (`## Думки`); each carries its own headers. With every optional layer empty the result is
+    exactly `canon`; with empty `thoughts` it is byte-for-byte the v0.9 output."""
     out = canon
     if memory.strip():
         out += "\n\nДовга пам'ять про попередні розмови (для контексту):\n" + memory.strip()
@@ -290,6 +308,8 @@ def build_system(canon: str, memory: str, facts: str = "", world: str = "", mood
         out += "\n\n" + world.strip()
     if mood.strip():
         out += "\n\n" + mood.strip()
+    if thoughts.strip():
+        out += "\n\n" + thoughts.strip()
     return out
 
 

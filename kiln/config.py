@@ -148,6 +148,8 @@ DEEP_MODEL = os.environ.get("DEEP_MODEL", "claude-opus-4-8")  # Claude CLI for r
 THOUGHTS_ENABLED = os.environ.get("THOUGHTS_ENABLED", "1") == "1"
 THOUGHT_MODEL = os.environ.get("THOUGHT_MODEL", CHAT_MODEL)
 THOUGHT_VISIBLE_EVERY = int(os.environ.get("THOUGHT_VISIBLE_EVERY", "5"))
+# How many recent (cross-session) thoughts go into the `## Думки` prompt section. 0 = off.
+THOUGHTS_IN_PROMPT = int(os.environ.get("THOUGHTS_IN_PROMPT", "8"))
 
 # EVERY `claude -p` call (deep, tool, summarize) runs with extended thinking ON — this is the
 # budget passed as MAX_THINKING_TOKENS by claude_env(). Tune via .env; lower it for snappier

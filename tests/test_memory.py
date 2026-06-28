@@ -113,6 +113,31 @@ def test_build_system_empty_mood_is_v08_backcompat():
     )
 
 
+def test_build_system_appends_thoughts_block_last():
+    system = mem.build_system("CANON", "M", "F", "## Зараз\nх", "## Настрій\nх", "## Думки\n- ідея")
+    assert "## Думки\n- ідея" in system
+    assert system.index("## Настрій") < system.index("## Думки")  # thoughts come after mood
+
+
+def test_build_system_empty_thoughts_is_v09_backcompat():
+    # thoughts="" must be byte-for-byte the v0.9 output (with mood)
+    assert mem.build_system(
+        "CANON", "M", "F", "## Зараз\nх", "## Настрій\nх", ""
+    ) == mem.build_system("CANON", "M", "F", "## Зараз\nх", "## Настрій\nх")
+
+
+def test_thoughts_block_caps_and_dedups():
+    thoughts = [{"text": "a"}, {"text": "b"}, {"text": "c"}, {"text": "d"}]
+    assert mem.thoughts_block(thoughts, 2) == "## Думки\n- c\n- d"  # last 2
+    # dedup vs current-session turns (a surfaced thought already in the messages array)
+    assert mem.thoughts_block(thoughts, 4, exclude_texts={"b", "d"}) == "## Думки\n- a\n- c"
+
+
+def test_thoughts_block_off_and_empty():
+    assert mem.thoughts_block([{"text": "x"}], 0) == ""  # n<=0 -> off
+    assert mem.thoughts_block([], 5) == ""  # empty -> ""
+
+
 # --- MEMORY_SUMMARIES cap (how many summaries enter the prompt) ---
 
 

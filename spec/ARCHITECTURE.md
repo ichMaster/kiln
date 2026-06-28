@@ -170,15 +170,16 @@ multi-agent is additive, not a rewrite:
   (cache tracked separately, Lumi-style); `cost_usd` = the CLI's actual cost, or `None` for the
   SDK path (estimated from the v0.7 price table).
 - **Needs:** `state/needs.json` = `{need: level(0..1)}`.
-- **Canon / system prompt:** `build_system(canon, memory, facts, world, mood)` composes the system
-  prompt of every branch — `canon` (`state/canon.md`, fallback `DEFAULT_CANON`) + the v0.5 memory
-  summaries + the v0.6 `## Facts about the user` digest + the v0.8 `world` block (`## Зараз` +
+- **Canon / system prompt:** `build_system(canon, memory, facts, world, mood, thoughts)` composes the
+  system prompt of every branch — `canon` (`state/canon.md`, fallback `DEFAULT_CANON`) + the v0.5
+  memory summaries + the v0.6 `## Facts about the user` digest + the v0.8 `world` block (`## Зараз` +
   `## Повідомлення з минулої сесії`, `world.world_block`) + the v0.9 `mood` block (`## Настрій` —
-  every need's level + a Ukrainian band, then the day's biorhythm; `mood.mood_block`). Each layer
-  optional; `mood=""` is v0.8-equivalent. The world + mood blocks are composed **per turn** so the
-  clock and the needs stay live; the world timeline is the **previous session's** tail (current-session
-  turns already ride in the messages array / transcript) and the biorhythm is computed **once at
-  session start** (static for the session).
+  every need's level + a Ukrainian band, then the day's biorhythm; `mood.mood_block`) + the v0.10
+  `thoughts` block (`## Думки` — the last N cross-session inner thoughts, deduped vs the live turns;
+  `memory.thoughts_block`). Each layer optional; `thoughts=""` is v0.9-equivalent. The world + mood
+  + thoughts blocks are composed **per turn** so the clock, needs, and latest thoughts stay live; the
+  world timeline is the **previous session's** tail (current-session turns already ride in the
+  messages array / transcript) and the biorhythm is computed **once at session start** (static).
 - **Store (v0.5–0.10):** `.kiln/store.json` = `{sessions: [{id, started_at, ended_at, mode, turns}],
   messages: {session_id: [{role, text, at}]}, summaries: [{session_id, stamp, text}],
   facts: [{id, text, first_seen, last_seen, source_session}],
