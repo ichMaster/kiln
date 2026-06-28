@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import datetime as _dt
 
-from .history import fmt_stamp, role_label, strip_leading_stamp
+from .history import fmt_stamp, role_label, strip_leading_name, strip_leading_stamp
 
 # Ukrainian names (persona layer). Weekday index matches datetime.weekday() (Mon=0).
 _WEEKDAYS = ["понеділок", "вівторок", "середа", "четвер", "п'ятниця", "субота", "неділя"]
@@ -72,7 +72,8 @@ def recent_timed(history: list[dict], n: int) -> str:
     lines = []
     for t in history[-n:]:
         who = role_label(t.get("role") or "?")
-        text = strip_leading_stamp((t.get("text") or "").strip())  # drop any echoed stamp
+        # drop any echoed stamp + name label baked into the stored reply
+        text = strip_leading_name(strip_leading_stamp((t.get("text") or "").strip()))
         stamp = fmt_stamp(t.get("at"))
         prefix = f"{stamp} " if stamp else ""
         lines.append(f"{prefix}{who}: {text}")

@@ -11,6 +11,7 @@ from kiln.history import (
     ROLE_USER,
     fmt_stamp,
     role_label,
+    strip_leading_name,
     strip_leading_stamp,
     to_messages,
     to_transcript,
@@ -69,6 +70,19 @@ def test_to_messages_user_without_at_is_plain():
 def test_to_messages_strips_assistant_echoed_stamp():
     h = [{"role": "assistant", "text": "[Нд 28.06.2026 15:46] Хе. 🔥", "at": "2026-06-28T15:46:00"}]
     assert to_messages(h) == [{"role": "assistant", "content": "Хе. 🔥"}]  # echoed stamp removed
+
+
+def test_strip_leading_name():
+    assert strip_leading_name("**Агніка:** Можу. Буду так.") == "Можу. Буду так."
+    assert strip_leading_name("Агніка: Окей.") == "Окей."
+    assert strip_leading_name("**Агніка**: текст") == "текст"  # colon outside the bold
+    assert strip_leading_name("без імені") == "без імені"  # untouched
+    assert strip_leading_name("Віталік: не її ім'я") == "Віталік: не її ім'я"  # only the agent's
+
+
+def test_to_messages_strips_assistant_echoed_name_and_stamp():
+    h = [{"role": "assistant", "text": "[Нд 28.06.2026 15:46] **Агніка:** привіт", "at": "x"}]
+    assert to_messages(h) == [{"role": "assistant", "content": "привіт"}]  # stamp + name removed
 
 
 def test_to_transcript_stamps_user_only():

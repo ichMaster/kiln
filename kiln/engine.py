@@ -59,7 +59,7 @@ from .config import (
     USER_LOCATION,
     WORLD_AWARENESS,
 )
-from .history import ROLE_BOT, ROLE_USER, turn
+from .history import ROLE_BOT, ROLE_USER, strip_leading_name, turn
 from .ledger import append_session
 from .memory import (
     build_system,
@@ -309,6 +309,9 @@ def respond(
         route = f"TOOLS/{DEEP_MODEL.split('-')[1]}"
         event = "deep"
 
+    # Strip a leading name the model echoed (it mirrors the timeline's "Агніка:" labels) — clean
+    # for both display and storage, so it never shows and never compounds in the next timeline.
+    reply = strip_leading_name(reply)
     # The reply goes into the history too (timestamped, v0.8).
     history.append(turn(ROLE_BOT, reply))
 

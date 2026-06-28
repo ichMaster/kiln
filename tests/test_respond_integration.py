@@ -39,6 +39,24 @@ def test_respond_chat_applies_chat_satiation():
     assert st.needs["connection"] == pytest.approx(0.80 + SATIATION["chat"]["connection"])
 
 
+def test_respond_strips_echoed_name_from_reply(monkeypatch):
+    """The model sometimes mirrors the timeline's 'Агніка:' labels — respond() strips it from the
+    reply, so it never shows (display) and never compounds in the next timeline (storage)."""
+    import kiln.history as h
+
+    monkeypatch.setattr(h, "AGENT_NAME", "Агніка")
+
+    class NameEchoBrain(MockBrain):
+        def chat(self, history, system):
+            _, usage = super().chat(history, system)
+            return "**Агніка:** Можу. Буду так.", usage
+
+    history: list[dict] = []
+    out = respond("привіт", State(needs={}), history, "sys", NameEchoBrain())
+    assert out["reply"] == "Можу. Буду так."  # echoed name stripped for display
+    assert history[-1]["text"] == "Можу. Буду так."  # and for storage (no compounding)
+
+
 def test_respond_think_routes_deep_and_closes_novelty():
     st = State(needs={"novelty": 0.90, "connection": 0.0})
     out = respond("поясни, чому так", st, [], "sys", MockBrain())  # think -> deep event

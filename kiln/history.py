@@ -52,6 +52,14 @@ def strip_leading_stamp(text: str) -> str:
     return _ECHOED_STAMP.sub("", text or "").lstrip()
 
 
+def strip_leading_name(text: str) -> str:
+    """Drop a leading `**Агніка:**` / `Агніка:` the model echoed into a reply — it mirrors the
+    timeline's `Name:` labels. Only her own AGENT_NAME (never the user's); bold markers optional.
+    Built at call time so it respects the current AGENT_NAME."""
+    pat = rf"^\s*\*{{0,2}}\s*{re.escape(AGENT_NAME)}\s*\*{{0,2}}\s*:\s*\*{{0,2}}\s*"
+    return re.sub(pat, "", text or "")
+
+
 def turn(role: str, text: str, at: str | None = None) -> dict:
     """A conversation turn: {role, text, at}. `at` is an ISO timestamp (seconds); when None it
     is stamped with the current local time (the source of `at` for the timeline, KILN-033)."""
@@ -72,8 +80,11 @@ def _user_prefix(h: dict) -> str:
 
 
 def _clean(h: dict) -> str:
-    """Turn text — echoed stamp stripped from ASSISTANT turns (user text left as typed)."""
-    return h["text"] if h.get("role") == ROLE_USER else strip_leading_stamp(h["text"])
+    """Turn text — echoed stamp + name label stripped from ASSISTANT turns (user text left as
+    typed)."""
+    if h.get("role") == ROLE_USER:
+        return h["text"]
+    return strip_leading_name(strip_leading_stamp(h["text"]))
 
 
 def to_messages(history: list[dict]) -> list[dict]:
