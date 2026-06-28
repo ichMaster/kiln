@@ -372,9 +372,15 @@ Curiosity does **not** self-trigger a separate message; it only colors how she a
 **Tasks:**
 - **Curiosity need.** Add `curiosity` to `DRIFT` with a **very small** upward step; a `CURIOSITY_THRESHOLD`
   config constant (default **0.5**, `.env`-overridable). It does **not** go in `NEED_TRIGGERS` / the
-  `TriggerBook` (no self-message). Satiation is **light / optional** (a small discharge on engaged `deep` /
-  `tool` turns, so an intense exploratory stretch briefly sates it) — by default it trends up and **stays**
-  curious; the exact drift / satiation is a calibration detail.
+  `TriggerBook` (no self-message) — it only conditions the prompt and is **discharged when she actually
+  asks** (next bullet).
+- **Discharge on asking (mark the curiosity reply).** A pure `is_curiosity_reply(text) -> bool` — true when
+  a reply actually **asks a question** (heuristic: it contains a question mark / a question pattern; the model
+  may later judge it). After a turn, when the nudge was active and the reply **is** a curiosity message,
+  **reduce `curiosity` by `CURIOSITY_SATIATION`** and **mark** that turn as curiosity-driven (a flag on the
+  stored turn / a subtle Output marker). So acting on the nudge **lowers** curiosity, which then slowly drifts
+  back up — curious → asks → sated → curious again (an ebb-and-flow, not pegged high). A reply with **no**
+  question leaves curiosity high, so the nudge persists until she asks.
 - **Curiosity provocation (prompt).** A pure `curiosity_nudge(curiosity, threshold) -> str` (in
   `kiln/mood.py`): when `curiosity >= threshold`, a short Ukrainian `## Цікавість` line — e.g. *«Тобі зараз
   цікаво. Постав живе, конкретне питання й копай глибше — не дзеркаль і не переказуй співрозмовника, веди
@@ -382,15 +388,19 @@ Curiosity does **not** self-trigger a separate message; it only colors how she a
 - **Curiosity → system prompt.** `_system()` appends the nudge **per turn** when over threshold (curiosity
   drifts each tick), separate from canon / memory / facts / world / mood; empty below threshold →
   back-compatible. `CURIOSITY` master on/off.
-- **Config.** `CURIOSITY` (on/off), `CURIOSITY_THRESHOLD` (0.5), the Ukrainian nudge text (persona) — scalars
-  `.env`-overridable; curiosity's drift / (light) satiation live in the structured dicts in code.
-- **Tests.** Curiosity drift (and any satiation); `curiosity_nudge` is "" below the threshold and present
-  at / above it; `_system()` includes the `## Цікавість` line only when over threshold and `CURIOSITY` is on;
-  toggling off / a sub-threshold level → no line; deterministic — fixed needs, **mock brain, zero paid calls**.
+- **Config.** `CURIOSITY` (on/off), `CURIOSITY_THRESHOLD` (0.5), `CURIOSITY_SATIATION` (discharge per ask),
+  the Ukrainian nudge text (persona) — scalars `.env`-overridable; curiosity's drift lives in the structured
+  `DRIFT` dict in code.
+- **Tests.** Curiosity drift; `is_curiosity_reply` is true on a question (`?`) and false otherwise; a curious
+  (question) reply **discharges** `curiosity` by `CURIOSITY_SATIATION` while a non-question reply leaves it
+  unchanged; `curiosity_nudge` is "" below the threshold and present at / above it; `_system()` includes the
+  `## Цікавість` line only when over threshold and `CURIOSITY` is on; toggling off / a sub-threshold level →
+  no line; deterministic — fixed needs, **mock brain, zero paid calls**.
 **DoD:** a `curiosity` («цікавість») need with a low threshold (~0.5) and a very small drift; while over the
 threshold, every message's system prompt carries a provocation to **ask questions and dig deeper rather than
-mirror** the user; it's a per-turn prompt nudge (no separate self-message); `CURIOSITY` / `CURIOSITY_THRESHOLD`
-configurable; deterministic; local — no external calls.
+mirror** the user; when she **actually asks** (a detected, marked curiosity reply) curiosity is **discharged**
+by `CURIOSITY_SATIATION`, so it ebbs and flows; it's a per-turn prompt nudge (no separate self-message);
+`CURIOSITY` / `CURIOSITY_THRESHOLD` / `CURIOSITY_SATIATION` configurable; deterministic; local — no external calls.
 
 ## v1 — Engine (the tick-server & hub foundation)
 
