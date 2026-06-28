@@ -99,7 +99,7 @@ DRIFT = {
     "connection": 0.0010,  # chat driver — 0->0.80 in ~400 ticks (6 mins)
     "rest": -0.005,  # minimal time drift — fatigue mostly comes from activity (deep/chat)
     "novelty": 0.0001,  # deep driver (leads) — bar swings the full 0..0.85
-    "intensity": 0.001,  # discharged by every deep turn — hovers ~0.7, rarely the lead
+    "intensity": 0.0005,  # discharged by every deep turn — hovers ~0.7, rarely the lead
 }
 
 # Closing needs by events. Negative = lowering the level. The reset is LARGE relative
@@ -121,7 +121,7 @@ SATIATION = {
     # drops NOVELTY hard — light contact, barely tires (far less than an opus deep turn)
     "session-wiki": {"connection": -0.6, "rest": +0.4, "novelty": -0.90, "intensity": -0.15},
     # silence (a tick with no reply): rest recovers; from 0.9 to 0 in 180 ticks (3 mins)
-    "idle": {"connection": 0, "rest": -0.01, "novelty": 0.0005, "intensity": +0.001},
+    "idle": {"connection": 0, "rest": -0.01, "novelty": 0.0001, "intensity": +0.0005},
 }
 
 # --- Classification / routing -----------------------------------------------
