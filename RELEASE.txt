@@ -1,6 +1,13 @@
 kiln — Release Notes
 ====================
 
+Version 0.6.0 (2026-06-28)
+---------------------------
+- Long memory (user facts): durable facts about the user persisted in .kiln/store.json `facts`, deduped by normalized text (KILN-022)
+- Facts extracted on each session close via Opus + extended thinking, deduped against existing (KILN-023)
+- All facts digested to N lines on start (Opus + thinking) and injected as a dedicated `## Facts about the user` system-prompt section (KILN-024/025)
+- New .env knobs — facts: FACTS_DIGEST_LINES, MAX_FACTS, FACTS_ENABLED; prompt-size: MEMORY_SUMMARIES, SUMMARY_SENTENCES; plus REST_WAKE / THINKING_TOKENS surfaced
+
 Version 0.5.1 (2026-06-27)
 ---------------------------
 - Add /prompt command — shows the system prompt (canon + memory) + the messages array sent to the model
