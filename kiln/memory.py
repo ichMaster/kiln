@@ -21,7 +21,9 @@ from .config import (
     DEEP_MODEL,
     DEFAULT_CANON,
     FACTS_DIGEST_LINES,
+    FACTS_ENABLED,
     HISTORY_DIR,
+    MAX_FACTS,
     MEMORY_FILE,
     MEMORY_SUMMARIES,
     PROMPTS_FILE,
@@ -155,8 +157,9 @@ def extract_facts(history: list[dict], existing_facts: list[str], live: bool) ->
     """Extract durable **facts about the user** from the cleaned session via `claude -p` on
     DEEP_MODEL (Opus + extended thinking; API key stripped → subscription). The model is shown
     the facts already known and asked for ONLY new ones. Returns a list of new fact strings.
-    Dry-run — a stub (`[]`). On CLI error — `[]` (the exit path must never crash)."""
-    if not history:
+    Dry-run — a stub (`[]`). On CLI error — `[]` (the exit path must never crash). Off when
+    FACTS_ENABLED is false."""
+    if not FACTS_ENABLED or not history:
         return []
     transcript = to_transcript(history)
     known = "\n".join(f"- {t}" for t in existing_facts if t.strip()) or "(немає)"
@@ -191,12 +194,16 @@ def digest_facts(live: bool) -> str:
     FACTS_DIGEST_LINES lines (Lumi's `facts_digests`) — via `claude -p` on DEEP_MODEL (Opus +
     extended thinking; API key stripped → subscription). Read-only (no store writes). No facts
     → "". Dry-run — a stub. On CLI error — "" (start must never crash). The line cap is enforced
-    defensively after the call."""
+    defensively after the call. Off (→ "") when FACTS_ENABLED is false."""
+    if not FACTS_ENABLED:
+        return ""
     facts = [
         f.get("text", "") for f in load_store().get("facts", []) if (f.get("text") or "").strip()
     ]
     if not facts:
         return ""
+    if MAX_FACTS > 0:
+        facts = facts[-MAX_FACTS:]  # digest only the most recent N (bounds the per-start input)
     listing = "\n".join(f"- {t}" for t in facts)
     prompt = (
         f"Ось факти про користувача. Стисни їх до щонайбільше {FACTS_DIGEST_LINES} рядків — "

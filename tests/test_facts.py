@@ -129,3 +129,37 @@ def test_digest_facts_cli_error_is_blank(monkeypatch):
     monkeypatch.setattr(mem, "load_store", lambda *a, **k: _store_with_facts(["a"]))
     monkeypatch.setattr(mem.subprocess, "run", lambda *a, **k: _result("", code=1))
     assert mem.digest_facts(live=True) == ""
+
+
+# --- MAX_FACTS + FACTS_ENABLED (KILN-024 follow-on knobs) ---
+
+
+def test_digest_facts_caps_input_to_max_facts(monkeypatch):
+    """MAX_FACTS feeds only the most recent N facts to the digest (bounds the per-start input)."""
+    monkeypatch.setattr(
+        mem, "load_store", lambda *a, **k: _store_with_facts(["alpha", "beta", "gamma", "delta"])
+    )
+    monkeypatch.setattr(mem, "MAX_FACTS", 2)
+    seen = {}
+
+    def _run(cmd, **kwargs):
+        seen["prompt"] = cmd[-1]  # the prompt is the last positional arg
+        return _result(json.dumps({"result": "x"}))
+
+    monkeypatch.setattr(mem.subprocess, "run", _run)
+    mem.digest_facts(live=True)
+    assert "gamma" in seen["prompt"] and "delta" in seen["prompt"]  # the last 2
+    assert "alpha" not in seen["prompt"] and "beta" not in seen["prompt"]  # older dropped
+
+
+def test_facts_disabled_skips_extraction_and_digest(monkeypatch):
+    """FACTS_ENABLED=0 → no extraction on close and no digest in the prompt (no model call)."""
+    monkeypatch.setattr(mem, "FACTS_ENABLED", False)
+    monkeypatch.setattr(mem, "load_store", lambda *a, **k: _store_with_facts(["a", "b"]))
+
+    def _boom(*a, **k):  # must not reach the subprocess when disabled
+        raise AssertionError("claude -p called while FACTS_ENABLED is off")
+
+    monkeypatch.setattr(mem.subprocess, "run", _boom)
+    assert mem.extract_facts([{"role": "user", "text": "x"}], [], live=True) == []
+    assert mem.digest_facts(live=True) == ""

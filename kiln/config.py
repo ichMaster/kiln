@@ -137,6 +137,15 @@ MEMORY_SUMMARIES = int(os.environ.get("MEMORY_SUMMARIES", "0"))
 # Target length of each session summary, in sentences (the summarize prompt).
 SUMMARY_SENTENCES = int(os.environ.get("SUMMARY_SENTENCES", "5"))
 
+# How many of the most recent stored facts feed the start-time digest (digest_facts): 0 = all,
+# N = only the last N. Bounds the per-start Opus input as facts accumulate (the digest OUTPUT is
+# always capped at FACTS_DIGEST_LINES regardless). Stored facts themselves are never trimmed.
+MAX_FACTS = int(os.environ.get("MAX_FACTS", "0"))
+
+# Master switch for the user-facts layer (v0.6): 0 -> no extraction on close and no facts section
+# in the prompt (stored facts are kept, just dormant). 1 -> on.
+FACTS_ENABLED = os.environ.get("FACTS_ENABLED", "1") == "1"
+
 # Tools/skills allowed on the reasoning branch (example).
 DEEP_TOOLS = ["Read", "Write", "Bash"]
 DEEP_SKILLS: list[str] = []  # e.g. ["search", "summarize"]
