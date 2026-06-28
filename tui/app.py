@@ -13,11 +13,15 @@ the engine does NOT echo input — it writes only its own replies to the log.
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+import sys
 import threading
 
 from rich.markup import escape
 from textual import events
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.css.query import NoMatches
 from textual.message import Message
 from textual.widgets import Footer, Header, RichLog, Static, TextArea
@@ -36,6 +40,35 @@ _BOT_STYLE = "bold green"  # "Agnika" name
 _SELF_STYLE = "bold green"  # "Agnika (self)" name — same weight, marked by the (self) suffix
 _MODEL_STYLE = "dark_green"  # the (model) tag next to the name
 _NOTICE_STYLE = "grey50"  # notices / system lines + command output — grey
+
+
+def _clipboard_argv() -> list[str] | None:
+    """The platform's clipboard-write command (stdin → clipboard), or None if none is available."""
+    if sys.platform == "darwin":
+        return ["pbcopy"]
+    if sys.platform == "win32":
+        return ["clip"]
+    for argv in (
+        ["xclip", "-selection", "clipboard"],
+        ["xsel", "--clipboard", "--input"],
+        ["wl-copy"],
+    ):
+        if shutil.which(argv[0]):
+            return argv
+    return None
+
+
+def system_clipboard_copy(text: str) -> bool:
+    """Best-effort copy to the OS clipboard via the platform tool (pbcopy/clip/xclip/xsel/wl-copy).
+    Returns True on success. Complements Textual's OSC-52 copy, which Terminal.app ignores."""
+    argv = _clipboard_argv()
+    if not argv:
+        return False
+    try:
+        subprocess.run(argv, input=text.encode("utf-8"), check=True)
+        return True
+    except (OSError, subprocess.CalledProcessError):
+        return False
 
 
 class ChatInput(TextArea):
@@ -85,11 +118,13 @@ class KilnApp(App):
         margin: 1 1 1 1;    /* t r b l — one blank line above (chat) and below (footer) */
     }
     """
+    # priority=True so these fire even while the ChatInput (TextArea) is focused — the TextArea
+    # otherwise binds ctrl+y (redo) and ctrl+l, swallowing them before they reach the app.
     BINDINGS = [
-        ("ctrl+q", "quit", "Quit"),
-        ("ctrl+y", "copy_reply", "Copy reply"),
-        ("ctrl+o", "copy_all", "Copy all"),
-        ("ctrl+l", "clear_log", "Clear"),
+        Binding("ctrl+q", "quit", "Quit", priority=True),
+        Binding("ctrl+y", "copy_reply", "Copy reply", priority=True),
+        Binding("ctrl+o", "copy_all", "Copy all", priority=True),
+        Binding("ctrl+l", "clear_log", "Clear", priority=True),
     ]
 
     def __init__(
@@ -193,12 +228,18 @@ class KilnApp(App):
             self.bridge.submit(line)
         prompt.text = ""
 
+    def _copy(self, text: str) -> None:
+        """Put `text` on the clipboard via BOTH OSC 52 (Textual — works over SSH / iTerm2) and the
+        platform clipboard tool (pbcopy/xclip/…), since Terminal.app ignores OSC 52."""
+        self.copy_to_clipboard(text)  # OSC 52 — terminals that support it (also sets app.clipboard)
+        system_clipboard_copy(text)  # pbcopy / clip / xclip — the rest, incl. macOS Terminal.app
+
     def action_copy_reply(self) -> None:
         if self._last_reply:
-            self.copy_to_clipboard(self._last_reply)
+            self._copy(self._last_reply)
 
     def action_copy_all(self) -> None:
-        self.copy_to_clipboard("\n".join(self._transcript))
+        self._copy("\n".join(self._transcript))
 
     def action_clear_log(self) -> None:
         self.query_one(RichLog).clear()

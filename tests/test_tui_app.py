@@ -148,14 +148,18 @@ def test_app_status_bar_updates_from_status_event(tmp_path):
     asyncio.run(scenario())
 
 
-def test_app_copy_and_clear_actions(tmp_path):
+def test_app_copy_and_clear_actions(tmp_path, monkeypatch):
     """Ctrl+Y copies the last reply, Ctrl+O copies the transcript, Ctrl+L clears."""
     pytest.importorskip("textual")
     import asyncio
 
     from textual.widgets import RichLog
 
+    import tui.app as appmod
     from tui.app import KilnApp
+
+    sys_copies: list[str] = []  # capture the OS-clipboard writes (no real pbcopy in the test)
+    monkeypatch.setattr(appmod, "system_clipboard_copy", lambda t: sys_copies.append(t) or True)
 
     async def scenario():
         bridge = Bridge()
@@ -167,14 +171,48 @@ def test_app_copy_and_clear_actions(tmp_path):
             await pilot.pause()
 
             app.action_copy_reply()
-            assert app.clipboard == "відповідь"
+            assert app.clipboard == "відповідь"  # OSC 52 path
+            assert sys_copies[-1] == "відповідь"  # AND the OS clipboard tool (pbcopy/…)
 
             app.action_copy_all()
-            assert "Agnika: відповідь" in app.clipboard
-            assert "[exit] saved" in app.clipboard
+            assert "Agnika: відповідь" in app.clipboard and "[exit] saved" in app.clipboard
+            assert "Agnika: відповідь" in sys_copies[-1]  # transcript reached the OS clipboard too
 
             app.action_clear_log()
             assert app._transcript == [] and app._last_reply == ""
             assert app.query_one(RichLog).lines == []
+
+    asyncio.run(scenario())
+
+
+def test_app_copy_keys_fire_while_input_focused(tmp_path, monkeypatch):
+    """The Ctrl+Y / Ctrl+O / Ctrl+L bindings fire even though the TextArea input is focused —
+    priority bindings beat the TextArea, which otherwise swallows ctrl+y (redo) and ctrl+l."""
+    pytest.importorskip("textual")
+    import asyncio
+
+    from textual.widgets import RichLog
+
+    import tui.app as appmod
+    from tui.app import ChatInput, KilnApp
+
+    sys_copies: list[str] = []
+    monkeypatch.setattr(appmod, "system_clipboard_copy", lambda t: sys_copies.append(t) or True)
+
+    async def scenario():
+        bridge = Bridge()
+        app = KilnApp(bridge=bridge, live=False, start_engine=False)
+        async with app.run_test() as pilot:
+            bridge.emit({"kind": "agent", "text": "відповідь", "is_self": False, "lead": False})
+            app._drain()
+            await pilot.pause()
+            assert app.focused is app.query_one("#prompt", ChatInput)  # input has focus
+
+            await pilot.press("ctrl+o")  # copy all — TextArea doesn't bind it, but verify it fires
+            assert sys_copies and "Agnika: відповідь" in sys_copies[-1]
+            await pilot.press("ctrl+y")  # copy reply — TextArea binds ctrl+y=redo; priority wins
+            assert sys_copies[-1] == "відповідь"
+            await pilot.press("ctrl+l")  # clear — TextArea binds ctrl+l; priority wins
+            assert app._transcript == [] and app.query_one(RichLog).lines == []
 
     asyncio.run(scenario())
