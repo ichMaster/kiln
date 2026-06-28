@@ -1,6 +1,13 @@
 kiln — Release Notes
 ====================
 
+Version 0.8.1 (2026-06-28)
+---------------------------
+- Named speaker labels (USER_NAME / AGENT_NAME) in transcripts and the prior-session timeline, instead of user/assistant role keywords
+- Date+time stamps in the prompt: every line of the prior-session timeline, plus the user's own messages in the live conversation — Agnika's replies stay clean (fixes her echoing/duplicating timestamps in replies)
+- Self-trigger reach-out reworked: [connection] prompts are now internal impulses (she initiates, not "answering" a fake user question), plus an anti-repeat silence note when she reaches out again with no reply since
+- prompts.md cleanup: dropped the unused [novelty]/[rest]/[intensity] sections and put the header comment in English
+
 Version 0.8.0 (2026-06-28)
 ---------------------------
 - World & temporal awareness: Agnika now knows the time, place, and conversation tempo
