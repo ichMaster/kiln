@@ -152,6 +152,11 @@ FACTS_ENABLED = os.environ.get("FACTS_ENABLED", "1") == "1"
 # `usage_report` flag). 1 -> on.
 USAGE_REPORT = os.environ.get("USAGE_REPORT", "1") == "1"
 
+# v0.8 world awareness: the user's location for the `## Зараз` section (empty = omitted).
+USER_LOCATION = os.environ.get("USER_LOCATION", "")
+# Optional IANA timezone for the world clock (e.g. "Europe/Kyiv"); empty = the machine's local time.
+TIMEZONE = os.environ.get("TIMEZONE", "")
+
 # Tools/skills allowed on the reasoning branch (example).
 DEEP_TOOLS = ["Read", "Write", "Bash"]
 DEEP_SKILLS: list[str] = []  # e.g. ["search", "summarize"]
