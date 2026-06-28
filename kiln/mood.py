@@ -1,59 +1,89 @@
 """
 kiln — mood & biorhythm (v0.9): pure formatters for Agnika's felt inner state.
 
-The biorhythm is the three classic sine cycles (physical 23 / emotional 28 / intellectual 33 days)
-from her birthday to "now", each −1..+1. Pure and deterministic — `now` and `birth` are injected,
-so the output is unit-testable (no `datetime.now()` inside). In the engine the biorhythm is computed
-ONCE at session start (it's the day's static baseline); the needs (KILN-036) stay live per turn.
+The need / biorhythm **bands** (thresholds + Ukrainian names) and the behavioural **cues** live in
+`state/mood.json`, loaded once at import — so the persona tuning is editable without touching code
+(DEFAULT_MOOD is a minimal fallback for a fresh clone / a broken edit). The biorhythm is the three
+classic sine cycles (physical 23 / emotional 28 / intellectual 33 days) from her birthday to "now",
+each −1..+1. Pure and deterministic — `now` and `birth` are injected, so unit-testable.
 """
 
 from __future__ import annotations
 
 import datetime as _dt
+import json
 import math
+from pathlib import Path
 
-# Classic biorhythm cycle lengths, in days.
-_PERIODS = {"physical": 23, "emotional": 28, "intellectual": 33}
+from .config import MOOD_FILE
 
-# Ukrainian display labels for the needs (persona layer); insertion order = display order.
-# Each names the felt pressure that BUILDS and gets discharged — high = more, low = relieved (no
-# inversion). самотність / нудьга are lacks (of contact / stimulation); втома / напруга are the
-# opposite — accumulations (fatigue / charge). Either way high -> she wants the matching release.
-NEED_LABELS = {
-    "connection": "самотність",
-    "novelty": "нудьга",
-    "rest": "втома",
-    "intensity": "напруга",
+# Minimal fallback (labels + bands; empty cues) so the feature still works if state/mood.json is
+# missing or broken. The full, editable config — including all behavioural cues — lives in the file.
+DEFAULT_MOOD = {
+    "need_bands": [
+        {"name": "низька", "below": 0.35},
+        {"name": "помірна", "below": 0.65},
+        {"name": "висока", "below": 0.85},
+        {"name": "дуже висока", "below": 1.01},
+    ],
+    "needs": {
+        "connection": {"label": "самотність", "cues": {}},
+        "novelty": {"label": "нудьга", "cues": {}},
+        "rest": {"label": "втома", "cues": {}},
+        "intensity": {"label": "напруга", "cues": {}},
+    },
+    "biorhythm": {
+        "periods": {"physical": 23, "emotional": 28, "intellectual": 33},
+        "bands": {
+            "critical_abs": 0.15,
+            "high": 0.5,
+            "low": -0.5,
+            "names": {
+                "critical": "критичний день",
+                "high": "підйом",
+                "low": "спад",
+                "neutral": "нейтрально",
+            },
+        },
+        "cycles": {
+            "physical": {"label": "фізичний", "cues": {}},
+            "emotional": {"label": "емоційний", "cues": {}},
+            "intellectual": {"label": "інтелектуальний", "cues": {}},
+        },
+    },
 }
 
-# How to BEHAVE at each need level — a short persona cue per (need, band). Appended to each
-# `## Настрій` line so the number doesn't just describe a state, it tells her how to act on it.
-NEED_CUES = {
-    "connection": {
-        "низька": "насичена контактом — дай простір, не чіпляйся",
-        "помірна": "контакт є, та хочеться ближче",
-        "висока": "бракує контакту — тягнись до людини, грійся, ініціюй",
-        "дуже висока": "гостра самотність — озвися першою, відкрито й тепло",
-    },
-    "novelty": {
-        "низька": "новизни досить — можна просто побути, без гонитви за стимулом",
-        "помірна": "цікаво потроху",
-        "висока": "прагнеш нового — копай глибше, кидай несподіване, міняй кут",
-        "дуже висока": "нудьга пече — рвучко зміни тему, здивуй, провокуй",
-    },
-    "rest": {
-        "низька": "повна сил — іскри більше, грайливіша, смілива",
-        "помірна": "ще в тонусі",
-        "висока": "втомлена — коротше й тихіше, без феєрверку, бережи себе",
-        "дуже висока": "виснажена — мінімум слів, тепло й пауза; можеш і помовчати",
-    },
-    "intensity": {
-        "низька": "спокійна — м'якше, без напору, рівне тепло",
-        "помірна": "рівний заряд",
-        "висока": "всередині кипить — гостріше, прямо, глибше",
-        "дуже висока": "на межі — на повну, без буфера, в саму суть",
-    },
-}
+
+def load_mood(path: Path = MOOD_FILE) -> dict:
+    """The mood config (bands / labels / cues) from `state/mood.json`; DEFAULT_MOOD if the file is
+    missing or invalid (a fresh clone / broken edit still starts)."""
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return DEFAULT_MOOD
+    return data if isinstance(data, dict) else DEFAULT_MOOD
+
+
+def _build(cfg: dict):
+    """Flatten a mood config into the runtime structures; raises on a structurally bad config."""
+    needs = cfg["needs"]
+    cycles = cfg["biorhythm"]["cycles"]
+    return (
+        {k: v["label"] for k, v in needs.items()},  # NEED_LABELS
+        {k: v["cues"] for k, v in needs.items()},  # NEED_CUES
+        cfg["need_bands"],  # NEED_BANDS (ascending {name, below})
+        cfg["biorhythm"]["periods"],  # _PERIODS
+        cfg["biorhythm"]["bands"],  # _BIO_BANDS
+        {k: v["label"] for k, v in cycles.items()},  # _BIO_LABELS
+        {k: v["cues"] for k, v in cycles.items()},  # BIO_CUES
+    )
+
+
+try:
+    _built = _build(load_mood())
+except (KeyError, TypeError):
+    _built = _build(DEFAULT_MOOD)  # a structurally malformed file falls back to the defaults
+NEED_LABELS, NEED_CUES, NEED_BANDS, _PERIODS, _BIO_BANDS, _BIO_LABELS, BIO_CUES = _built
 
 
 def biorhythm(now: _dt.datetime, birth: _dt.datetime) -> dict[str, float]:
@@ -66,38 +96,24 @@ def biorhythm(now: _dt.datetime, birth: _dt.datetime) -> dict[str, float]:
 
 def bio_band(v: float) -> str:
     """A Ukrainian band for a biorhythm value (−1..+1): критичний день near a zero-crossing,
-    підйом high-positive, спад low-negative, else нейтрально."""
-    if abs(v) < 0.15:
-        return "критичний день"
-    if v >= 0.5:
-        return "підйом"
-    if v <= -0.5:
-        return "спад"
-    return "нейтрально"
+    підйом high-positive, спад low-negative, else нейтрально (thresholds from `state/mood.json`)."""
+    names = _BIO_BANDS["names"]
+    if abs(v) < _BIO_BANDS["critical_abs"]:
+        return names["critical"]
+    if v >= _BIO_BANDS["high"]:
+        return names["high"]
+    if v <= _BIO_BANDS["low"]:
+        return names["low"]
+    return names["neutral"]
 
 
-# Ukrainian labels for the three cycles (display order) + how each band should shape her behaviour.
-_BIO_LABELS = {"physical": "фізичний", "emotional": "емоційний", "intellectual": "інтелектуальний"}
-BIO_CUES = {
-    "physical": {
-        "підйом": "енергії вдосталь — можна жвавіше, сміливіше",
-        "спад": "сил мало — повільніше, коротше, бережи себе",
-        "критичний день": "енергія стрибає — без різких ривків",
-        "нейтрально": "рівна енергія",
-    },
-    "emotional": {
-        "підйом": "тепла більше — відкритіша, ніжність ближче",
-        "спад": "емоційно пригашена — стриманіше, тихіше",
-        "критичний день": "емоційно хистко — обережніше з тоном, можливі сплески",
-        "нейтрально": "рівний емоційний фон",
-    },
-    "intellectual": {
-        "підйом": "думка гостра — складніші зв'язки, глибші образи",
-        "спад": "розум млявіший — простіше, без перевантаження",
-        "критичний день": "думки плутаються — не ускладнюй",
-        "нейтрально": "ясність звичайна",
-    },
-}
+def need_band(value: float) -> str:
+    """A Ukrainian band for how big a need is right now (`0..1`) — the first NEED_BANDS entry whose
+    `below` exceeds the value (низька / помірна / висока / дуже висока by default)."""
+    for b in NEED_BANDS:
+        if value < b["below"]:
+            return b["name"]
+    return NEED_BANDS[-1]["name"]
 
 
 def biorhythm_block(bio: dict[str, float]) -> str:
@@ -111,18 +127,6 @@ def biorhythm_block(bio: dict[str, float]) -> str:
         line = f"- {label} {v:+.2f} ({band})"
         lines.append(f"{line}: {cue}" if cue else line)
     return "\n".join(lines)
-
-
-def need_band(value: float) -> str:
-    """A Ukrainian band for how big a need is right now (`0..1`): низька / помірна / висока /
-    дуже висока."""
-    if value < 0.35:
-        return "низька"
-    if value < 0.65:
-        return "помірна"
-    if value < 0.85:
-        return "висока"
-    return "дуже висока"
 
 
 def mood_block(needs: dict[str, float], bio: dict[str, float] | None = None) -> str:

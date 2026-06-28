@@ -81,3 +81,39 @@ def test_mood_block_missing_need_is_zero():
         {"connection": 0.5}, {"physical": 0.0, "emotional": 0.0, "intellectual": 0.0}
     )
     assert "нудьга 0.00 — низька" in block  # absent need -> 0.0
+
+
+# --- mood config loaded from state/mood.json ---
+
+
+def test_load_mood_reads_the_file_with_cues():
+    from kiln.mood import load_mood
+
+    cfg = load_mood()  # the committed state/mood.json
+    assert cfg["needs"]["connection"]["label"] == "самотність"
+    assert "бракує контакту" in cfg["needs"]["connection"]["cues"]["висока"]
+    assert cfg["biorhythm"]["periods"] == {"physical": 23, "emotional": 28, "intellectual": 33}
+
+
+def test_load_mood_falls_back_when_missing(tmp_path):
+    from kiln.mood import DEFAULT_MOOD, load_mood
+
+    assert load_mood(tmp_path / "nope.json") == DEFAULT_MOOD
+
+
+def test_load_mood_falls_back_on_invalid_json(tmp_path):
+    from kiln.mood import DEFAULT_MOOD, load_mood
+
+    bad = tmp_path / "bad.json"
+    bad.write_text("{ not json", encoding="utf-8")
+    assert load_mood(bad) == DEFAULT_MOOD
+
+
+def test_default_mood_builds_working_labels_and_bands():
+    # the minimal fallback must still produce labels + bands (cues empty)
+    from kiln.mood import DEFAULT_MOOD, _build
+
+    labels, cues, bands, periods, bio_bands, bio_labels, bio_cues = _build(DEFAULT_MOOD)
+    assert labels["connection"] == "самотність" and bio_labels["physical"] == "фізичний"
+    assert bands[0] == {"name": "низька", "below": 0.35}
+    assert cues["connection"] == {}  # the fallback ships no cues (they live in the file)

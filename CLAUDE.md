@@ -58,10 +58,12 @@ test suite lives in `tests/` (pytest); the dry-run demo in `kiln/__main__.py` st
 All mutable state is under `STATE_DIR` (defined in `config.py`, = repo root `/state`): `state/needs.json` (seed need
 levels, rewritten each run by `save_state`), `state/prompts.md` (self-trigger prompts),
 `state/canon.md` (the **canon** — the persona/voice that becomes the system prompt of both
-branches), and `state/memory.md` (cross-session summaries, generated on exit — gitignored).
+branches), `state/mood.json` (v0.9 — the need/biorhythm **bands** (thresholds + Ukrainian names) and
+the behavioural **cues** for the `## Настрій` section; `mood.load_mood` → `DEFAULT_MOOD` fallback),
+and `state/memory.md` (cross-session summaries, generated on exit — gitignored).
 `run()` calls `STATE_DIR.mkdir(exist_ok=True)` before reading, so a fresh clone never crashes;
 each loader falls back to a default if its file is missing (`load_canon` → `DEFAULT_CANON`,
-empty needs/prompts otherwise).
+`load_mood` → `DEFAULT_MOOD`, empty needs/prompts otherwise).
 
 ### Config via `.env`
 

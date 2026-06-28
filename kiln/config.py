@@ -22,6 +22,7 @@ STATE_DIR = PROJECT_ROOT / "state"
 MEMORY_FILE = STATE_DIR / "memory.md"  # long-term memory: summaries of past sessions
 CANON_FILE = STATE_DIR / "canon.md"  # canon: persona/voice (system prompt)
 PROMPTS_FILE = STATE_DIR / "prompts.md"  # self-trigger prompts per need
+MOOD_FILE = STATE_DIR / "mood.json"  # v0.9: need/biorhythm bands, labels, behavioural cues
 HISTORY_DIR = PROJECT_ROOT / "history"  # raw session transcripts (JSON, for RAG)
 ENV_FILE = PROJECT_ROOT / ".env"  # local configuration (models + calibration)
 
