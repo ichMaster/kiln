@@ -65,6 +65,7 @@ from .memory import (
     summarize,
 )
 from .output import ConsoleOutput, Output
+from .report import write_report
 from .stats import SessionStats
 from .store import add_facts, load_store, save_store
 
@@ -511,6 +512,7 @@ def run(
                     "cost_usd": round(stats.cost_usd, 6),
                 }
             )
+            write_report()  # KILN-029: regenerate .kiln/usage-report.md from the full ledger
             output.notice(
                 f"[exit] stored session {started} ({len(cleaned)} turns)"
                 f"{' + summary' if summary else ''}"
