@@ -53,8 +53,39 @@ def test_cost_breakdown_and_cache_savings_note():
 def test_recent_sessions_caps_at_50_newest_first():
     big = [_e(f"s{i}", f"2026-06-{(i % 28) + 1:02d}T0{i % 9}:00:00") for i in range(60)]
     section = report.generate(big).split("## Recent sessions")[1]
-    rows = [ln for ln in section.splitlines() if "| `" in ln]
-    assert len(rows) == 50  # capped at 50
+    headers = [ln for ln in section.splitlines() if ln.startswith("### ")]
+    assert len(headers) == 50  # capped at 50 per-session sub-sections
+
+
+def test_by_model_section_and_claude_p_count():
+    ledger = [
+        {
+            **_e("a", "2026-06-28T10:00:00", cost=1.0),
+            "cli_calls": 2,
+            "by_model": {
+                "claude-opus-4-8": {
+                    "calls": 2,
+                    "input": 100,
+                    "output": 20,
+                    "cache_read": 5,
+                    "cache_write": 1,
+                    "cost_usd": 0.9,
+                },  # fmt: skip
+                "claude-haiku-4-5": {
+                    "calls": 1,
+                    "input": 10,
+                    "output": 5,
+                    "cache_read": 0,
+                    "cache_write": 0,
+                    "cost_usd": 0.1,
+                },  # fmt: skip
+            },
+        }
+    ]
+    md = report.generate(ledger)
+    assert "## By model" in md and "opus" in md and "haiku" in md  # per-model rollup
+    assert "calls:** 2" in md  # the overall claude -p execution count (Overall line)
+    assert "### 2026-06-28 10:00" in md and "claude -p ×2" in md  # per-session detail header
 
 
 def test_empty_ledger_is_valid_minimal_report():

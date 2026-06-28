@@ -42,6 +42,7 @@ STATS_KEYS = {
     "cache_write_total",
     "cost_usd",
     "cost_estimated",
+    "cli_calls",
 }
 
 
@@ -297,11 +298,13 @@ def test_run_session_close_appends_usage_ledger(monkeypatch, tmp_path):
     assert len(captured) == 1  # exactly one line per session
     e = captured[0]
     assert set(e) == {
-        "session_id", "model", "started_at", "ended_at", "turns",
-        "input", "output", "cache_read", "cache_write", "cache_ttl", "cost_usd",
+        "session_id", "model", "started_at", "ended_at", "turns", "input", "output",
+        "cache_read", "cache_write", "cache_ttl", "cost_usd", "cli_calls", "by_model",
     }  # fmt: skip
     assert e["session_id"] and e["turns"] >= 1 and e["model"]  # a chat turn -> haiku recorded
     assert e["input"] > 0 and e["cost_usd"] >= 0  # tokens + an (estimated) cost
+    assert e["cli_calls"] == 0  # MockBrain chat is the SDK branch, not claude -p
+    assert e["by_model"] and CHAT_MODEL in e["by_model"]  # per-model breakdown present
 
 
 def test_usage_report_off_skips_ledger_and_report(monkeypatch, tmp_path):

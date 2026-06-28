@@ -86,7 +86,10 @@ def handle_command(
                 f"in {stats.input_total} · out {stats.output_total} · "
                 f"cache {stats.cache_read_total}r/{stats.cache_write_total}w"
             )
-            output.notice(f"[usage] turns={stats.turns} · {buckets} · ~${stats.cost_usd:.4f}{est}")
+            output.notice(
+                f"[usage] turns={stats.turns} · claude -p ×{stats.cli_calls} · "
+                f"{buckets} · ~${stats.cost_usd:.4f}{est}"
+            )
             output.notice(f"[usage] report: {USAGE_REPORT_FILE}")
 
     elif cmd == "report":

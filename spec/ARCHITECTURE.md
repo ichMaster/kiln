@@ -178,8 +178,10 @@ multi-agent is additive, not a rewrite:
   (atomic write + `.bak`; corrupt → recover from `.bak` or fresh; missing sections healed).
 - **Usage ledger (v0.7):** `.kiln/usage-ledger.jsonl` — one append-only JSON line per closed
   session: `{session_id, model, started_at, ended_at, turns, input, output, cache_read,
-  cache_write, cache_ttl, cost_usd}`, via `ledger.append_session`/`read_ledger`. `cost_usd` sums
-  the CLI's actual cost (`claude -p`) + the price-table estimate (SDK). The generated
+  cache_write, cache_ttl, cost_usd, cli_calls, by_model}`, via `ledger.append_session`/`read_ledger`.
+  `cost_usd` sums the CLI's actual cost (`claude -p`) + the price-table estimate (SDK); `cli_calls`
+  counts `claude -p` executions (deep + tool); `by_model` is the per-model breakdown
+  `{model: {calls, input, output, cache_read, cache_write, cost_usd}}`. The generated
   `.kiln/usage-report.md` (`report.py`) is regenerated from it.
 - **Brain seam:** `Brain.chat(history, system)`, `Brain.deep(prompt, history, system,
   with_tools)`, and `Brain.tool(agent, history, system)` each return `(text, usage)`;

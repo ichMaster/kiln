@@ -513,6 +513,11 @@ def run(
                         "cache_write": stats.cache_write_total,
                         "cache_ttl": "5m",
                         "cost_usd": round(stats.cost_usd, 6),
+                        "cli_calls": stats.cli_calls,  # how many `claude -p` executions
+                        "by_model": {
+                            m: {**v, "cost_usd": round(v["cost_usd"], 6)}
+                            for m, v in stats.by_model.items()
+                        },
                     }
                 )
                 write_report()  # regenerate .kiln/usage-report.md from the full ledger

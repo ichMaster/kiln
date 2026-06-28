@@ -56,3 +56,16 @@ def test_session_stats_snapshot_includes_cost():
     s.record("think", _rec("opus", 100, 20, cost=0.5), latency=1.0)
     snap = s.snapshot()
     assert snap["cost_usd"] == 0.5 and snap["cost_estimated"] is False
+
+
+def test_session_stats_cli_calls_and_by_model():
+    s = SessionStats()
+    s.record("chat", _rec("claude-haiku-4-5", 10, 5), 0.2)  # SDK
+    s.record("think", _rec("claude-opus-4-8", 100, 20, cr=50), 1.0)  # claude -p
+    s.record("tool", _rec("sonnet", 50, 8), 1.0)  # claude -p
+    assert s.cli_calls == 2  # think + tool, not the chat (SDK) call
+    assert s.snapshot()["cli_calls"] == 2
+    assert s.calls_by_branch == {"chat": 1, "think": 1, "tool": 1}
+    assert set(s.by_model) == {"claude-haiku-4-5", "claude-opus-4-8", "sonnet"}
+    opus = s.by_model["claude-opus-4-8"]
+    assert opus["calls"] == 1 and opus["input"] == 100 and opus["cache_read"] == 50

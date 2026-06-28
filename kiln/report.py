@@ -39,16 +39,35 @@ def _row(cells) -> str:
 
 
 def _agg(entries) -> dict:
-    """Aggregate the four buckets + cost + sessions + turns over a list of ledger entries."""
+    """Aggregate the four buckets + cost + sessions + turns + cli_calls over ledger entries."""
     a = {b: 0 for b in _BUCKETS}
-    a["sessions"], a["turns"], a["cost"] = len(entries), 0, 0.0
+    a["sessions"], a["turns"], a["cost"], a["cli_calls"] = len(entries), 0, 0.0, 0
     for e in entries:
         for b in _BUCKETS:
             a[b] += int(e.get(b, 0) or 0)
         a["turns"] += int(e.get("turns", 0) or 0)
         a["cost"] += float(e.get("cost_usd", 0) or 0)
+        a["cli_calls"] += int(e.get("cli_calls", 0) or 0)
     a["total"] = a["input"] + a["output"] + a["cache_read"] + a["cache_write"]
     return a
+
+
+def _entry_models(e) -> dict:
+    """A session's per-model breakdown — the `by_model` map, or a single combined row for legacy
+    ledger lines (written before per-model tracking)."""
+    bm = e.get("by_model")
+    if isinstance(bm, dict) and bm:
+        return bm
+    return {
+        e.get("model", "?"): {
+            "calls": None,  # legacy line: per-model call counts weren't tracked
+            "input": int(e.get("input", 0) or 0),
+            "output": int(e.get("output", 0) or 0),
+            "cache_read": int(e.get("cache_read", 0) or 0),
+            "cache_write": int(e.get("cache_write", 0) or 0),
+            "cost_usd": float(e.get("cost_usd", 0) or 0),
+        }
+    }
 
 
 def _group(entries, keyfn) -> list[tuple[str, dict]]:
@@ -112,33 +131,79 @@ def _period_section(title: str, rows) -> list[str]:
     return out
 
 
+def _model_row(label, m) -> str:
+    """A per-model stats row: label | calls | input | output | cache r | cache w | total | cost."""
+    total = m["input"] + m["output"] + m["cache_read"] + m["cache_write"]
+    calls = m.get("calls")
+    return _row([
+        label, "—" if calls is None else calls, _num(m["input"]), _num(m["output"]),
+        _num(m["cache_read"]), _num(m["cache_write"]), _num(total), _usd(m["cost_usd"]),
+    ])  # fmt: skip
+
+
+_MODEL_HEADER = "|---|--:|--:|--:|--:|--:|--:|--:|"
+_MODEL_COLS = [
+    "Model",
+    "Calls",
+    "Input",
+    "Output",
+    "Cache read",
+    "Cache write",
+    "Total",
+    "Est. cost",
+]
+
+
+def _by_model_section(ledger) -> list[str]:
+    """Per-model rollup across all sessions (which model spent what)."""
+    agg: dict[str, dict] = {}
+    sessions: dict[str, int] = {}
+    for e in ledger:
+        for model, m in _entry_models(e).items():
+            cur = agg.setdefault(
+                model,
+                {
+                    "calls": 0,
+                    "input": 0,
+                    "output": 0,
+                    "cache_read": 0,
+                    "cache_write": 0,
+                    "cost_usd": 0.0,
+                },
+            )
+            for k in cur:
+                cur[k] += m.get(k) or 0  # legacy `calls` may be None -> treat as 0 in the rollup
+            sessions[model] = sessions.get(model, 0) + 1
+    out = ["## By model", _row(["Model", "Sessions", *_MODEL_COLS[1:]]),
+           "|---|--:|--:|--:|--:|--:|--:|--:|--:|"]  # fmt: skip
+    for model, m in sorted(agg.items(), key=lambda kv: kv[1]["cost_usd"], reverse=True):
+        total = m["input"] + m["output"] + m["cache_read"] + m["cache_write"]
+        out.append(_row([
+            _short_model(model), sessions[model], m["calls"], _num(m["input"]), _num(m["output"]),
+            _num(m["cache_read"]), _num(m["cache_write"]), _num(total), _usd(m["cost_usd"]),
+        ]))  # fmt: skip
+    out.append("")
+    return out
+
+
 def _recent(ledger) -> list[str]:
+    """Recent sessions (last 50), each expanded into a per-model detail table."""
     recent = sorted(ledger, key=lambda e: e.get("started_at", ""), reverse=True)[:50]
-    cols = ["Started", "Session", "Model", "Turns", "Input", "Output", "Cache read",
-            "Cache write", "Total", "Est. cost"]  # fmt: skip
-    out = [
-        "## Recent sessions (last 50)",
-        "",
-        _row(cols),
-        "|---|---|---|--:|--:|--:|--:|--:|--:|--:|",
-    ]
+    out = ["## Recent sessions (last 50)", ""]
     for e in recent:
         started = (e.get("started_at") or "").replace("T", " ")[:16]
+        sid = (e.get("session_id") or "")[:16]
         total = sum(int(e.get(b, 0) or 0) for b in _BUCKETS)
-        cells = [
-            started,
-            f"`{(e.get('session_id') or '')[:16]}`",
-            _short_model(e.get("model", "")),
-            e.get("turns", 0),
-            _num(e.get("input", 0)),
-            _num(e.get("output", 0)),
-            _num(e.get("cache_read", 0)),
-            _num(e.get("cache_write", 0)),
-            _num(total),
-            _usd(e.get("cost_usd", 0)),
-        ]
-        out.append(_row(cells))
-    out.append("")
+        cli = e.get("cli_calls")
+        cli_str = "?" if cli is None else cli  # legacy lines didn't record the count
+        out.append(
+            f"### {started} · `{sid}` · {e.get('turns', 0)} turns · "
+            f"claude -p ×{cli_str} · {_num(total)} tok · {_usd(e.get('cost_usd', 0))}"
+        )
+        out += [_row(_MODEL_COLS), _MODEL_HEADER]
+        for model, m in _entry_models(e).items():
+            out.append(_model_row(_short_model(model), m))
+        out.append("")
     return out
 
 
@@ -154,9 +219,13 @@ def generate(ledger: list[dict]) -> str:
         f"cache write {_num(t['cache_write'])})"
     )
     lines.append(f"- **Sessions:** {t['sessions']} · **Turns:** {_num(t['turns'])}")
+    lines.append(
+        f"- **`claude -p` calls:** {_num(t['cli_calls'])} (deep + tool; chat uses the SDK)"
+    )
     lines += ["", "> Costs are **estimates** from list prices (cache read = 10% of input; "
               "cache write = 1.25× @ 5m, 2× @ 1h). Not a billing source of truth.", ""]  # fmt: skip
     lines += _breakdown(ledger, t)
+    lines += _by_model_section(ledger)
     lines += _period_section("By month", _group(ledger, lambda d: d[:7]))
     lines += _period_section("By week (ISO)", _group(ledger, _iso_week))
     lines += _period_section("By day", _group(ledger, lambda d: d or ""))
