@@ -64,14 +64,21 @@ NEED_TRIGGERS = {
     "rest": {"threshold": 0.90, "action": "idle"},
     "novelty": {"threshold": 0.85, "action": "tool", "agent": "session-wiki"},
     "intensity": {"threshold": 0.75, "action": "deep"},
+    "reflection": {"threshold": 0.60, "action": "thought"},  # v0.10 inner monologue (no self-msg)
 }
 # The proactive self-message fires only on this need; intensity/novelty pick the brain that
 # answers it (see the comment above and engine.reach_out_branch). REACH_OUT_MODELS = priority.
 REACH_OUT_NEED = "connection"
 REACH_OUT_MODELS = ("intensity", "novelty")  # first over its threshold shapes the reach-out
+REFLECT_NEED = (
+    "reflection"  # v0.10: the need whose crossing fires an internal thought (not a message)
+)
 SELF_COOLDOWN = int(
     os.environ.get("SELF_COOLDOWN", "5")
 )  # silent ticks after a self-trigger (per need)
+THOUGHT_COOLDOWN = int(
+    os.environ.get("THOUGHT_COOLDOWN", "10")
+)  # v0.10: silent ticks after an internal thought
 
 # Rest gate: when fatigue (rest) reaches NEED_TRIGGERS["rest"]["threshold"] (0.90) Agnika stops
 # answering (user turns AND self-triggers) and recovers on idle until rest drops to REST_WAKE,
@@ -100,6 +107,7 @@ DRIFT = {
     "rest": -0.005,  # minimal time drift — fatigue mostly comes from activity (deep/chat)
     "novelty": 0.0001,  # deep driver (leads) — bar swings the full 0..0.85
     "intensity": 0.0005,  # discharged by every deep turn — hovers ~0.7, rarely the lead
+    "reflection": 0.0008,  # v0.10: slow build of «незібраність» -> fires an internal thought
 }
 
 # Closing needs by events. Negative = lowering the level. The reset is LARGE relative
@@ -122,6 +130,8 @@ SATIATION = {
     "session-wiki": {"connection": -0.6, "rest": +0.4, "novelty": -0.90, "intensity": -0.15},
     # silence (a tick with no reply): rest recovers; from 0.9 to 0 in 180 ticks (3 mins)
     "idle": {"connection": 0, "rest": -0.01, "novelty": 0.0001, "intensity": +0.0005},
+    # a thought (Haiku inner monologue) gathers the scattered thoughts -> drops reflection (v0.10)
+    "thought": {"reflection": -0.7},
 }
 
 # --- Classification / routing -----------------------------------------------

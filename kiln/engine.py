@@ -43,6 +43,7 @@ from .config import (
     REACH_OUT_MODELS,
     REACH_OUT_NEED,
     RECENT_MESSAGES,
+    REFLECT_NEED,
     REST_MESSAGE,
     REST_WAKE,
     SATIATION,
@@ -52,6 +53,7 @@ from .config import (
     STORE_FILE,
     THINK_HINTS,
     THINK_THRESHOLD,
+    THOUGHT_COOLDOWN,
     TICK_SECONDS,
     TIMEZONE,
     TOOL_HINTS,
@@ -145,14 +147,10 @@ class TriggerBook:
     cooldown: dict[str, int] = field(default_factory=dict)  # silent ticks remaining
 
 
-def select_self_trigger(state: State, tg: TriggerBook) -> str | None:
-    """
-    The proactive reach-out fires ONLY on REACH_OUT_NEED (connection = loneliness): returns
-    that need name when it crosses its threshold this tick, else None. WHICH brain answers is
-    a separate choice (reach_out_branch). Hysteresis: fires only on an UPWARD crossing (re-arms
-    once it falls back below). Cooldown: after firing — SELF_COOLDOWN silent ticks.
-    """
-    name = REACH_OUT_NEED
+def _crossing_trigger(state: State, tg: TriggerBook, name: str, cooldown: int) -> str | None:
+    """Fire `name` on an UPWARD threshold crossing (`NEED_TRIGGERS`) with hysteresis — fires only on
+    the up-crossing, re-arms once it falls back below — and a `cooldown` of silent ticks after.
+    Returns the need name when it fires this tick, else None."""
     cfg = NEED_TRIGGERS.get(name)
     if cfg is None:
         return None
@@ -164,8 +162,22 @@ def select_self_trigger(state: State, tg: TriggerBook) -> str | None:
     if not tg.armed.get(name, True) or tg.cooldown.get(name, 0) != 0:
         return None  # already discharged this crossing, or still cooling down
     tg.armed[name] = False  # discharge hysteresis
-    tg.cooldown[name] = SELF_COOLDOWN  # start cooldown
+    tg.cooldown[name] = cooldown  # start cooldown
     return name
+
+
+def select_self_trigger(state: State, tg: TriggerBook) -> str | None:
+    """The proactive reach-out fires ONLY on REACH_OUT_NEED (connection = loneliness): returns that
+    need name when it crosses its threshold this tick, else None. WHICH brain answers is a separate
+    choice (reach_out_branch). Hysteresis + SELF_COOLDOWN silent ticks after firing."""
+    return _crossing_trigger(state, tg, REACH_OUT_NEED, SELF_COOLDOWN)
+
+
+def select_thought_trigger(state: State, tg: TriggerBook) -> str | None:
+    """The inner monologue fires on REFLECT_NEED (reflection = незібраність): returns it on an
+    upward crossing this tick (else None), with the same hysteresis + THOUGHT_COOLDOWN as the
+    reach-out. The thought itself (KILN-042) is generated separately — this only decides WHEN."""
+    return _crossing_trigger(state, tg, REFLECT_NEED, THOUGHT_COOLDOWN)
 
 
 def reach_out_branch(state: State) -> tuple[str, str | None]:

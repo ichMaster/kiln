@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from kiln.config import DRIFT, SATIATION
+from kiln.config import DRIFT, NEED_TRIGGERS, SATIATION
 from kiln.engine import State, apply_satiation, drift
 
 
@@ -73,3 +73,24 @@ def test_satiation_unknown_event_is_noop():
     st = State(needs={"connection": 0.50})
     apply_satiation(st, "не-подія")
     assert st.needs["connection"] == 0.50
+
+
+# --- v0.10: the reflection need + the `thought` satiation event ---
+
+
+def test_reflection_is_a_configured_need():
+    assert "reflection" in DRIFT and DRIFT["reflection"] > 0  # slow upward drift
+    assert NEED_TRIGGERS["reflection"]["action"] == "thought"  # crossing fires a thought
+
+
+def test_drift_raises_reflection():
+    st = State(needs={"reflection": 0.0})
+    drift(st)
+    assert st.needs["reflection"] == pytest.approx(DRIFT["reflection"])
+
+
+def test_satiation_thought_discharges_reflection():
+    st = State(needs={"reflection": 0.90})
+    apply_satiation(st, "thought")  # the inner-monologue discharge (gathers the scattered thoughts)
+    assert st.needs["reflection"] == pytest.approx(0.90 + SATIATION["thought"]["reflection"])
+    assert SATIATION["thought"]["reflection"] < 0  # it lowers «незібраність»

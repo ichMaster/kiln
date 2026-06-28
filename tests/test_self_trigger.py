@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
-from kiln.config import SELF_COOLDOWN
-from kiln.engine import State, TriggerBook, reach_out_branch, select_self_trigger
+from kiln.config import SELF_COOLDOWN, THOUGHT_COOLDOWN
+from kiln.engine import (
+    State,
+    TriggerBook,
+    reach_out_branch,
+    select_self_trigger,
+    select_thought_trigger,
+)
 
 # --- select_self_trigger: ONLY connection fires (hysteresis + cooldown) ------
 
@@ -39,6 +45,36 @@ def test_hysteresis_rearms_after_drop_below():
         select_self_trigger(st, tg)
     st.needs["connection"] = 0.85  # second upward crossing
     assert select_self_trigger(st, tg) == "connection"
+
+
+def test_reflection_does_not_self_trigger_a_message():
+    # reflection over its threshold is NOT a reach-out (select_self_trigger ignores it)
+    st = State(needs={"connection": 0.0, "reflection": 0.95})
+    assert select_self_trigger(st, TriggerBook()) is None
+
+
+# --- select_thought_trigger: reflection fires the inner monologue (KILN-040) ---
+
+
+def test_no_thought_below_reflection_threshold():
+    assert select_thought_trigger(State(needs={"reflection": 0.5}), TriggerBook()) is None
+
+
+def test_thought_fires_on_reflection_upward_crossing():
+    # NEED_TRIGGERS["reflection"]["threshold"] == 0.60
+    assert select_thought_trigger(State(needs={"reflection": 0.7}), TriggerBook()) == "reflection"
+
+
+def test_thought_hysteresis_and_rearm():
+    tg = TriggerBook()
+    st = State(needs={"reflection": 0.7})
+    assert select_thought_trigger(st, tg) == "reflection"  # fired
+    assert select_thought_trigger(st, tg) is None  # hysteresis discharged
+    st.needs["reflection"] = 0.3  # drop below threshold -> re-arm
+    for _ in range(THOUGHT_COOLDOWN + 1):  # also drain the cooldown
+        select_thought_trigger(st, tg)
+    st.needs["reflection"] = 0.7  # second upward crossing
+    assert select_thought_trigger(st, tg) == "reflection"
 
 
 def test_cooldown_blocks_refire_until_drained():
