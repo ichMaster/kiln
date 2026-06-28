@@ -2,10 +2,11 @@
 kiln — conversation history: the shared message feed of a session.
 
 No trimming or summarization: we accumulate everything and append it to the prompt.
-Each item is {"role": "user"|"assistant", "text": ..., "at": "<ISO timestamp>"} (v0.8). Date+time
-stamps appear ONLY in the prior-session timeline (`world.recent_timed`, via `fmt_stamp`) — NOT in
-the live conversation (`to_messages`/`to_transcript`), because the chat model mirrors a per-message
-`[time]` prefix into its own replies. `strip_leading_stamp` cleans any such echo from stored text.
+Each item is {"role": "user"|"assistant", "text": ..., "at": "<ISO timestamp>"} (v0.8). In the live
+conversation, the `[date time]` stamp (`fmt_stamp`) is prepended to **user** messages only — the
+chat model mirrors a stamp on its OWN role, so assistant turns stay clean (any echoed stamp is
+removed by `strip_leading_stamp`). The prior-session timeline (`world.recent_timed`) stamps every
+line.
 """
 
 from __future__ import annotations
@@ -61,13 +62,27 @@ def turn(role: str, text: str, at: str | None = None) -> dict:
     }
 
 
+def _user_prefix(h: dict) -> str:
+    """`[date time] ` for a USER turn (only user turns are stamped — the model mirrors a stamp on
+    its own role); "" otherwise."""
+    if h.get("role") == ROLE_USER:
+        stamp = fmt_stamp(h.get("at"))
+        return f"{stamp} " if stamp else ""
+    return ""
+
+
+def _clean(h: dict) -> str:
+    """The turn's text, with any echoed stamp stripped from ASSISTANT turns (user text untouched)."""
+    return h["text"] if h.get("role") == ROLE_USER else strip_leading_stamp(h["text"])
+
+
 def to_messages(history: list[dict]) -> list[dict]:
-    """History -> Anthropic Messages API format ({role, content}). NO timestamps in the live
-    conversation (the model would mirror them); any echoed stamp is stripped from the text."""
-    return [{"role": h["role"], "content": strip_leading_stamp(h["text"])} for h in history]
+    """History -> Anthropic Messages API format ({role, content}); user content carries its
+    `[date time]` stamp, assistant content stays clean."""
+    return [{"role": h["role"], "content": f"{_user_prefix(h)}{_clean(h)}"} for h in history]
 
 
 def to_transcript(history: list[dict]) -> str:
-    """History -> a plain text transcript for the CLI prompt: `Name: text` per turn (named
-    speakers; no timestamps in the live conversation; any echoed stamp is stripped)."""
-    return "\n".join(f"{role_label(h['role'])}: {strip_leading_stamp(h['text'])}" for h in history)
+    """History -> a plain text transcript: `[date time] Користувач: …` for user turns, `Агніка: …`
+    (clean) for the bot — the stamp precedes the named speaker (`role_label`)."""
+    return "\n".join(f"{_user_prefix(h)}{role_label(h['role'])}: {_clean(h)}" for h in history)
