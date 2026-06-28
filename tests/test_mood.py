@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import math
 
-from kiln.mood import bio_band, biorhythm, biorhythm_block
+from kiln.mood import bio_band, biorhythm, biorhythm_block, mood_block, need_band
 
 BIRTH = dt.datetime(2001, 8, 12, 17, 10)  # Agnika's canon birthday
 
@@ -49,3 +49,32 @@ def test_biorhythm_block_renders_cycles_bands_and_cue():
     assert "підйом" in block and "спад" in block and "критичний день" in block
     # the one-line tone cue keyed on the (low) emotional cycle
     assert "Емоційно пригашений день" in block.splitlines()[-1]
+
+
+# --- mood-from-needs (KILN-036) ---
+
+
+def test_need_band_boundaries():
+    assert need_band(0.30) == "низька"
+    assert need_band(0.35) == "помірна" and need_band(0.55) == "помірна"
+    assert need_band(0.65) == "висока" and need_band(0.72) == "висока"
+    assert need_band(0.85) == "дуже висока" and need_band(0.99) == "дуже висока"
+
+
+def test_mood_block_renders_all_needs_with_labels_and_bands():
+    needs = {"connection": 0.72, "novelty": 0.30, "rest": 0.55, "intensity": 0.41}
+    bio = {"physical": 0.6, "emotional": 0.2, "intellectual": -0.4}
+    block = mood_block(needs, bio)
+    assert block.startswith("## Настрій")
+    assert "близькість 0.72 — висока" in block
+    assert "новизна 0.30 — низька" in block
+    assert "втома 0.55 — помірна" in block
+    assert "напруга 0.41 — помірна" in block
+    assert "Біоритм дня:" in block  # biorhythm sub-block embedded
+
+
+def test_mood_block_missing_need_is_zero():
+    block = mood_block(
+        {"connection": 0.5}, {"physical": 0.0, "emotional": 0.0, "intellectual": 0.0}
+    )
+    assert "новизна 0.00 — низька" in block  # absent need -> 0.0

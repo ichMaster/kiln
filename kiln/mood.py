@@ -15,6 +15,15 @@ import math
 # Classic biorhythm cycle lengths, in days.
 _PERIODS = {"physical": 23, "emotional": 28, "intellectual": 33}
 
+# Ukrainian display labels for the needs (persona layer); insertion order = display order.
+# `rest` reads as fatigue here (high = tired).
+NEED_LABELS = {
+    "connection": "близькість",
+    "novelty": "новизна",
+    "rest": "втома",
+    "intensity": "напруга",
+}
+
 
 def biorhythm(now: _dt.datetime, birth: _dt.datetime) -> dict[str, float]:
     """The three biorhythm cycles for `now` relative to `birth` — each `sin(2π·days/period)` in
@@ -57,3 +66,27 @@ def biorhythm_block(bio: dict[str, float]) -> str:
         f"інтелектуальний {intel:+.2f} ({bio_band(intel)})."
     )
     return f"{head}\n{_bio_cue(emo)}"
+
+
+def need_band(value: float) -> str:
+    """A Ukrainian band for how big a need is right now (`0..1`): низька / помірна / висока /
+    дуже висока."""
+    if value < 0.35:
+        return "низька"
+    if value < 0.65:
+        return "помірна"
+    if value < 0.85:
+        return "висока"
+    return "дуже висока"
+
+
+def mood_block(needs: dict[str, float], bio: dict[str, float]) -> str:
+    """The `## Настрій` section: every need by its Ukrainian label + level + band, then the
+    biorhythm sub-block. Pure — no emotion label is computed; she reads the levels + biorhythm and
+    decides her own tone."""
+    lines = ["## Настрій"]
+    for key, label in NEED_LABELS.items():
+        level = needs.get(key, 0.0)
+        lines.append(f"{label} {level:.2f} — {need_band(level)}")
+    lines.append(biorhythm_block(bio))
+    return "\n".join(lines)
