@@ -52,7 +52,7 @@ from .config import (
     TOOL_HINTS,
     USAGE_REPORT,
 )
-from .history import ROLE_BOT, ROLE_USER
+from .history import ROLE_BOT, ROLE_USER, turn
 from .ledger import append_session
 from .memory import (
     build_system,
@@ -274,8 +274,8 @@ def respond(
     else:
         cls, agent = classify(prompt, state)
 
-    # The user's current turn goes into the shared history before the call.
-    history.append({"role": ROLE_USER, "text": prompt})
+    # The user's current turn goes into the shared history before the call (timestamped, v0.8).
+    history.append(turn(ROLE_USER, prompt))
 
     if cls == "chat":
         reply, usage = brain.chat(history, system)
@@ -299,8 +299,8 @@ def respond(
         route = f"TOOLS/{DEEP_MODEL.split('-')[1]}"
         event = "deep"
 
-    # The reply goes into the history too.
-    history.append({"role": ROLE_BOT, "text": reply})
+    # The reply goes into the history too (timestamped, v0.8).
+    history.append(turn(ROLE_BOT, reply))
 
     # The branch determines which needs were closed.
     apply_satiation(state, event)

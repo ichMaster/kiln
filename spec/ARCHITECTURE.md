@@ -134,8 +134,9 @@ Lumi-style sections:
 - **`summaries`** — `{session_id, stamp, text}`, one per session: at exit the (pruned) session
   is summarized via the Anthropic Messages API (Haiku — cheap/fast) and appended; at start all summaries
   load into the system prompt of every branch (`build_system`). What the agent *remembers*.
-- **`messages`** — `{session_id: [{role, text}]}`, the full turn list per session, written
-  **before** the summary so a summary failure can't lose it. The **RAG corpus** (1.4).
+- **`messages`** — `{session_id: [{role, text, at}]}`, the full turn list per session (each turn
+  carries an `at` ISO timestamp, v0.8), written **before** the summary so a summary failure can't
+  lose it. The **RAG corpus** (1.4).
 - **`sessions`** — `{id, started_at, ended_at, mode, turns}`, the per-session index.
 - **`facts`** (v0.6) — `{id, text, first_seen, last_seen, source_session}`, durable **facts about
   the user** (who they are, preferences, life), deduped by normalized text (`add_facts`).
@@ -173,7 +174,7 @@ multi-agent is additive, not a rewrite:
   every branch — `canon` (`state/canon.md`, fallback `DEFAULT_CANON`) + the v0.5 memory summaries
   + the v0.6 `## Facts about the user` digest; each layer optional, `facts=""` is v0.5-equivalent.
 - **Store (v0.5–0.6):** `.kiln/store.json` = `{sessions: [{id, started_at, ended_at, mode, turns}],
-  messages: {session_id: [{role, text}]}, summaries: [{session_id, stamp, text}],
+  messages: {session_id: [{role, text, at}]}, summaries: [{session_id, stamp, text}],
   facts: [{id, text, first_seen, last_seen, source_session}]}`, via `store.load_store`/`save_store`
   (atomic write + `.bak`; corrupt → recover from `.bak` or fresh; missing sections healed).
 - **Usage ledger (v0.7):** `.kiln/usage-ledger.jsonl` — one append-only JSON line per closed

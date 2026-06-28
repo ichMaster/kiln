@@ -307,6 +307,28 @@ def test_run_session_close_appends_usage_ledger(monkeypatch, tmp_path):
     assert e["by_model"] and CHAT_MODEL in e["by_model"]  # per-model breakdown present
 
 
+def test_run_turn_timestamps_history_and_store(monkeypatch, tmp_path):
+    """KILN-032: a run() turn stamps user + bot turns with `at`; the store round-trips them."""
+    import kiln.engine as eng
+    from kiln import store as kstore
+
+    _isolate(monkeypatch, eng, tmp_path)
+    store_path = tmp_path / "store.json"
+    monkeypatch.setattr(eng, "load_store", lambda: kstore.load_store(store_path))
+    monkeypatch.setattr(eng, "save_store", lambda s: kstore.save_store(s, store_path))
+
+    eng.run(
+        ticks=2,
+        live=False,
+        channel=eng.ScriptedChannel({1: "привіт"}),
+        brain=MockBrain(),
+        output=StatusRecorder(),
+    )
+    msgs = next(iter(kstore.load_store(store_path)["messages"].values()))
+    assert len(msgs) >= 2  # the user turn + the bot reply
+    assert all("at" in m and m["at"] for m in msgs)  # every stored turn carries an `at` stamp
+
+
 def test_usage_report_off_skips_ledger_and_report(monkeypatch, tmp_path):
     """KILN-030: USAGE_REPORT=0 -> a session close writes no ledger line and no report."""
     import kiln.engine as eng
