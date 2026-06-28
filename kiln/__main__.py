@@ -45,7 +45,7 @@ def _demo() -> None:
                 1: "привіт, як справи?",  # -> chat / haiku
                 2: "/status",  # system command
                 4: "поясни, чому так виходить",  # -> think / opus
-                5: "/history",  # show the feed
+                5: "/prompt",  # show the system prompt + message feed
                 6: "/needs",  # needs state
                 8: "/quit",  # exit
             }

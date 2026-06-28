@@ -72,7 +72,7 @@ def _user_prefix(h: dict) -> str:
 
 
 def _clean(h: dict) -> str:
-    """The turn's text, with any echoed stamp stripped from ASSISTANT turns (user text untouched)."""
+    """Turn text — echoed stamp stripped from ASSISTANT turns (user text left as typed)."""
     return h["text"] if h.get("role") == ROLE_USER else strip_leading_stamp(h["text"])
 
 
