@@ -1,6 +1,17 @@
 kiln — Release Notes
 ====================
 
+Version 0.7.0 (2026-06-28)
+---------------------------
+- Tokens & cost report (Lumi-style): full visibility per turn, per session, and cross-session
+- Usage record gains cache tokens + actual cost (cache_read/cache_write/cost_usd); per-turn `· cache r/w` segment (KILN-026)
+- Per-model price table + cost estimation, preferring the CLI's actual total_cost_usd, else estimating (KILN-027)
+- Per-session ledger .kiln/usage-ledger.jsonl — one append-only JSON line per closed session (KILN-028)
+- Generated .kiln/usage-report.md — Overall, cost breakdown (cache-aware), by month/week/day, recent sessions (KILN-029)
+- /usage + /report commands + USAGE_REPORT knob (KILN-030)
+- Report enriched: per-model stats per session + claude -p execution count
+- Marks v0 (Prototype & TUI) feature-complete
+
 Version 0.6.0 (2026-06-28)
 ---------------------------
 - Long memory (user facts): durable facts about the user persisted in .kiln/store.json `facts`, deduped by normalized text (KILN-022)
