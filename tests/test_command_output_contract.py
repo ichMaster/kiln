@@ -59,6 +59,23 @@ def test_needs_emits_via_notice():
     assert any("[needs]" in n for n in out.notices)
 
 
+def test_mood_shows_the_nastriy_block_only():
+    out = RecordingOutput()
+    system = "CANON\n\n## Зараз\nнеділя\n\n## Настрій\nсамотність 0.11 — низька\nБіоритм дня (…): х"
+    action = handle_command("/mood", State(needs={}), [], system, False, out)
+    assert action == "handled"
+    joined = "\n".join(out.notices)
+    assert "## Настрій" in joined and "самотність 0.11 — низька" in joined
+    assert "## Зараз" not in joined  # only the mood block, not the world section before it
+
+
+def test_mood_off_when_no_section():
+    out = RecordingOutput()
+    action = handle_command("/mood", State(needs={}), [], "CANON only", False, out)
+    assert action == "handled"
+    assert any("no mood section" in n for n in out.notices)
+
+
 def test_help_lists_commands():
     out = RecordingOutput()
     handle_command("/help", State(needs={}), [], "sys", False, out)

@@ -19,7 +19,19 @@ from .report import write_report
 
 # Canonical list of implemented slash commands — the single source for both /help
 # and the TUI hint line, so they never advertise a command kiln doesn't have.
-COMMANDS = ("status", "needs", "self", "prompt", "usage", "report", "ask", "clear", "help", "quit")
+COMMANDS = (
+    "status",
+    "needs",
+    "mood",
+    "self",
+    "prompt",
+    "usage",
+    "report",
+    "ask",
+    "clear",
+    "help",
+    "quit",
+)
 
 
 def command_hints() -> str:
@@ -57,6 +69,15 @@ def handle_command(
 
     elif cmd == "needs":
         output.notice(f"[needs] {_fmt_needs(state)}")
+
+    elif cmd == "mood":
+        # Show the ## Настрій block exactly as it goes into the prompt this turn (needs + biorhythm
+        # + behavioural cues). It's the last section, so from its header to the end is the block.
+        idx = system.find("## Настрій")
+        if idx == -1:
+            output.notice("[mood] no mood section in the prompt (MOOD_AWARENESS=0)")
+        else:
+            output.notice(system[idx:].strip())
 
     elif cmd == "self":
         # Toggle proactive self-messages (the connection reach-out). Off -> she never writes

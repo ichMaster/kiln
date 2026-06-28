@@ -117,8 +117,9 @@ deterministic, for the demo) and `StdinChannel` (a daemon thread reads stdin int
 non-blocking `poll()` never stalls the tick loop).
 
 **Slash commands** (`handle_command`) — lines starting with `/` are intercepted **before**
-classification, so they never reach a brain (`/status`, `/needs`, `/self`, `/prompt`, `/usage`,
-`/report`, `/ask <text>` forces deep, `/clear`, `/help`, `/quit`).
+classification, so they never reach a brain (`/status`, `/needs`, `/mood` shows the `## Настрій`
+block from the prompt, `/self`, `/prompt`, `/usage`, `/report`, `/ask <text>` forces deep, `/clear`,
+`/help`, `/quit`).
 
 **Cross-session memory** — on exit (incl. Ctrl-C, via `finally`) the session is summarized through
 the Anthropic Messages API (Haiku — cheap/fast, like the chat branch, not `claude -p`/Opus;
