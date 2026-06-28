@@ -68,46 +68,40 @@ from kiln.history import ROLE_BOT, ROLE_USER, turn  # noqa: E402
 from kiln.world import recent_timed  # noqa: E402
 
 
-def test_recent_timed_same_day_shows_time_only():
-    now = _at(2026, 6, 28, 12)
+def test_recent_timed_full_date_and_time_per_line():
     h = [
         turn(ROLE_USER, "привіт", at="2026-06-28T11:50:00"),
         turn(ROLE_BOT, "вітаю", at="2026-06-28T11:51:00"),
     ]
-    out = recent_timed(h, 10, now)
-    assert "[11:50] Користувач: привіт" in out
-    assert "[11:51] Агніка: вітаю" in out
-    assert "Сб" not in out and "Нд" not in out  # same day as `now` -> no weekday prefix
+    out = recent_timed(h, 10)
+    assert "[Нд 28.06.2026 11:50] Користувач: привіт" in out  # full date+time, every line
+    assert "[Нд 28.06.2026 11:51] Агніка: вітаю" in out
 
 
-def test_recent_timed_day_change_shows_weekday():
-    now = _at(2026, 6, 28, 12)  # Sunday
+def test_recent_timed_dates_across_days():
     h = [
         turn(ROLE_USER, "вчора", at="2026-06-27T22:00:00"),  # Saturday
         turn(ROLE_BOT, "сьогодні", at="2026-06-28T09:00:00"),  # Sunday
     ]
-    out = recent_timed(h, 10, now)
-    assert "[Сб 22:00] Користувач: вчора" in out  # day differs from now -> weekday
-    assert "[Нд 09:00] Агніка: сьогодні" in out  # day changed from the previous line -> weekday
+    out = recent_timed(h, 10)
+    assert "[Сб 27.06.2026 22:00] Користувач: вчора" in out
+    assert "[Нд 28.06.2026 09:00] Агніка: сьогодні" in out
 
 
 def test_recent_timed_caps_to_last_n():
-    now = _at(2026, 6, 28, 12)
     h = [turn(ROLE_USER, f"m{i}", at="2026-06-28T11:00:00") for i in range(20)]
-    out = recent_timed(h, 3, now)
+    out = recent_timed(h, 3)
     assert len(out.splitlines()) == 3 and "m19" in out and "m17" in out and "m16" not in out
 
 
 def test_recent_timed_off_and_empty():
-    now = _at(2026, 6, 28, 12)
-    assert recent_timed([turn(ROLE_USER, "x", at="2026-06-28T11:00:00")], 0, now) == ""
-    assert recent_timed([], 10, now) == ""
+    assert recent_timed([turn(ROLE_USER, "x", at="2026-06-28T11:00:00")], 0) == ""
+    assert recent_timed([], 10) == ""
 
 
 def test_recent_timed_missing_at_has_no_timestamp():
-    now = _at(2026, 6, 28, 12)
-    out = recent_timed([{"role": "user", "text": "без часу"}], 10, now)
-    assert out == "Користувач: без часу"  # no [time] prefix when `at` is absent
+    out = recent_timed([{"role": "user", "text": "без часу"}], 10)
+    assert out == "Користувач: без часу"  # no [date time] prefix when `at` is absent
 
 
 # --- world_block (KILN-034) ---
