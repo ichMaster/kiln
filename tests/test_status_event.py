@@ -304,6 +304,26 @@ def test_run_session_close_appends_usage_ledger(monkeypatch, tmp_path):
     assert e["input"] > 0 and e["cost_usd"] >= 0  # tokens + an (estimated) cost
 
 
+def test_usage_report_off_skips_ledger_and_report(monkeypatch, tmp_path):
+    """KILN-030: USAGE_REPORT=0 -> a session close writes no ledger line and no report."""
+    import kiln.engine as eng
+
+    _isolate(monkeypatch, eng, tmp_path)
+    monkeypatch.setattr(eng, "USAGE_REPORT", False)
+    ledger_calls, report_calls = [], []
+    monkeypatch.setattr(eng, "append_session", lambda *a, **k: ledger_calls.append(1))
+    monkeypatch.setattr(eng, "write_report", lambda *a, **k: report_calls.append(1))
+
+    eng.run(
+        ticks=2,
+        live=False,
+        channel=eng.ScriptedChannel({1: "привіт"}),
+        brain=MockBrain(),
+        output=StatusRecorder(),
+    )
+    assert ledger_calls == [] and report_calls == []  # both skipped when disabled
+
+
 def test_run_noise_only_session_not_stored(monkeypatch, tmp_path):
     """KILN-019: when the session prunes to nothing, the store stays empty (no session/summary)."""
     import kiln.engine as eng

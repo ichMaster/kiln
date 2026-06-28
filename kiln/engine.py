@@ -50,6 +50,7 @@ from .config import (
     THINK_THRESHOLD,
     TICK_SECONDS,
     TOOL_HINTS,
+    USAGE_REPORT,
 )
 from .history import ROLE_BOT, ROLE_USER
 from .ledger import append_session
@@ -415,7 +416,7 @@ def run(
 
             status_label = "idle"
             if user_msg is not None:
-                action = handle_command(user_msg, state, history, system, live, output)
+                action = handle_command(user_msg, state, history, system, live, output, stats)
                 if action == "quit":
                     output.notice("[exit] exit by command")
                     break
@@ -496,23 +497,25 @@ def run(
             )
             if added_facts:
                 save_store(store)
-            # KILN-028: append one usage-ledger line for the closed session (tokens + cost).
-            append_session(
-                {
-                    "session_id": started,
-                    "model": "+".join(stats.models),
-                    "started_at": started,
-                    "ended_at": ended,
-                    "turns": len(cleaned),
-                    "input": stats.input_total,
-                    "output": stats.output_total,
-                    "cache_read": stats.cache_read_total,
-                    "cache_write": stats.cache_write_total,
-                    "cache_ttl": "5m",
-                    "cost_usd": round(stats.cost_usd, 6),
-                }
-            )
-            write_report()  # KILN-029: regenerate .kiln/usage-report.md from the full ledger
+            # KILN-028/029/030: append one usage-ledger line + regenerate the report, unless
+            # usage reporting is disabled (USAGE_REPORT=0).
+            if USAGE_REPORT:
+                append_session(
+                    {
+                        "session_id": started,
+                        "model": "+".join(stats.models),
+                        "started_at": started,
+                        "ended_at": ended,
+                        "turns": len(cleaned),
+                        "input": stats.input_total,
+                        "output": stats.output_total,
+                        "cache_read": stats.cache_read_total,
+                        "cache_write": stats.cache_write_total,
+                        "cache_ttl": "5m",
+                        "cost_usd": round(stats.cost_usd, 6),
+                    }
+                )
+                write_report()  # regenerate .kiln/usage-report.md from the full ledger
             output.notice(
                 f"[exit] stored session {started} ({len(cleaned)} turns)"
                 f"{' + summary' if summary else ''}"

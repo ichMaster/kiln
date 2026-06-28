@@ -69,8 +69,8 @@ empty needs/prompts otherwise).
 reads `.env` from the repo root **before** the config constants are defined, so these can be set
 without touching code: `CHAT_MODEL`, `DEEP_MODEL`, `TICK_SECONDS`, `THINK_THRESHOLD`,
 `SELF_COOLDOWN`, `REST_WAKE`, `THINKING_TOKENS`, `FACTS_DIGEST_LINES`, `MAX_FACTS`,
-`FACTS_ENABLED`, `MEMORY_SUMMARIES`, `SUMMARY_SENTENCES` (plus `KILN_LIVE`, `ANTHROPIC_API_KEY`
-for live mode). It uses `os.environ.setdefault`,
+`FACTS_ENABLED`, `MEMORY_SUMMARIES`, `SUMMARY_SENTENCES`, `USAGE_REPORT` (plus `KILN_LIVE`,
+`ANTHROPIC_API_KEY` for live mode). It uses `os.environ.setdefault`,
 so a real environment variable always wins over `.env`. `.env` is gitignored; the structured dict
 knobs (`DRIFT`/`SATIATION`/`NEED_TRIGGERS`) stay in code.
 
@@ -114,8 +114,8 @@ deterministic, for the demo) and `StdinChannel` (a daemon thread reads stdin int
 non-blocking `poll()` never stalls the tick loop).
 
 **Slash commands** (`handle_command`) — lines starting with `/` are intercepted **before**
-classification, so they never reach a brain (`/status`, `/needs`, `/memory`, `/history`,
-`/ask <text>` forces deep, `/clear`, `/help`, `/quit`).
+classification, so they never reach a brain (`/status`, `/needs`, `/self`, `/prompt`, `/usage`,
+`/report`, `/ask <text>` forces deep, `/clear`, `/help`, `/quit`).
 
 **Cross-session memory** — on exit (incl. Ctrl-C, via `finally`) the session is summarized through
 the Anthropic Messages API (Haiku — cheap/fast, like the chat branch, not `claude -p`/Opus;

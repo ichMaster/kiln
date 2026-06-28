@@ -148,6 +148,10 @@ MAX_FACTS = int(os.environ.get("MAX_FACTS", "0"))
 # in the prompt (stored facts are kept, just dormant). 1 -> on.
 FACTS_ENABLED = os.environ.get("FACTS_ENABLED", "1") == "1"
 
+# v0.7 usage reporting: 0 -> a session close writes no ledger line and no report (Lumi's
+# `usage_report` flag). 1 -> on.
+USAGE_REPORT = os.environ.get("USAGE_REPORT", "1") == "1"
+
 # Tools/skills allowed on the reasoning branch (example).
 DEEP_TOOLS = ["Read", "Write", "Bash"]
 DEEP_SKILLS: list[str] = []  # e.g. ["search", "summarize"]

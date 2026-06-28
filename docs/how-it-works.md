@@ -294,6 +294,8 @@ A line starting with `/` is intercepted **before** classification
 | `/needs` | current need levels |
 | `/self` | toggle proactive self-messages on/off |
 | `/prompt` | the system prompt (canon + memory) + the messages sent to the model |
+| `/usage` | session tokens (four buckets) + estimated `$` + the report path |
+| `/report` | regenerate `.kiln/usage-report.md` from the ledger |
 | `/ask <text>` | a forced Claude call (deep), past the classifier |
 | `/clear` | clear the session history |
 | `/help` | the list of commands |

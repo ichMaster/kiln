@@ -12,12 +12,14 @@ client (console today, TUI/web later) receives the result. handle_command() retu
 
 from __future__ import annotations
 
+from .config import USAGE_REPORT, USAGE_REPORT_FILE
 from .history import to_messages
 from .output import Output
+from .report import write_report
 
 # Canonical list of implemented slash commands — the single source for both /help
 # and the TUI hint line, so they never advertise a command kiln doesn't have.
-COMMANDS = ("status", "needs", "self", "prompt", "ask", "clear", "help", "quit")
+COMMANDS = ("status", "needs", "self", "prompt", "usage", "report", "ask", "clear", "help", "quit")
 
 
 def command_hints() -> str:
@@ -29,7 +31,9 @@ def _fmt_needs(state) -> str:
     return "  ".join(f"{k}={state.needs[k]:.2f}" for k in state.needs)
 
 
-def handle_command(line: str, state, history: list[dict], system: str, live: bool, output: Output):
+def handle_command(
+    line: str, state, history: list[dict], system: str, live: bool, output: Output, stats=None
+):
     if not line.startswith("/"):
         return None
 
@@ -71,6 +75,27 @@ def handle_command(line: str, state, history: list[dict], system: str, live: boo
             output.notice("  (no messages yet)")
         for m in msgs:
             output.notice(f"  [{m['role']}] {m['content']}")
+
+    elif cmd == "usage":
+        # Session-so-far tokens + estimated cost + the report path (the v0.7 cost visibility).
+        if stats is None:
+            output.notice("[usage] no session stats yet")
+        else:
+            est = " est." if stats.cost_estimated else ""
+            buckets = (
+                f"in {stats.input_total} · out {stats.output_total} · "
+                f"cache {stats.cache_read_total}r/{stats.cache_write_total}w"
+            )
+            output.notice(f"[usage] turns={stats.turns} · {buckets} · ~${stats.cost_usd:.4f}{est}")
+            output.notice(f"[usage] report: {USAGE_REPORT_FILE}")
+
+    elif cmd == "report":
+        # Regenerate the Markdown usage report on demand (off when USAGE_REPORT is disabled).
+        if not USAGE_REPORT:
+            output.notice("[report] usage reporting is off (USAGE_REPORT=0)")
+        else:
+            write_report()
+            output.notice(f"[report] regenerated -> {USAGE_REPORT_FILE}")
 
     elif cmd == "ask":
         # Forced Claude call (deep), bypassing the classifier.

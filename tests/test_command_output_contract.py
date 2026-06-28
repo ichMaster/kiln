@@ -7,6 +7,8 @@ Pins the new signature (with output), output via notice, and the absence of dire
 
 from __future__ import annotations
 
+import pytest
+
 from kiln.commands import COMMANDS, command_hints, handle_command
 from kiln.engine import State
 from kiln.output import Output
@@ -110,13 +112,57 @@ def test_ask_without_arg_notifies():
     assert any("[ask]" in n for n in out.notices)
 
 
-def test_command_hints_match_handled_commands():
+def test_command_hints_match_handled_commands(monkeypatch):
     """Every advertised command is actually handled (no phantom hints)."""
+    import kiln.commands as cmds
+
+    monkeypatch.setattr(cmds, "write_report", lambda *a, **k: None)  # /report: no real write
     out = RecordingOutput()
     for cmd in COMMANDS:
         action = handle_command(f"/{cmd}", State(needs={}), [], "sys", False, out)
         assert action in ("handled", "quit")  # recognized, not None / unknown
     assert not any("unknown command" in n for n in out.notices)
+
+
+def test_usage_shows_session_tokens_and_report_path():
+    from kiln.stats import SessionStats
+    from kiln.usage import usage_record
+
+    s = SessionStats()
+    s.record("chat", usage_record("haiku", {"input_tokens": 10, "output_tokens": 5}), 0.2)
+    out = RecordingOutput()
+    handle_command("/usage", State(needs={}), [], "sys", False, out, s)
+    joined = "\n".join(out.notices)
+    assert "turns=1" in joined and "in 10" in joined and "out 5" in joined  # session buckets
+    assert "report:" in joined and "usage-report.md" in joined  # the report path
+
+
+def test_usage_without_stats_is_graceful():
+    out = RecordingOutput()
+    handle_command("/usage", State(needs={}), [], "sys", False, out)  # stats=None
+    assert any("no session stats" in n for n in out.notices)
+
+
+def test_report_command_regenerates(monkeypatch):
+    import kiln.commands as cmds
+
+    called = []
+    monkeypatch.setattr(cmds, "USAGE_REPORT", True)
+    monkeypatch.setattr(cmds, "write_report", lambda *a, **k: called.append(True))
+    out = RecordingOutput()
+    action = handle_command("/report", State(needs={}), [], "sys", False, out)
+    assert action == "handled" and called  # write_report was invoked
+    assert any("regenerated" in n and "usage-report.md" in n for n in out.notices)
+
+
+def test_report_command_off_when_disabled(monkeypatch):
+    import kiln.commands as cmds
+
+    monkeypatch.setattr(cmds, "USAGE_REPORT", False)
+    monkeypatch.setattr(cmds, "write_report", lambda *a, **k: pytest.fail("must not write"))
+    out = RecordingOutput()
+    handle_command("/report", State(needs={}), [], "sys", False, out)
+    assert any("off" in n and "USAGE_REPORT" in n for n in out.notices)
 
 
 def test_command_hints_string_lists_all_commands():
