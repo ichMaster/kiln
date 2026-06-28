@@ -52,6 +52,7 @@ from .config import (
     TOOL_HINTS,
 )
 from .history import ROLE_BOT, ROLE_USER
+from .ledger import append_session
 from .memory import (
     build_system,
     digest_facts,
@@ -494,6 +495,22 @@ def run(
             )
             if added_facts:
                 save_store(store)
+            # KILN-028: append one usage-ledger line for the closed session (tokens + cost).
+            append_session(
+                {
+                    "session_id": started,
+                    "model": "+".join(stats.models),
+                    "started_at": started,
+                    "ended_at": ended,
+                    "turns": len(cleaned),
+                    "input": stats.input_total,
+                    "output": stats.output_total,
+                    "cache_read": stats.cache_read_total,
+                    "cache_write": stats.cache_write_total,
+                    "cache_ttl": "5m",
+                    "cost_usd": round(stats.cost_usd, 6),
+                }
+            )
             output.notice(
                 f"[exit] stored session {started} ({len(cleaned)} turns)"
                 f"{' + summary' if summary else ''}"

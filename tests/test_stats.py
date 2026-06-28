@@ -1,19 +1,21 @@
-"""Unit: SessionStats accumulates the four token buckets (KILN-026)."""
+"""Unit: SessionStats accumulates the four token buckets + cost (KILN-026/028)."""
 
 from __future__ import annotations
+
+import pytest
 
 from kiln.stats import SessionStats
 from kiln.usage import usage_record
 
 
-def _rec(model, i, o, cr=0, cw=0):
+def _rec(model, i, o, cr=0, cw=0, cost=None):
     u = {
         "input_tokens": i,
         "output_tokens": o,
         "cache_read_input_tokens": cr,
         "cache_creation_input_tokens": cw,
     }
-    return usage_record(model, u)
+    return usage_record(model, u, cost)
 
 
 def test_session_stats_accumulates_buckets():
@@ -38,3 +40,19 @@ def test_session_stats_handles_none_usage():
     s = SessionStats()
     s.record("idle", None, latency=0.1)  # a turn with no model call
     assert s.turns == 1 and s.input_total == 0 and s.cache_read_total == 0
+
+
+def test_session_stats_accumulates_cost_and_models():
+    s = SessionStats()
+    s.record("think", _rec("claude-opus-4-8", 100, 20, cost=0.42), latency=1.0)  # actual cost
+    s.record("chat", _rec("claude-haiku-4-5", 1_000_000, 0), latency=0.3)  # estimated (haiku $1/1M)
+    assert s.cost_usd == pytest.approx(0.42 + 1.0)  # actual + estimate
+    assert s.cost_estimated is True  # the chat turn had no actual cost
+    assert s.models == ["claude-opus-4-8", "claude-haiku-4-5"]  # distinct, first-seen order
+
+
+def test_session_stats_snapshot_includes_cost():
+    s = SessionStats()
+    s.record("think", _rec("opus", 100, 20, cost=0.5), latency=1.0)
+    snap = s.snapshot()
+    assert snap["cost_usd"] == 0.5 and snap["cost_estimated"] is False

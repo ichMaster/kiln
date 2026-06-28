@@ -27,6 +27,8 @@ ENV_FILE = PROJECT_ROOT / ".env"  # local configuration (models + calibration)
 
 KILN_DIR = PROJECT_ROOT / ".kiln"  # unified store dir (Lumi-style; shared with later phases)
 STORE_FILE = KILN_DIR / "store.json"  # the single persistence store (sessions/messages/summaries)
+USAGE_LEDGER = KILN_DIR / "usage-ledger.jsonl"  # v0.7: one append-only line per closed session
+USAGE_REPORT_FILE = KILN_DIR / "usage-report.md"  # v0.7: the generated Markdown cost report
 
 
 def load_dotenv(path: Path = ENV_FILE) -> None:

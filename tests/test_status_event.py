@@ -40,6 +40,8 @@ STATS_KEYS = {
     "output_total",
     "cache_read_total",
     "cache_write_total",
+    "cost_usd",
+    "cost_estimated",
 }
 
 
@@ -141,6 +143,7 @@ def _isolate(monkeypatch, eng, tmp_path):
     monkeypatch.setattr(eng, "extract_facts", lambda *a, **k: [])  # no real claude -p in tests
     monkeypatch.setattr(eng, "digest_facts", lambda *a, **k: "")  # start-time facts digest off
     monkeypatch.setattr(eng, "save_store", lambda *a, **k: None)
+    monkeypatch.setattr(eng, "append_session", lambda *a, **k: None)  # no real usage-ledger write
 
 
 def test_run_emits_status_every_tick(monkeypatch, tmp_path):
@@ -273,6 +276,31 @@ def test_run_start_injects_facts_digest_into_system(monkeypatch, tmp_path):
     )
     assert "## Facts about the user" in seen["system"]  # the dedicated section is present
     assert "Віталік любить шахи" in seen["system"]  # carrying the digest
+
+
+def test_run_session_close_appends_usage_ledger(monkeypatch, tmp_path):
+    """KILN-028: a session close appends exactly one ledger line with the session's totals."""
+    import kiln.engine as eng
+
+    _isolate(monkeypatch, eng, tmp_path)
+    captured = []
+    monkeypatch.setattr(eng, "append_session", lambda entry: captured.append(entry))
+
+    eng.run(
+        ticks=2,
+        live=False,
+        channel=eng.ScriptedChannel({1: "привіт"}),
+        brain=MockBrain(),
+        output=StatusRecorder(),
+    )
+    assert len(captured) == 1  # exactly one line per session
+    e = captured[0]
+    assert set(e) == {
+        "session_id", "model", "started_at", "ended_at", "turns",
+        "input", "output", "cache_read", "cache_write", "cache_ttl", "cost_usd",
+    }  # fmt: skip
+    assert e["session_id"] and e["turns"] >= 1 and e["model"]  # a chat turn -> haiku recorded
+    assert e["input"] > 0 and e["cost_usd"] >= 0  # tokens + an (estimated) cost
 
 
 def test_run_noise_only_session_not_stored(monkeypatch, tmp_path):

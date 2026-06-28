@@ -1,14 +1,17 @@
 """
-kiln — session statistics: token/turn/latency aggregates for the status bar.
+kiln — session statistics: token/turn/latency/cost aggregates for the status bar + the ledger.
 
-A small accumulator the tick loop updates after each turn. It feeds the per-tick
-`status` event (see engine._status_snapshot); the TUI status bar renders it. No
-cost/`$` here — that stays in v0.5.
+A small accumulator the tick loop updates after each turn. It feeds the per-tick `status` event
+(see engine._status_snapshot; the TUI status bar renders it) and, at session close, the usage
+ledger (v0.7): the four token buckets, the models used, and the running cost (`$`) — actual where
+the CLI reports it, else estimated from the price table (`cost.turn_cost`).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
+from .cost import turn_cost
 
 
 @dataclass
@@ -25,6 +28,10 @@ class SessionStats:
     output_total: int = 0
     cache_read_total: int = 0
     cache_write_total: int = 0
+    # v0.7 cost: models used (first-seen order) + running $ (actual where known, else estimated)
+    models: list[str] = field(default_factory=list)
+    cost_usd: float = 0.0
+    cost_estimated: bool = False
     _latencies: list[float] = field(default_factory=list)
 
     def record(self, branch: str, usage: dict | None, latency: float) -> None:
@@ -37,6 +44,13 @@ class SessionStats:
             self.output_total += usage.get("output", 0)
             self.cache_read_total += usage.get("cache_read", 0)
             self.cache_write_total += usage.get("cache_write", 0)
+            model = usage.get("model")
+            if model and model not in self.models:
+                self.models.append(model)
+            cost, is_estimate = turn_cost(usage)  # actual cost_usd if present, else estimate
+            self.cost_usd += cost
+            if is_estimate and cost:
+                self.cost_estimated = True
         self.tokens_by_branch[branch] = self.tokens_by_branch.get(branch, 0) + tok
         self.last_tokens = tok
         self.last_latency = latency
@@ -59,4 +73,6 @@ class SessionStats:
             "output_total": self.output_total,
             "cache_read_total": self.cache_read_total,
             "cache_write_total": self.cache_write_total,
+            "cost_usd": round(self.cost_usd, 6),
+            "cost_estimated": self.cost_estimated,
         }
