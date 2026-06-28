@@ -99,6 +99,20 @@ def test_build_system_empty_world_is_v07_backcompat():
     )
 
 
+def test_build_system_appends_mood_block_after_world():
+    system = mem.build_system("CANON", "MEM", "FACTS", "## Зараз\nнеділя", "## Настрій\nблизькість")
+    assert "## Настрій\nблизькість" in system
+    assert system.index("## Зараз") < system.index("## Настрій")  # mood comes after world
+    assert system.index("## Facts about the user") < system.index("## Настрій")
+
+
+def test_build_system_empty_mood_is_v08_backcompat():
+    # mood="" must be byte-for-byte the v0.8 output (with world)
+    assert mem.build_system("CANON", "MEM", "FACTS", "## Зараз\nX", "") == mem.build_system(
+        "CANON", "MEM", "FACTS", "## Зараз\nX"
+    )
+
+
 # --- MEMORY_SUMMARIES cap (how many summaries enter the prompt) ---
 
 

@@ -382,6 +382,73 @@ def test_run_injects_world_block_per_turn(monkeypatch, tmp_path):
     assert "вчора питав" in seen[0]  # from the previous session, not the current one
 
 
+def _mood_scenario(monkeypatch, eng, tmp_path):
+    """Common setup: isolate, mute world, fixed needs — so only the ## Настрій block varies."""
+    _isolate(monkeypatch, eng, tmp_path)
+    monkeypatch.setattr(eng, "load_canon", lambda *a, **k: "CANON")
+    monkeypatch.setattr(eng, "load_memory", lambda *a, **k: "")
+    monkeypatch.setattr(eng, "digest_facts", lambda *a, **k: "")
+    monkeypatch.setattr(eng, "WORLD_AWARENESS", False)  # isolate the mood section
+    monkeypatch.setattr(
+        eng,
+        "load_state",
+        lambda *a, **k: eng.State(
+            needs={"connection": 0.72, "novelty": 0.30, "rest": 0.55, "intensity": 0.41}
+        ),
+    )
+
+
+def _capture_systems(eng, n_ticks, script):
+    seen = []
+
+    class RB(MockBrain):
+        def chat(self, history, system):
+            seen.append(system)
+            return super().chat(history, system)
+
+    eng.run(
+        ticks=n_ticks,
+        live=False,
+        channel=eng.ScriptedChannel(script),
+        brain=RB(),
+        output=StatusRecorder(),
+    )
+    return seen
+
+
+def test_run_injects_mood_block_per_turn_biorhythm_static(monkeypatch, tmp_path):
+    """KILN-038: run() composes ## Настрій per turn (live needs); the biorhythm is computed once."""
+    import kiln.engine as eng
+
+    _mood_scenario(monkeypatch, eng, tmp_path)
+    monkeypatch.setattr(eng, "MOOD_AWARENESS", True)
+    monkeypatch.setattr(eng, "BIORHYTHM", True)
+    seen = _capture_systems(eng, 3, {1: "привіт", 2: "ще"})
+    assert len(seen) >= 2
+    assert "## Настрій" in seen[0] and "близькість" in seen[0]  # the live needs
+    bio = lambda s: next(line for line in s.splitlines() if line.startswith("Біоритм дня:"))
+    assert bio(seen[0]) == bio(seen[1])  # biorhythm identical across turns (computed once at start)
+
+
+def test_run_mood_awareness_off_no_section(monkeypatch, tmp_path):
+    import kiln.engine as eng
+
+    _mood_scenario(monkeypatch, eng, tmp_path)
+    monkeypatch.setattr(eng, "MOOD_AWARENESS", False)
+    seen = _capture_systems(eng, 2, {1: "привіт"})
+    assert "## Настрій" not in seen[0] and seen[0] == "CANON"  # mood off + world off -> bare canon
+
+
+def test_run_biorhythm_off_omits_sub_block(monkeypatch, tmp_path):
+    import kiln.engine as eng
+
+    _mood_scenario(monkeypatch, eng, tmp_path)
+    monkeypatch.setattr(eng, "MOOD_AWARENESS", True)
+    monkeypatch.setattr(eng, "BIORHYTHM", False)
+    seen = _capture_systems(eng, 2, {1: "привіт"})
+    assert "## Настрій" in seen[0] and "Біоритм дня:" not in seen[0]  # needs yes, biorhythm no
+
+
 def test_self_prompt_appends_silence_note_only_when_reached_out():
     import kiln.engine as eng
 

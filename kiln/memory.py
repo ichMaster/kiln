@@ -272,14 +272,15 @@ def prune_history(turns: list[dict]) -> list[dict]:
     return kept
 
 
-def build_system(canon: str, memory: str, facts: str = "", world: str = "") -> str:
+def build_system(canon: str, memory: str, facts: str = "", world: str = "", mood: str = "") -> str:
     """System prompt = canon (persona) + long-term memory summaries + the user-facts digest +
-    the v0.8 world block.
+    the v0.8 world block + the v0.9 mood block.
 
     Each layer is optional and appended only when non-empty: the v0.5 memory block, the v0.6
-    `## Facts about the user` section, then the v0.8 `world` block (`## Зараз` + `## Останні
-    повідомлення`, which carries its own headers). With empty `memory`/`facts`/`world` the result
-    is exactly `canon`; with empty `world` it is byte-for-byte the v0.7 output."""
+    `## Facts about the user` section, the v0.8 `world` block (`## Зараз` + `## Повідомлення з
+    минулої сесії`), then the v0.9 `mood` block (`## Настрій` — needs + biorhythm); each carries its
+    own headers. With empty `memory`/`facts`/`world`/`mood` the result is exactly `canon`; with empty
+    `mood` it is byte-for-byte the v0.8 output."""
     out = canon
     if memory.strip():
         out += "\n\nДовга пам'ять про попередні розмови (для контексту):\n" + memory.strip()
@@ -287,6 +288,8 @@ def build_system(canon: str, memory: str, facts: str = "", world: str = "") -> s
         out += "\n\n## Facts about the user\n" + facts.strip()
     if world.strip():
         out += "\n\n" + world.strip()
+    if mood.strip():
+        out += "\n\n" + mood.strip()
     return out
 
 

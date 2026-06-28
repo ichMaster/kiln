@@ -175,6 +175,10 @@ AGENT_NAME = os.environ.get("AGENT_NAME", "Агніка")
 # v0.9: Agnika's birthday seeds the daily biorhythm. Empty -> parsed from the canon's natal line
 # (else the DEFAULT_BIRTH fallback in memory.py); set to override (`DD.MM.YYYY[ HH:MM]`).
 AGENT_BIRTH = os.environ.get("AGENT_BIRTH", "")
+# v0.9 mood: the per-turn `## Настрій` block (needs + biorhythm). MOOD_AWARENESS = master switch;
+# BIORHYTHM toggles just the biorhythm sub-block within it.
+MOOD_AWARENESS = os.environ.get("MOOD_AWARENESS", "1") == "1"
+BIORHYTHM = os.environ.get("BIORHYTHM", "1") == "1"
 
 # Tools/skills allowed on the reasoning branch (example).
 DEEP_TOOLS = ["Read", "Write", "Bash"]

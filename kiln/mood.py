@@ -80,13 +80,14 @@ def need_band(value: float) -> str:
     return "дуже висока"
 
 
-def mood_block(needs: dict[str, float], bio: dict[str, float]) -> str:
+def mood_block(needs: dict[str, float], bio: dict[str, float] | None = None) -> str:
     """The `## Настрій` section: every need by its Ukrainian label + level + band, then the
-    biorhythm sub-block. Pure — no emotion label is computed; she reads the levels + biorhythm and
-    decides her own tone."""
+    biorhythm sub-block (omitted when `bio` is None, e.g. `BIORHYTHM=0`). Pure — no emotion label is
+    computed; she reads the levels + biorhythm and decides her own tone."""
     lines = ["## Настрій"]
     for key, label in NEED_LABELS.items():
         level = needs.get(key, 0.0)
         lines.append(f"{label} {level:.2f} — {need_band(level)}")
-    lines.append(biorhythm_block(bio))
+    if bio is not None:
+        lines.append(biorhythm_block(bio))
     return "\n".join(lines)

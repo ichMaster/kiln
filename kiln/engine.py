@@ -34,9 +34,11 @@ from pathlib import Path
 from .brain import Brain, LiveBrain, MockBrain
 from .commands import handle_command
 from .config import (
+    BIORHYTHM,
     CHAT_MODEL,
     DEEP_MODEL,
     DRIFT,
+    MOOD_AWARENESS,
     NEED_TRIGGERS,
     REACH_OUT_MODELS,
     REACH_OUT_NEED,
@@ -63,6 +65,7 @@ from .memory import (
     build_system,
     digest_facts,
     extract_facts,
+    load_birth,
     load_canon,
     load_memory,
     load_prompts,
@@ -70,6 +73,7 @@ from .memory import (
     prune_history,
     summarize,
 )
+from .mood import biorhythm, mood_block
 from .output import ConsoleOutput, Output
 from .report import write_report
 from .stats import SessionStats
@@ -410,13 +414,23 @@ def run(
                 pass
         return _dt.datetime.now()
 
+    birth = load_birth(canon)  # v0.9: from the canon natal line / AGENT_BIRTH
+    session_bio = biorhythm(
+        _now(), birth
+    )  # the day's biorhythm — computed ONCE, static all session
+
     def _system() -> str:
-        # v0.8: append the world block (## Зараз + the prior-session timeline) per turn — the clock
-        # stays live; the timeline is the PRIOR session's tail (static). Off -> the static base.
-        if not WORLD_AWARENESS:
+        # v0.8 world block + v0.9 mood block, composed PER TURN — the clock + needs stay live; the
+        # prior-session timeline and the day's biorhythm are static. Both off -> the static base.
+        world = (
+            world_block(_now(), USER_LOCATION, prev_turns, RECENT_MESSAGES)
+            if WORLD_AWARENESS
+            else ""
+        )
+        mood = mood_block(state.needs, session_bio if BIORHYTHM else None) if MOOD_AWARENESS else ""
+        if not world and not mood:
             return base_system
-        world = world_block(_now(), USER_LOCATION, prev_turns, RECENT_MESSAGES)
-        return build_system(canon, memory, facts, world)
+        return build_system(canon, memory, facts, world, mood)
 
     def _turn(prompt: str, force: str | None = None, agent: str | None = None) -> dict:
         # One model turn, timed; folds tokens + latency into the session stats.
