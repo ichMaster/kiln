@@ -343,6 +343,18 @@ def _status_snapshot(
     }
 
 
+def _previous_session_turns() -> list[dict]:
+    """The most recent CLOSED session's turn list, for the v0.8 world timeline. The current
+    session's own turns already ride in the messages array / transcript, so the timeline carries
+    the prior conversation's tail instead. Empty store / no prior session -> []."""
+    store = load_store()
+    sessions = store.get("sessions", [])
+    if not sessions:
+        return []
+    last = max(sessions, key=lambda s: s.get("started_at") or "")
+    return store.get("messages", {}).get(last.get("id"), [])
+
+
 def run(
     ticks: int | None = 12,
     live: bool = False,
@@ -371,6 +383,9 @@ def run(
     memory = load_memory()  # long-term memory: summaries of past sessions
     facts = digest_facts(live)  # v0.6 long memory: N-line digest of durable user facts
     base_system = build_system(canon, memory, facts)  # static: canon + memory summaries + facts
+    prev_turns = _previous_session_turns()  # v0.8: the PRIOR session's tail for the timeline (the
+    # current session's own turns already ride in the messages array / transcript, so they aren't
+    # repeated here — this carries continuity from the last conversation instead)
     prompts = load_prompts()  # self-trigger prompts from state/prompts.md
     tg = TriggerBook()  # trigger hysteresis + cooldown
     stats = SessionStats()  # session token/turn/latency totals (for the status bar)
@@ -387,11 +402,11 @@ def run(
         return _dt.datetime.now()
 
     def _system() -> str:
-        # v0.8: append the LIVE world block (## Зараз + ## Останні повідомлення) per turn, so the
-        # clock advances and the timeline updates within a session. Off -> the static base.
+        # v0.8: append the world block (## Зараз + ## Останні повідомлення) per turn — the clock
+        # stays live; the timeline is the PRIOR session's tail (static). Off -> the static base.
         if not WORLD_AWARENESS:
             return base_system
-        world = world_block(_now(), USER_LOCATION, history, RECENT_MESSAGES)
+        world = world_block(_now(), USER_LOCATION, prev_turns, RECENT_MESSAGES)
         return build_system(canon, memory, facts, world)
 
     def _turn(prompt: str, force: str | None = None, agent: str | None = None) -> dict:

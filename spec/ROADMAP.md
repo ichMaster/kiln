@@ -225,9 +225,10 @@ by-month/week/day + recent-sessions tables (Lumi layout); per-turn and per-sessi
 each tagged with a precise timestamp** — injected into the system prompt of every branch, refreshed
 each session start (alongside the facts digest). A "clock" so her replies fit the moment (brighter
 in the morning, quieter and warmer late at night), a sense of place, and a feel for how recently
-things were said (gaps, a late-night ping). Computed **locally** — no external calls; weather /
-calendar / news are a later, tool-backed layer (out of scope here). The sections are short
-**Ukrainian** text with a rhythm cue (the system prompt is the persona layer).
+things were said (gaps, a late-night ping). The timeline shows the **previous session's** tail —
+the current session's own turns already ride in the messages array / transcript, so they aren't
+repeated. Computed **locally** — no external calls; weather / calendar / news are a later,
+tool-backed layer (out of scope here). The sections are short **Ukrainian** text with a rhythm cue.
 **Tasks:**
 - **World-now builder.** A pure `world_now(now, location) -> str` (new `kiln/world.py`): a short
   Ukrainian paragraph — weekday + date, time + time-of-day (ранок/день/вечір/ніч), season, location,

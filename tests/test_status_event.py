@@ -330,10 +330,30 @@ def test_run_turn_timestamps_history_and_store(monkeypatch, tmp_path):
 
 
 def test_run_injects_world_block_per_turn(monkeypatch, tmp_path):
-    """KILN-034: run() composes the live world block (## Зараз + ## Останні) per turn."""
+    """KILN-034: run() composes the world block per turn — live ## Зараз + the PRIOR session's tail."""
     import kiln.engine as eng
+    from kiln import store as kstore
 
     _isolate(monkeypatch, eng, tmp_path)
+    # seed a previous session so the timeline has content (the current session's turns aren't used)
+    seeded = kstore.empty_store()
+    seeded["sessions"].append(
+        {
+            "id": "prev1",
+            "started_at": "2026-06-27T20:00:00",
+            "ended_at": "x",
+            "mode": "live",
+            "turns": 2,
+        }
+    )
+    seeded["messages"]["prev1"] = [
+        {"role": "user", "text": "вчора питав", "at": "2026-06-27T20:00:00"},
+        {"role": "assistant", "text": "вчора відповів", "at": "2026-06-27T20:01:00"},
+    ]
+    store_path = tmp_path / "store.json"
+    kstore.save_store(seeded, store_path)
+    monkeypatch.setattr(eng, "load_store", lambda: kstore.load_store(store_path))
+    monkeypatch.setattr(eng, "save_store", lambda s: kstore.save_store(s, store_path))
     monkeypatch.setattr(eng, "load_canon", lambda *a, **k: "CANON")
     monkeypatch.setattr(eng, "load_memory", lambda *a, **k: "")
     monkeypatch.setattr(eng, "digest_facts", lambda *a, **k: "")
@@ -349,14 +369,15 @@ def test_run_injects_world_block_per_turn(monkeypatch, tmp_path):
             return super().chat(history, system)
 
     eng.run(
-        ticks=4,
+        ticks=2,
         live=False,
-        channel=eng.ScriptedChannel({1: "привіт", 3: "ще"}),
+        channel=eng.ScriptedChannel({1: "привіт"}),
         brain=RB(),
         output=StatusRecorder(),
     )
-    assert "## Зараз" in seen[0] and "Львів" in seen[0]  # first turn: the clock is present
-    assert "## Останні повідомлення" in seen[-1]  # a later turn: the timeline has filled in
+    assert "## Зараз" in seen[0] and "Львів" in seen[0]  # the live clock
+    assert "## Останні повідомлення" in seen[0]  # the PRIOR session's tail (ready from turn 1)
+    assert "вчора питав" in seen[0]  # from the previous session, not the current one
 
 
 def test_run_world_awareness_off_no_section(monkeypatch, tmp_path):

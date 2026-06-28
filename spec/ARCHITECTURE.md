@@ -174,7 +174,8 @@ multi-agent is additive, not a rewrite:
   of every branch — `canon` (`state/canon.md`, fallback `DEFAULT_CANON`) + the v0.5 memory summaries
   + the v0.6 `## Facts about the user` digest + the v0.8 `world` block (`## Зараз` + `## Останні
   повідомлення`, `world.world_block`). Each layer optional; `world=""` is v0.7-equivalent. The world
-  block is composed **per turn** (the clock + the timed-messages timeline stay live).
+  block is composed **per turn** so the clock stays live; its timeline is the **previous session's**
+  tail (the current session's own turns already ride in the messages array / transcript).
 - **Store (v0.5–0.6):** `.kiln/store.json` = `{sessions: [{id, started_at, ended_at, mode, turns}],
   messages: {session_id: [{role, text, at}]}, summaries: [{session_id, stamp, text}],
   facts: [{id, text, first_seen, last_seen, source_session}]}`, via `store.load_store`/`save_store`
