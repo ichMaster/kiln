@@ -8,6 +8,14 @@ these strings. Input is the per-tick status snapshot (engine._status_snapshot):
 
 from __future__ import annotations
 
+from kiln.mood import NEED_LABELS
+
+
+def need_label(name: str) -> str:
+    """Ukrainian display label for a need key (близькість / новизна / втома / напруга); the raw
+    key if unknown. Keeps the TUI need names in sync with the `## Настрій` prompt section."""
+    return NEED_LABELS.get(name, name)
+
 
 def short_model(model: str) -> str:
     """`claude-opus-4-8` -> `opus-4-8` (drops the vendor prefix)."""
@@ -31,7 +39,7 @@ def status_line1(snap: dict) -> str:
     branch = snap.get("branch") or "—"
     hottest = snap.get("hottest") or ["", 0.0]
     need, level = hottest[0], hottest[1]
-    hot = f"{need} {level:.2f}" if need else "—"
+    hot = f"{need_label(need)} {level:.2f}" if need else "—"
     self_mode = "on" if snap.get("self_messages", True) else "off"
     return f"status: {status} · {model} · {branch} · hottest: {hot} · self:{self_mode}"
 
@@ -90,6 +98,7 @@ def needs_panel_lines(snap: dict) -> list[str]:
         action_s = f" → {action}" if action else ""
         color = need_color(level, thr)
         rows.append(
-            f"{mark}{name:<10} [{color}]{_bar(level)}[/] {level:.2f}{thr_s}{flag}{cd_s}{action_s}"
+            f"{mark}{need_label(name):<11} [{color}]{_bar(level)}[/] "
+            f"{level:.2f}{thr_s}{flag}{cd_s}{action_s}"
         )
     return rows

@@ -56,7 +56,7 @@ def test_status_line1_basic():
     line = status_line1(_snap(status="idle", branch=None))
     assert line.startswith("status: idle")
     assert "opus-4-8" in line
-    assert "hottest: novelty 0.90" in line
+    assert "hottest: новизна 0.90" in line
 
 
 def test_status_line1_with_branch():
@@ -98,28 +98,28 @@ def test_status_line2_with_turns():
 
 def test_needs_panel_one_row_per_need():
     rows = needs_panel_lines(_snap())
-    assert len(rows) == 2  # connection + novelty
-    assert any(r.lstrip().startswith("connection") for r in rows)
-    assert any("novelty" in r for r in rows)
+    assert len(rows) == 2  # близькість + новизна
+    assert any(r.lstrip().startswith("близькість") for r in rows)
+    assert any("новизна" in r for r in rows)
 
 
 def test_needs_panel_marks_hottest_and_shows_threshold():
     rows = needs_panel_lines(_snap(hottest=["novelty", 0.9]))
-    novelty = next(r for r in rows if "novelty" in r)
+    novelty = next(r for r in rows if "новизна" in r)
     assert novelty.startswith("*")  # hottest marked
     assert "0.90/0.85" in novelty  # level/threshold
 
 
 def test_needs_panel_flags_over_threshold_and_cooldown():
     rows = needs_panel_lines(_snap(needs={"novelty": 0.9}, cooldowns={"novelty": 3}))
-    novelty = next(r for r in rows if "novelty" in r)
+    novelty = next(r for r in rows if "новизна" in r)
     assert " !" in novelty  # 0.90 >= 0.85 threshold
     assert "cd3" in novelty  # active cooldown
 
 
 def test_needs_panel_below_threshold_no_flag():
     rows = needs_panel_lines(_snap(needs={"connection": 0.5}, hottest=["", 0.0]))
-    connection = next(r for r in rows if "connection" in r)
+    connection = next(r for r in rows if "близькість" in r)
     assert " !" not in connection
     assert "0.50/0.80" in connection
 
@@ -146,8 +146,8 @@ def test_needs_panel_colors_bar_by_closeness():
 
 def test_needs_panel_shows_action():
     rows = needs_panel_lines(_snap())
-    assert "→ deep" in next(r for r in rows if "novelty" in r)
-    assert "→ chat" in next(r for r in rows if "connection" in r)
+    assert "→ deep" in next(r for r in rows if "новизна" in r)
+    assert "→ chat" in next(r for r in rows if "близькість" in r)
 
 
 # --- chat-log polish: labels + per-turn tech line --------------------------

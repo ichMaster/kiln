@@ -142,7 +142,7 @@ def test_app_status_bar_updates_from_status_event(tmp_path):
             needs = app.query_one("#needspanel", Static)
             assert needs.border_title == "Needs · tick 42"
             panel = str(needs.render())
-            assert "novelty" in panel and "0.90/0.85" in panel and " !" in panel
+            assert "новизна" in panel and "0.90/0.85" in panel and " !" in panel
             assert "deep" in panel  # the NEED_TRIGGERS action shown
 
     asyncio.run(scenario())
