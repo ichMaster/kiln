@@ -1,12 +1,13 @@
 # prompts
-# Промпти self-тригера: коли connection перетинає поріг, двіжок озивається сам.
-# Це ВНУТРІШНІ ІМПУЛЬСИ (інструкції Агніці озватися ПЕРШОЮ), а не питання від
-# користувача — інакше вона «відповідає» на фейкове питання замість реального звернення.
+# Self-trigger prompts: when `connection` crosses its threshold, the engine speaks first.
+# These are INTERNAL IMPULSES (instructions for Agnika to reach out FIRST), not questions from
+# the user — otherwise she "answers" a fake question instead of actually reaching out.
 #
-# Використовується ЛИШЕ [connection] (REACH_OUT_NEED): тільки самотність робить
-# proactive-повідомлення. Потреби intensity/novelty НЕ мають своїх текстів — вони лише
-# обирають ГІЛКУ цього ж connection-пориву (engine.reach_out_branch): intensity → deep,
-# novelty → session-wiki, інакше → chat. Слова завжди звідси, з [connection].
+# Only [connection] is read (REACH_OUT_NEED): loneliness is the sole proactive trigger. The
+# `intensity`/`novelty` needs have no prompt text of their own — they only pick the BRANCH for
+# this same connection reach-out (engine.reach_out_branch): intensity -> deep,
+# novelty -> session-wiki, else -> chat. The words always come from [connection] below.
+# The prompt lines themselves stay Ukrainian (persona layer); only this comment is English.
 
 [connection]
 (внутрішній порив) Тобі бракує контакту з Віталіком. Напиши йому першою — коротко, живо, по-своєму. Не шаблонне «як ти», а справжній привід.
