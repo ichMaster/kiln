@@ -1,6 +1,17 @@
 kiln — Release Notes
 ====================
 
+Version 0.8.0 (2026-06-28)
+---------------------------
+- World & temporal awareness: Agnika now knows the time, place, and conversation tempo
+- `## Зараз` world-now section in the system prompt: weekday/date, time-of-day, season, location, and a rhythm cue (KILN-031)
+- Every turn carries a precise ISO timestamp ({role, text, at}) (KILN-032)
+- `## Повідомлення з минулої сесії` section: the previous session's last N turns, each timestamped (KILN-033)
+- build_system gains the world block, composed per turn so the clock stays live; gated by WORLD_AWARENESS (KILN-034)
+- New .env knobs: USER_LOCATION (pre-seeded Львів), TIMEZONE, RECENT_MESSAGES, WORLD_AWARENESS
+- Local-only (no external calls); weather/calendar/news deferred to a later tool-backed layer
+- Needs calibration tuning: novelty drifts slower, replies tire less
+
 Version 0.7.0 (2026-06-28)
 ---------------------------
 - Tokens & cost report (Lumi-style): full visibility per turn, per session, and cross-session
