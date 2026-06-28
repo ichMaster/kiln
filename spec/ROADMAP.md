@@ -333,6 +333,14 @@ local. *(A deeper always-on inner-voice loop coupled to plans stays a later v2 e
   to `select_self_trigger`) fires it with the same **hysteresis + cooldown** via the `TriggerBook`. Loop
   priority becomes **user input > reach-out (connection) > thought (reflection) > idle** — a thought fires
   only on an input-free, non-resting tick.
+- **Reflection in the mood section (`## Настрій`).** Register `reflection` in `state/mood.json` — the
+  label «незібраність» **plus a behavioural cue for EVERY band** (низька / помірна / висока / дуже висока)
+  — so the new need surfaces in 0.9's `## Настрій` block **and** the TUI needs panel (`NEED_LABELS` /
+  `NEED_CUES` pick it up automatically; `need_bands` already covers it). Descriptions of all four states,
+  e.g.: **низька** → «зібрана, ясно в голові — думка тече рівно»; **помірна** → «думки трохи розбігаються»;
+  **висока** → «думки врозтіч — зупинись, збери їх в одну»; **дуже висока** → «у голові безлад — мовчки
+  переварити, осмислити перш ніж говорити». (Her thought prompt already sees `## Настрій`, so she reads
+  her own незібраність level too — a small, fitting recursion.)
 - **Thought generation (Haiku).** On a `reflection` crossing, generate a short **internal thought** through
   the **chat brain** (Haiku/SDK) from a `[thought]` reflection prompt (`state/prompts.md`, Ukrainian) with the
   full system prompt (canon + memory + facts + world + **mood**). The result is a thought, **not** a
@@ -354,20 +362,23 @@ local. *(A deeper always-on inner-voice loop coupled to plans stays a later v2 e
 - **`/thoughts` command.** Show the recent thoughts (store + current session) with timestamps and a marker
   for the surfaced ones, through the Output seam (`notice`), like `/usage`.
 - **Config.** `THOUGHTS_ENABLED` (master on/off), `THOUGHTS_IN_PROMPT` (N), `THOUGHT_VISIBLE_EVERY` (M),
-  `THOUGHT_COOLDOWN`, the `reflection` Ukrainian label, and `THOUGHT_MODEL` (= `CHAT_MODEL` Haiku) — scalars
-  `.env`-overridable; the `reflection` drift / satiation / threshold live in the structured dicts in code.
-- **Tests.** `reflection` drift / satiation; the thought trigger's hysteresis / cooldown; a thought is
+  `THOUGHT_COOLDOWN`, and `THOUGHT_MODEL` (= `CHAT_MODEL` Haiku) — scalars `.env`-overridable; the
+  `reflection` drift / satiation / threshold live in the structured dicts in code, and its **label +
+  per-band cues** live in `state/mood.json` (above).
+- **Tests.** `reflection` drift / satiation; the thought trigger's hysteresis / cooldown; `reflection`
+  renders in `## Настрій` as «незібраність» with a cue for each band (`mood_block`); a thought is
   generated (mock brain, zero paid), stored, and added to `## Думки` (last N, cross-session) while staying
   hidden; the surfaced case (seeded RNG hits 1/M) both displays **and** appends a history turn; `/thoughts`
   lists them; store round-trips with `thoughts` + migration; `apply_satiation('thought', …)` discharges
   `reflection`; `build_system` places `## Думки` separate from the rest; `THOUGHTS_ENABLED` toggles — all
   deterministic (seeded RNG, fixed clock, **mock brain, zero paid calls**).
 **DoD:** a new `незібраність` (reflection) need drifts and, on crossing, makes Agnika **think** via Haiku;
-the thought is **hidden by default**, **satiates** the need, is **saved to `.kiln/store.json`**, and feeds a
-`## Думки` section with the **last N cross-session** thoughts; **randomly ~1/M** a thought **surfaces in chat**
-(marked) **and becomes a real conversation turn**; `/thoughts` shows them; `THOUGHTS_ENABLED` / N / M / cooldown
-configurable; deterministic under a seeded RNG + injected clock; cheap (Haiku) and cooldown-capped; no paid
-calls in tests.
+the need is **registered in `state/mood.json`** (label «незібраність» + a behavioural cue for every band)
+so it shows in the `## Настрій` section and the TUI needs panel; the thought is **hidden by default**,
+**satiates** the need, is **saved to `.kiln/store.json`**, and feeds a `## Думки` section with the
+**last N cross-session** thoughts; **randomly ~1/M** a thought **surfaces in chat** (marked) **and becomes a
+real conversation turn**; `/thoughts` shows them; `THOUGHTS_ENABLED` / N / M / cooldown configurable;
+deterministic under a seeded RNG + injected clock; cheap (Haiku) and cooldown-capped; no paid calls in tests.
 
 ### 0.11 Curiosity — ask, don't mirror — ⬜
 **Goal:** a `curiosity` need (Ukrainian «цікавість») with a **low threshold (~0.5)** and a **very small
