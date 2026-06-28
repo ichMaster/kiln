@@ -263,6 +263,54 @@ time-of-day / season + location, a short Ukrainian paragraph with a rhythm cue) 
 turns are stamped with `at`; it's deterministic given an injected clock; `WORLD_AWARENESS` /
 `RECENT_MESSAGES` toggle and size it; no external calls in the core (weather / calendar deferred).
 
+### 0.9 Mood & biorhythm — felt inner state in every reply — ⬜
+**Goal:** give Agnika a **felt mood** surfaced in the system prompt of **every message** — a
+per-turn `## Настрій` section listing **every need** with its level (number `0..1`) and a short
+**Ukrainian "big/small for her"** descriptor (низька / помірна / висока), plus a per-day
+**biorhythm** (physical / emotional / intellectual) **computed once at session start** from
+Agnika's **canon birthday** (`12.08.2001, 17:10`, Львів) and **static for the session**, which
+gives the day its **fluctuation** — a baseline that colors her tone (an emotional high reads warmer,
+a physical low more tired). Like 0.8's world block: short **Ukrainian** text, **deterministic**
+(injected clock + birth), **local-only** (no model/external calls). Brings Lumi's mood/biorhythm
+forward (cf. v2.1).
+**Tasks:**
+- **Mood-from-needs builder.** A pure `kiln/mood.py`: `need_band(value) -> str` (maps `0..1` to a
+  Ukrainian band — низька / помірна / висока / дуже висока: "how big this need is for her right
+  now"), and `mood_block(needs, bio) -> str` rendering the `## Настрій` section — each need by its
+  Ukrainian label + number + band (`близькість 0.72 — висока`, `новизна 0.30 — низька`,
+  `втома 0.55 — помірна`, `напруга 0.41 — помірна`). Pure, no I/O — a fixed `needs` dict renders
+  deterministically.
+- **Biorhythm builder.** A pure `biorhythm(now, birth) -> {physical, emotional, intellectual}` — the
+  classic sine cycles (23 / 28 / 33 days) over days-since-birth, each `−1..+1`; `bio_band(v)` →
+  Ukrainian (підйом / спад / критичний день / нейтрально) and a `biorhythm_block(bio)` rendering with
+  a one-line tone cue (the day's "weather"). **Computed once at session start, static for the
+  session**; `now` / `birth` injected so unit tests pin a date (incl. a known sine value and a
+  zero-crossing "critical day").
+- **Birthday from the canon.** A small `load_birth(canon) -> datetime` that reads Agnika's birth
+  date/time from `state/canon.md` (the `12.08.2001, 17:10` line), with a safe default if absent;
+  `run()` computes the session biorhythm from it once at start. Optional `.env` override `AGENT_BIRTH`
+  (`DD.MM.YYYY[ HH:MM]`).
+- **Config.** `MOOD_AWARENESS` (master on/off, like `WORLD_AWARENESS`), the Ukrainian **need labels**
+  (persona layer: connection→близькість, novelty→новизна, rest→втома, intensity→напруга), and
+  `BIORHYTHM` (on/off) — all `.env`-overridable. `rest` semantics noted (high = tired).
+- **Mood → system prompt.** Extend `build_system(canon, memory, facts="", world="", mood="")` with
+  the `## Настрій` section (needs + biorhythm sub-block), **separate** from canon / memory / facts /
+  world; empty → the v0.8 output (back-compatible). `_system()` composes it **per turn** — the needs
+  are live (they drift every tick), the biorhythm is the **session-static** value passed in. *(Seam:
+  the `build_system` signature → ARCHITECTURE update + contract test in the same issue.)*
+- **Tests.** `need_band` boundaries; `mood_block` renders all four needs with labels + bands;
+  `biorhythm` matches fixture dates (a known value + a critical day) and is identical across a
+  session; `load_birth` parses the canon date (and falls back); `build_system` places `## Настрій`
+  separate from the rest with `mood=""` v0.8-equivalent; `MOOD_AWARENESS` off → no section; a per-turn
+  re-compose reflects **changed** needs while the biorhythm stays fixed — all deterministic (fixed
+  clock + birth, **mock brain, zero paid calls**).
+**DoD:** every message from Agnika carries a `## Настрій` section that lists **all needs** (level
+number + a Ukrainian big/small band) **and** the day's **biorhythm** (physical / emotional /
+intellectual, computed once at session start from her **canon birthday**, **static** for the
+session, shifting her daily baseline); the section is composed **per turn** (needs live, biorhythm
+fixed); `MOOD_AWARENESS` / `BIORHYTHM` toggle it; it's **deterministic** given an injected clock +
+birth; **local-only**, no external calls.
+
 ## v1 — Engine (the tick-server & hub foundation)
 
 ### 1.1 Tick-server: engine = WS/HTTP server, clients attach — ⬜
@@ -314,7 +362,8 @@ world-body.
 **Goal:** a coherent, calibrated needs model.
 **Tasks:** fix `rest` semantics (deep should tire, not rest — open); recalibrate
 drift/satiation/thresholds on real dialogue; maybe more needs (boredom, attachment)
-+ a mood state. cf. Lumi `mood/emotion/biorhythm`.
++ a mood state. cf. Lumi `mood/emotion/biorhythm`. (The `## Настрій` mood section +
+biorhythm shipped early in **0.9**; this phase deepens the needs model under it.)
 **DoD:** needs behave intuitively over a long session; the `rest` inconsistency resolved.
 
 ### 2.2 Plans — ⬜
