@@ -1,6 +1,13 @@
 kiln — Release Notes
 ====================
 
+Version 0.8.2 (2026-06-28)
+---------------------------
+- Canon: adopted the full Agnika persona — replaced the compressed canon with the full unabridged sections (Хто ти, Звідки ти, Темперамент, Цінності, Голос, Як ти ставишся до людини, Правила поведінки, ЗАБОРОНИ, Як тече розмова + full natal chart); emotion palette / motifs / creative-self stay in the agnika.md source
+- TUI fix: copy/clear keybindings — Ctrl+O / Ctrl+Y / Ctrl+L now fire even while the input is focused (priority bindings beat the TextArea) and copy to the real OS clipboard (pbcopy/xclip/xsel/wl-copy/clip), not just OSC 52
+- Dry-run demo fix: replaced the removed /history command with /prompt; wrapped an over-long docstring
+- Roadmap: planned v0.9 Mood & biorhythm, v0.10 Inner thoughts (inner monologue, moved from v2.4), and v0.11 Curiosity (ask, don't mirror)
+
 Version 0.8.1 (2026-06-28)
 ---------------------------
 - Named speaker labels (USER_NAME / AGENT_NAME) in transcripts and the prior-session timeline, instead of user/assistant role keywords
