@@ -122,8 +122,8 @@ def _parse_birth(text: str) -> _dt.datetime | None:
 
 def load_birth(canon: str) -> _dt.datetime:
     """Agnika's birth datetime for the biorhythm: `AGENT_BIRTH` (.env) if set & valid, else parsed
-    from the canon's natal line (`Народження: 12.08.2001, 17:10`), else `DEFAULT_BIRTH`. Never raises
-    — a fresh clone / garbled canon still starts."""
+    from the canon's natal line (`Народження: 12.08.2001, 17:10`), else `DEFAULT_BIRTH`. Never
+    raises — a fresh clone / garbled canon still starts."""
     return _parse_birth(AGENT_BIRTH) or _parse_birth(canon) or DEFAULT_BIRTH
 
 
@@ -279,8 +279,8 @@ def build_system(canon: str, memory: str, facts: str = "", world: str = "", mood
     Each layer is optional and appended only when non-empty: the v0.5 memory block, the v0.6
     `## Facts about the user` section, the v0.8 `world` block (`## Зараз` + `## Повідомлення з
     минулої сесії`), then the v0.9 `mood` block (`## Настрій` — needs + biorhythm); each carries its
-    own headers. With empty `memory`/`facts`/`world`/`mood` the result is exactly `canon`; with empty
-    `mood` it is byte-for-byte the v0.8 output."""
+    own headers. With empty `memory`/`facts`/`world`/`mood` the result is exactly `canon`; with
+    empty `mood` it is byte-for-byte the v0.8 output."""
     out = canon
     if memory.strip():
         out += "\n\nДовга пам'ять про попередні розмови (для контексту):\n" + memory.strip()

@@ -66,8 +66,8 @@ def test_mood_block_renders_all_needs_with_labels_and_bands():
     bio = {"physical": 0.6, "emotional": 0.2, "intellectual": -0.4}
     block = mood_block(needs, bio)
     assert block.startswith("## Настрій")
-    assert "близькість 0.72 — висока" in block
-    assert "новизна 0.30 — низька" in block
+    assert "самотність 0.72 — висока" in block
+    assert "нудьга 0.30 — низька" in block
     assert "втома 0.55 — помірна" in block
     assert "напруга 0.41 — помірна" in block
     assert "Біоритм дня:" in block  # biorhythm sub-block embedded
@@ -77,4 +77,4 @@ def test_mood_block_missing_need_is_zero():
     block = mood_block(
         {"connection": 0.5}, {"physical": 0.0, "emotional": 0.0, "intellectual": 0.0}
     )
-    assert "новизна 0.00 — низька" in block  # absent need -> 0.0
+    assert "нудьга 0.00 — низька" in block  # absent need -> 0.0

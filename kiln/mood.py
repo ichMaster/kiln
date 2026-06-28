@@ -16,10 +16,12 @@ import math
 _PERIODS = {"physical": 23, "emotional": 28, "intellectual": 33}
 
 # Ukrainian display labels for the needs (persona layer); insertion order = display order.
-# `rest` reads as fatigue here (high = tired).
+# Each names the felt pressure that BUILDS and gets discharged — high = more, low = relieved (no
+# inversion). самотність / нудьга are lacks (of contact / stimulation); втома / напруга are the
+# opposite — accumulations (fatigue / charge). Either way high -> she wants the matching release.
 NEED_LABELS = {
-    "connection": "близькість",
-    "novelty": "новизна",
+    "connection": "самотність",
+    "novelty": "нудьга",
     "rest": "втома",
     "intensity": "напруга",
 }
