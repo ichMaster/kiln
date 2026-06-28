@@ -42,13 +42,16 @@ def test_bio_band():
     assert bio_band(0.3) == "нейтрально"
 
 
-def test_biorhythm_block_renders_cycles_bands_and_cue():
+def test_biorhythm_block_renders_cycles_bands_and_cues():
     block = biorhythm_block({"physical": 0.6, "emotional": -0.9, "intellectual": 0.05})
-    assert "Біоритм дня:" in block
-    assert "фізичний +0.60" in block and "емоційний -0.90" in block
-    assert "підйом" in block and "спад" in block and "критичний день" in block
-    # the one-line tone cue keyed on the (low) emotional cycle
-    assert "Емоційно пригашений день" in block.splitlines()[-1]
+    assert block.startswith("Біоритм дня")
+    assert "- фізичний +0.60 (підйом)" in block
+    assert "- емоційний -0.90 (спад)" in block
+    assert "- інтелектуальний +0.05 (критичний день)" in block
+    # each cycle carries a behavioural cue
+    assert "енергії вдосталь" in block  # physical підйом
+    assert "стриманіше" in block  # emotional спад
+    assert "не ускладнюй" in block  # intellectual критичний день
 
 
 # --- mood-from-needs (KILN-036) ---
@@ -66,11 +69,11 @@ def test_mood_block_renders_all_needs_with_labels_and_bands():
     bio = {"physical": 0.6, "emotional": 0.2, "intellectual": -0.4}
     block = mood_block(needs, bio)
     assert block.startswith("## Настрій")
-    assert "самотність 0.72 — висока" in block
+    assert "самотність 0.72 — висока: бракує контакту" in block  # label + band + behavioural cue
     assert "нудьга 0.30 — низька" in block
     assert "втома 0.55 — помірна" in block
     assert "напруга 0.41 — помірна" in block
-    assert "Біоритм дня:" in block  # biorhythm sub-block embedded
+    assert "Біоритм дня" in block  # biorhythm sub-block embedded
 
 
 def test_mood_block_missing_need_is_zero():

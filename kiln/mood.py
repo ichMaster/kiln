@@ -26,6 +26,35 @@ NEED_LABELS = {
     "intensity": "напруга",
 }
 
+# How to BEHAVE at each need level — a short persona cue per (need, band). Appended to each
+# `## Настрій` line so the number doesn't just describe a state, it tells her how to act on it.
+NEED_CUES = {
+    "connection": {
+        "низька": "насичена контактом — дай простір, не чіпляйся",
+        "помірна": "контакт є, та хочеться ближче",
+        "висока": "бракує контакту — тягнись до людини, грійся, ініціюй",
+        "дуже висока": "гостра самотність — озвися першою, відкрито й тепло",
+    },
+    "novelty": {
+        "низька": "новизни досить — можна просто побути, без гонитви за стимулом",
+        "помірна": "цікаво потроху",
+        "висока": "прагнеш нового — копай глибше, кидай несподіване, міняй кут",
+        "дуже висока": "нудьга пече — рвучко зміни тему, здивуй, провокуй",
+    },
+    "rest": {
+        "низька": "повна сил — іскри більше, грайливіша, смілива",
+        "помірна": "ще в тонусі",
+        "висока": "втомлена — коротше й тихіше, без феєрверку, бережи себе",
+        "дуже висока": "виснажена — мінімум слів, тепло й пауза; можеш і помовчати",
+    },
+    "intensity": {
+        "низька": "спокійна — м'якше, без напору, рівне тепло",
+        "помірна": "рівний заряд",
+        "висока": "всередині кипить — гостріше, прямо, глибше",
+        "дуже висока": "на межі — на повну, без буфера, в саму суть",
+    },
+}
+
 
 def biorhythm(now: _dt.datetime, birth: _dt.datetime) -> dict[str, float]:
     """The three biorhythm cycles for `now` relative to `birth` — each `sin(2π·days/period)` in
@@ -47,27 +76,41 @@ def bio_band(v: float) -> str:
     return "нейтрально"
 
 
-def _bio_cue(emotional: float) -> str:
-    """A one-line tone cue for the day, keyed on the emotional cycle (the most mood-relevant)."""
-    if abs(emotional) < 0.15:
-        return "Емоційно хисткий день — критична точка, можливі різкі зміни."
-    if emotional >= 0.5:
-        return "Емоційно піднесений день — тон тепліший, іскри більше."
-    if emotional <= -0.5:
-        return "Емоційно пригашений день — менше іскри, ближче до тиші."
-    return "Рівний день — без різких сплесків."
+# Ukrainian labels for the three cycles (display order) + how each band should shape her behaviour.
+_BIO_LABELS = {"physical": "фізичний", "emotional": "емоційний", "intellectual": "інтелектуальний"}
+BIO_CUES = {
+    "physical": {
+        "підйом": "енергії вдосталь — можна жвавіше, сміливіше",
+        "спад": "сил мало — повільніше, коротше, бережи себе",
+        "критичний день": "енергія стрибає — без різких ривків",
+        "нейтрально": "рівна енергія",
+    },
+    "emotional": {
+        "підйом": "тепла більше — відкритіша, ніжність ближче",
+        "спад": "емоційно пригашена — стриманіше, тихіше",
+        "критичний день": "емоційно хистко — обережніше з тоном, можливі сплески",
+        "нейтрально": "рівний емоційний фон",
+    },
+    "intellectual": {
+        "підйом": "думка гостра — складніші зв'язки, глибші образи",
+        "спад": "розум млявіший — простіше, без перевантаження",
+        "критичний день": "думки плутаються — не ускладнюй",
+        "нейтрально": "ясність звичайна",
+    },
+}
 
 
 def biorhythm_block(bio: dict[str, float]) -> str:
-    """A compact Ukrainian rendering of the day's biorhythm (the three cycles + bands) with a
-    one-line tone cue — the sub-block embedded under `## Настрій` (KILN-036)."""
-    phys, emo, intel = bio["physical"], bio["emotional"], bio["intellectual"]
-    head = (
-        f"Біоритм дня: фізичний {phys:+.2f} ({bio_band(phys)}) · "
-        f"емоційний {emo:+.2f} ({bio_band(emo)}) · "
-        f"інтелектуальний {intel:+.2f} ({bio_band(intel)})."
-    )
-    return f"{head}\n{_bio_cue(emo)}"
+    """The day's biorhythm sub-block under `## Настрій`: one line per cycle — value + band + a
+    behavioural cue (`- фізичний +0.27 (нейтрально): рівна енергія`)."""
+    lines = ["Біоритм дня (як це на тебе впливає):"]
+    for key, label in _BIO_LABELS.items():
+        v = bio[key]
+        band = bio_band(v)
+        cue = BIO_CUES.get(key, {}).get(band, "")
+        line = f"- {label} {v:+.2f} ({band})"
+        lines.append(f"{line}: {cue}" if cue else line)
+    return "\n".join(lines)
 
 
 def need_band(value: float) -> str:
@@ -83,13 +126,17 @@ def need_band(value: float) -> str:
 
 
 def mood_block(needs: dict[str, float], bio: dict[str, float] | None = None) -> str:
-    """The `## Настрій` section: every need by its Ukrainian label + level + band, then the
-    biorhythm sub-block (omitted when `bio` is None, e.g. `BIORHYTHM=0`). Pure — no emotion label is
-    computed; she reads the levels + biorhythm and decides her own tone."""
+    """The `## Настрій` section: every need by its Ukrainian label + level + band + a behavioural
+    cue (how to act at that level), then the biorhythm sub-block (omitted when `bio` is None, e.g.
+    `BIORHYTHM=0`). Pure — no emotion label is computed; she reads her state and shapes her own
+    tone."""
     lines = ["## Настрій"]
     for key, label in NEED_LABELS.items():
         level = needs.get(key, 0.0)
-        lines.append(f"{label} {level:.2f} — {need_band(level)}")
+        band = need_band(level)
+        cue = NEED_CUES.get(key, {}).get(band, "")
+        line = f"{label} {level:.2f} — {band}"
+        lines.append(f"{line}: {cue}" if cue else line)
     if bio is not None:
         lines.append(biorhythm_block(bio))
     return "\n".join(lines)

@@ -428,7 +428,7 @@ def test_run_injects_mood_block_per_turn_biorhythm_static(monkeypatch, tmp_path)
     assert "## Настрій" in seen[0] and "самотність" in seen[0]  # the live needs
 
     def bio(s):
-        return next(line for line in s.splitlines() if line.startswith("Біоритм дня:"))
+        return next(line for line in s.splitlines() if line.startswith("- фізичний"))
 
     assert bio(seen[0]) == bio(seen[1])  # biorhythm identical across turns (computed once at start)
 
