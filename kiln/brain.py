@@ -100,6 +100,7 @@ class LiveBrain:
         except Exception as e:  # network / limits / API error
             return f"(chat error: {e})", None
         text = next((b.text for b in msg.content if b.type == "text"), "")
+        # SDK/Haiku has no per-call cost — leave cost_usd=None (estimated from the price table).
         return text, usage_record(msg.model, msg.usage)
 
     def deep(
@@ -154,7 +155,9 @@ class LiveBrain:
             data = json.loads(result.stdout)
         except json.JSONDecodeError:
             return result.stdout.strip(), None  # unexpected output — as is
-        return (data.get("result") or "").strip(), usage_record(DEEP_MODEL, data.get("usage"))
+        # claude -p reports the actual cost; carry it (over any estimate) into the record.
+        rec = usage_record(DEEP_MODEL, data.get("usage"), data.get("total_cost_usd"))
+        return (data.get("result") or "").strip(), rec
 
     def tool(self, agent: str, history: list[dict], system: str) -> tuple[str, Usage]:
         # Run the named sub-agent via `claude -p --agent <agent>`: Claude Code loads
@@ -196,7 +199,8 @@ class LiveBrain:
             data = json.loads(result.stdout)
         except json.JSONDecodeError:
             return result.stdout.strip(), None
-        return (data.get("result") or "").strip(), usage_record(model, data.get("usage"))
+        rec = usage_record(model, data.get("usage"), data.get("total_cost_usd"))
+        return (data.get("result") or "").strip(), rec
 
 
 class MockBrain:

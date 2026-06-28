@@ -13,24 +13,52 @@ from kiln.config import CHAT_MODEL, DEEP_MODEL
 from kiln.engine import State, respond
 from kiln.usage import usage_record
 
-USAGE_KEYS = {"model", "input", "output", "total"}
+USAGE_KEYS = {"model", "input", "output", "cache_read", "cache_write", "total", "cost_usd"}
 
 
 # --- usage_record: token normalization (shared by both adapters) -------------
 
 
 def test_usage_record_from_cli_dict():
-    rec = usage_record(DEEP_MODEL, {"input_tokens": 3, "output_tokens": 4})
-    assert rec == {"model": DEEP_MODEL, "input": 3, "output": 4, "total": 7}
+    # CLI dict carries cache fields + the actual cost (total_cost_usd passed as cost_usd).
+    rec = usage_record(
+        DEEP_MODEL,
+        {
+            "input_tokens": 3,
+            "output_tokens": 4,
+            "cache_read_input_tokens": 100,
+            "cache_creation_input_tokens": 20,
+        },
+        cost_usd=0.42,
+    )
+    assert rec == {
+        "model": DEEP_MODEL,
+        "input": 3,
+        "output": 4,
+        "cache_read": 100,
+        "cache_write": 20,
+        "total": 7,  # input + output only (cache tracked separately)
+        "cost_usd": 0.42,
+    }
 
 
 def test_usage_record_from_sdk_object():
     class _U:  # mimics msg.usage from the SDK
         input_tokens = 10
         output_tokens = 5
+        cache_read_input_tokens = 30
+        cache_creation_input_tokens = 0
 
-    rec = usage_record(CHAT_MODEL, _U())
-    assert rec == {"model": CHAT_MODEL, "input": 10, "output": 5, "total": 15}
+    rec = usage_record(CHAT_MODEL, _U())  # SDK path -> cost_usd None (estimated later)
+    assert rec == {
+        "model": CHAT_MODEL,
+        "input": 10,
+        "output": 5,
+        "cache_read": 30,
+        "cache_write": 0,
+        "total": 15,
+        "cost_usd": None,
+    }
 
 
 def test_usage_record_none_is_zeroed():
@@ -38,7 +66,10 @@ def test_usage_record_none_is_zeroed():
         "model": CHAT_MODEL,
         "input": 0,
         "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
         "total": 0,
+        "cost_usd": None,
     }
 
 

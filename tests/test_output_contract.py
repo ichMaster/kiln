@@ -12,7 +12,7 @@ from kiln.brain import MockBrain
 from kiln.output import ConsoleOutput, Output
 from kiln.store import empty_store
 
-USAGE_KEYS = {"model", "input", "output", "total"}
+USAGE_KEYS = {"model", "input", "output", "cache_read", "cache_write", "total", "cost_usd"}
 
 
 class CapturingOutput:

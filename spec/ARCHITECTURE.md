@@ -164,8 +164,10 @@ multi-agent is additive, not a rewrite:
 ## Contracts (stable seams)
 
 - **Reply / route:** `respond(...) → {class, route, reply, usage}`.
-- **Model usage:** `{model, input, output, total}` captured by `log_model`
-  (SDK `msg.usage` / CLI `data.usage`).
+- **Model usage:** `{model, input, output, cache_read, cache_write, total, cost_usd}` captured by
+  `usage_record` (SDK `msg.usage` / CLI `data.usage` + `total_cost_usd`). `total` = input+output
+  (cache tracked separately, Lumi-style); `cost_usd` = the CLI's actual cost, or `None` for the
+  SDK path (estimated from the v0.7 price table).
 - **Needs:** `state/needs.json` = `{need: level(0..1)}`.
 - **Canon / system prompt:** `build_system(canon, memory, facts)` composes the system prompt of
   every branch — `canon` (`state/canon.md`, fallback `DEFAULT_CANON`) + the v0.5 memory summaries

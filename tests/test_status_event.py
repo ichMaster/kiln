@@ -36,6 +36,10 @@ STATS_KEYS = {
     "last_tokens",
     "last_latency",
     "avg_latency",
+    "input_total",
+    "output_total",
+    "cache_read_total",
+    "cache_write_total",
 }
 
 

@@ -13,7 +13,7 @@ from kiln.brain import MockBrain
 from kiln.config import SATIATION
 from kiln.engine import State, respond
 
-USAGE_KEYS = {"model", "input", "output", "total"}
+USAGE_KEYS = {"model", "input", "output", "cache_read", "cache_write", "total", "cost_usd"}
 
 
 def test_respond_return_contract():

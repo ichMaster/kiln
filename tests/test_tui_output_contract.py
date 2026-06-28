@@ -14,7 +14,7 @@ from kiln.store import empty_store
 from tui.bridge import Bridge
 from tui.output import TuiOutput
 
-USAGE_KEYS = {"model", "input", "output", "total"}
+USAGE_KEYS = {"model", "input", "output", "cache_read", "cache_write", "total", "cost_usd"}
 
 
 def test_tuioutput_satisfies_output_protocol():

@@ -20,6 +20,11 @@ class SessionStats:
     tokens_by_branch: dict[str, int] = field(default_factory=dict)
     last_tokens: int = 0
     last_latency: float = 0.0
+    # the four token buckets (v0.7): input / output / cache read / cache write
+    input_total: int = 0
+    output_total: int = 0
+    cache_read_total: int = 0
+    cache_write_total: int = 0
     _latencies: list[float] = field(default_factory=list)
 
     def record(self, branch: str, usage: dict | None, latency: float) -> None:
@@ -27,6 +32,11 @@ class SessionStats:
         tok = usage["total"] if usage else 0
         self.turns += 1
         self.tokens_total += tok
+        if usage:
+            self.input_total += usage.get("input", 0)
+            self.output_total += usage.get("output", 0)
+            self.cache_read_total += usage.get("cache_read", 0)
+            self.cache_write_total += usage.get("cache_write", 0)
         self.tokens_by_branch[branch] = self.tokens_by_branch.get(branch, 0) + tok
         self.last_tokens = tok
         self.last_latency = latency
@@ -45,4 +55,8 @@ class SessionStats:
             "last_tokens": self.last_tokens,
             "last_latency": round(self.last_latency, 2),
             "avg_latency": round(self.avg_latency, 2),
+            "input_total": self.input_total,
+            "output_total": self.output_total,
+            "cache_read_total": self.cache_read_total,
+            "cache_write_total": self.cache_write_total,
         }

@@ -22,11 +22,32 @@ def _usage_tokens(usage) -> tuple[int | None, int | None]:
     return get("input_tokens"), get("output_tokens")
 
 
-def usage_record(model: str, usage) -> dict:
-    """Normalizes usage into {model, input, output, total} (the brain seam contract)."""
+def _cache_tokens(usage) -> tuple[int, int]:
+    """(cache_read, cache_write) from usage — SDK object or CLI dict (same field names);
+    (0, 0) if absent. SDK: `cache_read_input_tokens` / `cache_creation_input_tokens`."""
+    if usage is None:
+        return 0, 0
+    get = usage.get if isinstance(usage, dict) else (lambda k: getattr(usage, k, None))
+    return get("cache_read_input_tokens") or 0, get("cache_creation_input_tokens") or 0
+
+
+def usage_record(model: str, usage, cost_usd: float | None = None) -> dict:
+    """Normalizes usage into {model, input, output, cache_read, cache_write, total, cost_usd}
+    (the brain seam contract). `total` = input + output (cache tokens are tracked separately,
+    as Lumi does). `cost_usd` = the source's actual cost (`claude -p` total_cost_usd) or None
+    (the SDK path — estimated later from the price table)."""
     in_tok, out_tok = _usage_tokens(usage)
     in_tok, out_tok = in_tok or 0, out_tok or 0
-    return {"model": model, "input": in_tok, "output": out_tok, "total": in_tok + out_tok}
+    cache_read, cache_write = _cache_tokens(usage)
+    return {
+        "model": model,
+        "input": in_tok,
+        "output": out_tok,
+        "cache_read": cache_read,
+        "cache_write": cache_write,
+        "total": in_tok + out_tok,
+        "cost_usd": cost_usd,
+    }
 
 
 # Chat line colors (ANSI). Different colors for you and for the bot.
@@ -48,13 +69,11 @@ def print_tech(usage: dict | None, latency: float | None = None) -> None:
         return
     m = usage["model"]
     short = m.split("-")[1] if "-" in m else m  # claude-haiku-4-5-… -> haiku
+    cr, cw = usage.get("cache_read", 0), usage.get("cache_write", 0)
+    cache = f" · cache {cr}r/{cw}w" if (cr or cw) else ""  # only when caching happened
     tail = f" · {round(latency, 2)}s" if latency is not None else ""
-    print(
-        _c(
-            f"      · {short} · {usage['input']}→{usage['output']} tok ({usage['total']}){tail}",
-            TECH_COLOR,
-        )
-    )
+    body = f"{short} · {usage['input']}→{usage['output']} tok ({usage['total']}){cache}{tail}"
+    print(_c(f"      · {body}", TECH_COLOR))
 
 
 def _cli_error_detail(result) -> str:
