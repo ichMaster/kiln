@@ -9,6 +9,7 @@ prompt of every branch (`build_system`).
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import random
 import re
@@ -16,6 +17,7 @@ import subprocess
 from pathlib import Path
 
 from .config import (
+    AGENT_BIRTH,
     CANON_FILE,
     CHAT_MODEL,
     DEEP_MODEL,
@@ -97,6 +99,32 @@ def load_canon() -> str:
         if text:
             return text
     return DEFAULT_CANON
+
+
+# v0.9: Agnika's birthday seeds the daily biorhythm (kiln/mood.py).
+DEFAULT_BIRTH = _dt.datetime(2001, 8, 12, 17, 10)  # the canon birthday (fallback)
+_BIRTH_RE = re.compile(r"(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[,\s]+(\d{1,2}):(\d{2}))?")
+
+
+def _parse_birth(text: str) -> _dt.datetime | None:
+    """First `DD.MM.YYYY[ , HH:MM]` in `text` -> a datetime, or None if none / invalid."""
+    m = _BIRTH_RE.search(text or "")
+    if not m:
+        return None
+    day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    hour = int(m.group(4)) if m.group(4) else 0
+    minute = int(m.group(5)) if m.group(5) else 0
+    try:
+        return _dt.datetime(year, month, day, hour, minute)
+    except ValueError:
+        return None
+
+
+def load_birth(canon: str) -> _dt.datetime:
+    """Agnika's birth datetime for the biorhythm: `AGENT_BIRTH` (.env) if set & valid, else parsed
+    from the canon's natal line (`Народження: 12.08.2001, 17:10`), else `DEFAULT_BIRTH`. Never raises
+    — a fresh clone / garbled canon still starts."""
+    return _parse_birth(AGENT_BIRTH) or _parse_birth(canon) or DEFAULT_BIRTH
 
 
 def summarize(history: list[dict], live: bool) -> str:

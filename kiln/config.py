@@ -172,6 +172,10 @@ WORLD_AWARENESS = os.environ.get("WORLD_AWARENESS", "1") == "1"
 USER_NAME = os.environ.get("USER_NAME", "Користувач")
 AGENT_NAME = os.environ.get("AGENT_NAME", "Агніка")
 
+# v0.9: Agnika's birthday seeds the daily biorhythm. Empty -> parsed from the canon's natal line
+# (else the DEFAULT_BIRTH fallback in memory.py); set to override (`DD.MM.YYYY[ HH:MM]`).
+AGENT_BIRTH = os.environ.get("AGENT_BIRTH", "")
+
 # Tools/skills allowed on the reasoning branch (example).
 DEEP_TOOLS = ["Read", "Write", "Bash"]
 DEEP_SKILLS: list[str] = []  # e.g. ["search", "summarize"]
