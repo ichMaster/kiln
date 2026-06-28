@@ -270,27 +270,20 @@ per-turn `## Настрій` section listing **every need** with its level (numb
 **biorhythm** (physical / emotional / intellectual) **computed once at session start** from
 Agnika's **canon birthday** (`12.08.2001, 17:10`, Львів) and **static for the session**, which
 gives the day its **fluctuation** — a baseline that colors her tone (an emotional high reads warmer,
-a physical low more tired). The section also names her **current emotion** — one of nine states from
-her **canon emotion palette** (`state/agnika.md`) — derived from those needs + the biorhythm. Like
-0.8's world block: short **Ukrainian** text, **deterministic** (injected clock + birth), **local-only**
-(no model/external calls). Brings Lumi's mood/biorhythm/emotion forward (cf. v2.1).
+a physical low more tired). Like 0.8's world block: short **Ukrainian** text, **deterministic**
+(injected clock + birth), **local-only** (no model/external calls). Brings Lumi's mood/biorhythm
+forward (cf. v2.1). *(No emotion palette or "emotion per reply" — Agnika **reads her own per-need
+levels + biorhythm and decides her own mood**; the model picks its tone from the raw felt state, no
+computed label. A discrete-emotion layer is deferred to a real consumer, e.g. a TUI badge where the
+model self-tags.)*
 **Tasks:**
 - **Mood-from-needs builder.** A pure `kiln/mood.py`: `need_band(value) -> str` (maps `0..1` to a
   Ukrainian band — низька / помірна / висока / дуже висока: "how big this need is for her right
   now"), and `mood_block(needs, bio) -> str` rendering the `## Настрій` section — each need by its
   Ukrainian label + number + band (`близькість 0.72 — висока`, `новизна 0.30 — низька`,
-  `втома 0.55 — помірна`, `напруга 0.41 — помірна`), plus the **current emotion** line (next task).
-  Pure, no I/O — a fixed `needs` dict renders deterministically.
-- **Emotional state (palette from agnika.md).** Adopt the nine states from `state/agnika.md` →
-  `## Палітра емоцій` — **joy / calm / playful / tender / thoughtful / serious / surprise / doubt /
-  sad**, each with its one-line "how it sounds in HER" gloss. A pure `emotion_for(needs, bio) -> str`
-  derives the **current dominant** state from her needs + biorhythm (a documented mapping — e.g. high
-  `intensity` → serious, high `connection` + low `intensity` → tender, high `novelty` →
-  playful/surprise, low emotional biorhythm → sad/doubt, baseline → playful); `mood_block` names it
-  with its gloss («Зараз ти **playful** — дотеп, провокація, виклик»). The nine name→gloss pairs are
-  the **only** thing pulled from agnika.md — they live as a small table in `kiln/mood.py` (the rich
-  source stays in agnika.md); the prompt emits just the **current** emotion, not all nine. The mapping
-  is a calibration detail.
+  `втома 0.55 — помірна`, `напруга 0.41 — помірна`). She reads these levels (and the biorhythm) and
+  decides her own tone — no emotion label is computed for her. Pure, no I/O — a fixed `needs` dict
+  renders deterministically.
 - **Biorhythm builder.** A pure `biorhythm(now, birth) -> {physical, emotional, intellectual}` — the
   classic sine cycles (23 / 28 / 33 days) over days-since-birth, each `−1..+1`; `bio_band(v)` →
   Ukrainian (підйом / спад / критичний день / нейтрально) and a `biorhythm_block(bio)` rendering with
@@ -302,29 +295,25 @@ her **canon emotion palette** (`state/agnika.md`) — derived from those needs +
   `run()` computes the session biorhythm from it once at start. Optional `.env` override `AGENT_BIRTH`
   (`DD.MM.YYYY[ HH:MM]`).
 - **Config.** `MOOD_AWARENESS` (master on/off, like `WORLD_AWARENESS`), the Ukrainian **need labels**
-  (persona layer: connection→близькість, novelty→новизна, rest→втома, intensity→напруга), the
-  **emotion palette** (nine name→gloss pairs, persona layer, transcribed from `agnika.md`), and
-  `BIORHYTHM` (on/off) — scalars `.env`-overridable. `rest` semantics noted (high = tired).
+  (persona layer: connection→близькість, novelty→новизна, rest→втома, intensity→напруга), and
+  `BIORHYTHM` (on/off) — all `.env`-overridable. `rest` semantics noted (high = tired).
 - **Mood → system prompt.** Extend `build_system(canon, memory, facts="", world="", mood="")` with
   the `## Настрій` section (needs + biorhythm sub-block), **separate** from canon / memory / facts /
   world; empty → the v0.8 output (back-compatible). `_system()` composes it **per turn** — the needs
   are live (they drift every tick), the biorhythm is the **session-static** value passed in. *(Seam:
   the `build_system` signature → ARCHITECTURE update + contract test in the same issue.)*
-- **Tests.** `need_band` boundaries; `mood_block` renders all four needs with labels + bands and the
-  current-emotion line; `emotion_for` returns the documented state for fixture need/biorhythm inputs
-  (each of the nine reachable; a couple of representative mappings pinned); `biorhythm` matches fixture
-  dates (a known value + a critical day) and is identical across a session; `load_birth` parses the
-  canon date (and falls back); `build_system` places `## Настрій` separate from the rest with
-  `mood=""` v0.8-equivalent; `MOOD_AWARENESS` off → no section; a per-turn re-compose reflects
-  **changed** needs/emotion while the biorhythm stays fixed — all deterministic (fixed clock + birth,
-  **mock brain, zero paid calls**).
+- **Tests.** `need_band` boundaries; `mood_block` renders all four needs with labels + bands;
+  `biorhythm` matches fixture dates (a known value + a critical day) and is identical across a
+  session; `load_birth` parses the canon date (and falls back); `build_system` places `## Настрій`
+  separate from the rest with `mood=""` v0.8-equivalent; `MOOD_AWARENESS` off → no section; a
+  per-turn re-compose reflects **changed** needs while the biorhythm stays fixed — all deterministic
+  (fixed clock + birth, **mock brain, zero paid calls**).
 **DoD:** every message from Agnika carries a `## Настрій` section that lists **all needs** (level
-number + a Ukrainian big/small band), her **current emotion** (one of the nine canon palette states,
-derived from needs + biorhythm, with its gloss), **and** the day's **biorhythm** (physical / emotional
-/ intellectual, computed once at session start from her **canon birthday**, **static** for the
-session, shifting her daily baseline); the section is composed **per turn** (needs + emotion live,
-biorhythm fixed); `MOOD_AWARENESS` / `BIORHYTHM` toggle it; it's **deterministic** given an injected
-clock + birth; **local-only**, no external calls.
+number + a Ukrainian big/small band) **and** the day's **biorhythm** (physical / emotional /
+intellectual, computed once at session start from her **canon birthday**, **static** for the
+session, shifting her daily baseline); the section is composed **per turn** (needs live, biorhythm
+fixed); `MOOD_AWARENESS` / `BIORHYTHM` toggle it; it's **deterministic** given an injected clock +
+birth; **local-only**, no external calls.
 
 ### 0.10 Inner thoughts — internal monologue (moved up from v2.4) — ⬜
 **Goal:** give Agnika an **inner monologue** — a new **`самозаглиблення`** (reflection) need that, on
