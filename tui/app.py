@@ -198,6 +198,12 @@ class KilnApp(App):
     def _render(self, log: RichLog, event: dict) -> None:
         kind = event.get("kind")
         if kind == "agent":
+            if event.get("is_thought"):  # v0.10: a surfaced inner thought — dim, marked «думка:»
+                text = event["text"]
+                self._last_reply = text
+                log.write(f"[{_NOTICE_STYLE}]думка:[/] {escape(text)}")
+                self._transcript.append(f"думка: {text}")
+                return
             is_self = event.get("is_self", False)
             name_style = _SELF_STYLE if is_self else _BOT_STYLE
             name = agent_label(is_self)

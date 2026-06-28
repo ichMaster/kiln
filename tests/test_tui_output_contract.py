@@ -29,7 +29,15 @@ def test_tuioutput_emits_agent_and_usage():
     events = b.drain_output()
     assert [e["kind"] for e in events] == ["agent", "usage"]
     assert events[0]["text"] == "привіт" and events[0]["is_self"] is True
+    assert events[0]["is_thought"] is False  # default
     assert events[1]["usage"]["total"] == 3
+
+
+def test_tuioutput_agent_carries_is_thought():
+    b = Bridge()
+    TuiOutput(b).agent("внутрішня думка", is_thought=True)  # v0.10
+    ev = b.drain_output()[0]
+    assert ev["kind"] == "agent" and ev["is_thought"] is True and ev["text"] == "внутрішня думка"
 
 
 def test_tuioutput_user_is_echo_free_noop():

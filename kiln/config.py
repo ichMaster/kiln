@@ -143,8 +143,11 @@ DEEP_MODEL = os.environ.get("DEEP_MODEL", "claude-opus-4-8")  # Claude CLI for r
 
 # v0.10 inner monologue: the thought runs on the chat brain (Haiku). THOUGHTS_ENABLED is the master
 # switch; THOUGHT_MODEL is informational (= CHAT_MODEL — thoughts go through brain.chat).
+# THOUGHT_VISIBLE_EVERY (M): a fresh thought surfaces in the chat with probability ~1/M (else stays
+# internal). 1 -> always shown; large -> rarely.
 THOUGHTS_ENABLED = os.environ.get("THOUGHTS_ENABLED", "1") == "1"
 THOUGHT_MODEL = os.environ.get("THOUGHT_MODEL", CHAT_MODEL)
+THOUGHT_VISIBLE_EVERY = int(os.environ.get("THOUGHT_VISIBLE_EVERY", "5"))
 
 # EVERY `claude -p` call (deep, tool, summarize) runs with extended thinking ON — this is the
 # budget passed as MAX_THINKING_TOKENS by claude_env(). Tune via .env; lower it for snappier

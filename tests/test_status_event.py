@@ -117,10 +117,13 @@ class StatusRecorder:
     def __init__(self):
         self.statuses: list[dict] = []
         self.replies: list[str] = []
+        self.thoughts_shown: list[str] = []  # surfaced inner thoughts (is_thought=True)
 
     def user(self, text): ...
-    def agent(self, text, *, is_self=False, lead=False, model=None):
+    def agent(self, text, *, is_self=False, lead=False, model=None, is_thought=False):
         self.replies.append(text)
+        if is_thought:
+            self.thoughts_shown.append(text)
 
     def usage(self, usage, latency=None): ...
     def notice(self, text): ...
@@ -483,6 +486,7 @@ def test_run_thought_generated_stored_hidden(monkeypatch, tmp_path):
     from kiln import store as kstore
 
     monkeypatch.setattr(eng, "THOUGHTS_ENABLED", True)
+    monkeypatch.setattr(eng, "_thought_visible", lambda every: False)  # KILN-043: force hidden
     store_path = _thought_scenario(monkeypatch, eng, tmp_path)
     rec = StatusRecorder()
     eng.run(ticks=2, live=False, channel=eng.ScriptedChannel({}), brain=MockBrain(), output=rec)
@@ -490,6 +494,25 @@ def test_run_thought_generated_stored_hidden(monkeypatch, tmp_path):
     assert len(thoughts) == 1 and thoughts[0]["shown"] is False  # one thought, hidden
     assert thoughts[0]["text"]  # the (mock) thought text
     assert rec.replies == []  # nothing displayed — not a conversation turn
+
+
+def test_run_thought_surfaced_becomes_a_turn(monkeypatch, tmp_path):
+    """KILN-043: with the RNG forced to hit, a thought surfaces (is_thought) AND becomes a turn."""
+    import kiln.engine as eng
+    from kiln import store as kstore
+
+    monkeypatch.setattr(eng, "THOUGHTS_ENABLED", True)
+    monkeypatch.setattr(eng, "_thought_visible", lambda every: True)  # force surfaced
+    store_path = _thought_scenario(monkeypatch, eng, tmp_path)
+    rec = StatusRecorder()
+    eng.run(ticks=2, live=False, channel=eng.ScriptedChannel({}), brain=MockBrain(), output=rec)
+    saved = kstore.load_store(store_path)
+    thought = saved["thoughts"][0]
+    assert thought["shown"] is True  # stored as surfaced
+    assert rec.thoughts_shown == [thought["text"]]  # displayed via agent(is_thought=True)
+    # it entered the conversation as a real assistant turn (in the session's stored messages)
+    msgs = saved["messages"].get(saved["sessions"][-1]["id"], [])
+    assert any(m["role"] == "assistant" and m["text"] == thought["text"] for m in msgs)
 
 
 def test_run_thoughts_disabled_no_thought(monkeypatch, tmp_path):

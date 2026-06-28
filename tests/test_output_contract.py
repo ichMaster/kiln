@@ -24,7 +24,7 @@ class CapturingOutput:
     def user(self, text: str) -> None:
         self.events.append(("user", text))
 
-    def agent(self, text, *, is_self=False, lead=False, model=None) -> None:
+    def agent(self, text, *, is_self=False, lead=False, model=None, is_thought=False) -> None:
         self.events.append(("agent", text))
 
     def usage(self, usage, latency=None) -> None:
@@ -52,6 +52,12 @@ def test_console_output_prints_reply_and_tech(capsys):
     assert "you: привіт" in printed
     assert "Agnika: відповідь" in printed
     assert "haiku" in printed and "8→12" in printed
+
+
+def test_console_output_renders_thought_dim(capsys):
+    ConsoleOutput().agent("я думаю", is_thought=True)  # v0.10: a surfaced inner thought
+    printed = capsys.readouterr().out
+    assert "думка: я думаю" in printed and "Agnika:" not in printed  # marked, not a normal reply
 
 
 def test_run_routes_turn_through_output_port(monkeypatch, tmp_path):

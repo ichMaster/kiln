@@ -25,6 +25,7 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import queue
+import random
 import sys
 import threading
 import time
@@ -54,6 +55,7 @@ from .config import (
     THINK_HINTS,
     THINK_THRESHOLD,
     THOUGHT_COOLDOWN,
+    THOUGHT_VISIBLE_EVERY,
     THOUGHTS_ENABLED,
     TICK_SECONDS,
     TIMEZONE,
@@ -172,6 +174,12 @@ def select_self_trigger(state: State, tg: TriggerBook) -> str | None:
     need name when it crosses its threshold this tick, else None. WHICH brain answers is a separate
     choice (reach_out_branch). Hysteresis + SELF_COOLDOWN silent ticks after firing."""
     return _crossing_trigger(state, tg, REACH_OUT_NEED, SELF_COOLDOWN)
+
+
+def _thought_visible(every: int) -> bool:
+    """Whether a freshly formed thought surfaces in the chat — ~1/`every` via the stdlib RNG
+    (seedable / monkeypatchable in tests). `every <= 0` → never shown."""
+    return every > 0 and random.random() < (1.0 / every)
 
 
 def select_thought_trigger(state: State, tg: TriggerBook) -> str | None:
@@ -470,7 +478,13 @@ def run(
         apply_satiation(state, "thought")  # the thought discharges «незібраність»
         if not text:
             return None
-        thought = add_thought(store, text, started, _now().isoformat(timespec="seconds"))
+        shown = _thought_visible(THOUGHT_VISIBLE_EVERY)  # ~1/M -> surface it in the chat
+        thought = add_thought(
+            store, text, started, _now().isoformat(timespec="seconds"), shown=shown
+        )
+        if shown:
+            output.agent(text, is_thought=True)  # dim / «думка:»
+            history.append(turn(ROLE_BOT, text))  # a REAL turn — she remembers voicing it
         save_store(store)
         return thought
 

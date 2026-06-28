@@ -22,10 +22,23 @@ class TuiOutput:
         return
 
     def agent(
-        self, text: str, *, is_self: bool = False, lead: bool = False, model: str | None = None
+        self,
+        text: str,
+        *,
+        is_self: bool = False,
+        lead: bool = False,
+        model: str | None = None,
+        is_thought: bool = False,
     ) -> None:
         self._bridge.emit(
-            {"kind": "agent", "text": text, "is_self": is_self, "lead": lead, "model": model}
+            {
+                "kind": "agent",
+                "text": text,
+                "is_self": is_self,
+                "lead": lead,
+                "model": model,
+                "is_thought": is_thought,
+            }
         )
 
     def usage(self, usage: dict | None, latency: float | None = None) -> None:

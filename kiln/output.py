@@ -25,9 +25,16 @@ class Output(Protocol):
         ...
 
     def agent(
-        self, text: str, *, is_self: bool = False, lead: bool = False, model: str | None = None
+        self,
+        text: str,
+        *,
+        is_self: bool = False,
+        lead: bool = False,
+        model: str | None = None,
+        is_thought: bool = False,
     ) -> None:
-        """Agent reply (is_self — self-initiated; lead — blank line before; model — the brain)."""
+        """Agent reply (is_self — self-initiated; lead — blank line before; model — the brain;
+        is_thought — a surfaced inner thought, v0.10, rendered dim / «думка:»)."""
         ...
 
     def usage(self, usage: dict | None, latency: float | None = None) -> None:
@@ -50,10 +57,19 @@ class ConsoleOutput:
         print("\n" + _c(f"you: {text}", USER_COLOR))
 
     def agent(
-        self, text: str, *, is_self: bool = False, lead: bool = False, model: str | None = None
+        self,
+        text: str,
+        *,
+        is_self: bool = False,
+        lead: bool = False,
+        model: str | None = None,
+        is_thought: bool = False,
     ) -> None:
         # The console keeps the per-turn tech line (print_tech) for the model/tokens, so the
         # label stays plain here; `model` is honoured by the TUI label instead.
+        if is_thought:  # v0.10: a surfaced inner thought — dim, marked «думка:»
+            print("\n" + _c(f"думка: {text}", NOTICE_COLOR))
+            return
         label = f"{BOT_NAME} (self)" if is_self else BOT_NAME
         nl = "\n" if (is_self or lead) else ""  # self-initiated/"fresh" reply — with an indent
         print(nl + _c(f"{label}: {text}", BOT_COLOR))
