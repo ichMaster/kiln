@@ -316,8 +316,10 @@ fixed); `MOOD_AWARENESS` / `BIORHYTHM` toggle it; it's **deterministic** given a
 birth; **local-only**, no external calls.
 
 ### 0.10 Inner thoughts — internal monologue (moved up from v2.4) — ⬜
-**Goal:** give Agnika an **inner monologue** — a new **`самозаглиблення`** (reflection) need that, on
-crossing its threshold, makes her **think a private thought** (cheap **Haiku**, like chat). Thoughts are
+**Goal:** give Agnika an **inner monologue** — a new **`незібраність`** (reflection) need that, on
+crossing its threshold, makes her **think a private thought** (cheap **Haiku**, like chat). The need
+names the felt **pressure** (like 0.9's самотність/нудьга): high = thoughts scattered, she's pulled to
+gather them; the thought processes it and **satiates** it (low = collected). Thoughts are
 **internal by default** (not shown), **saved to `.kiln/store.json`**, and the **last N (cross-session)** ride
 in a `## Думки` system-prompt section so her inner life carries forward. **Randomly ~1 in M** a thought
 **surfaces in the chat** (marked «думка:») and **enters the conversation as a real turn** (she remembers
@@ -325,7 +327,8 @@ voicing it). A `/thoughts` command shows them; generating a thought **satiates**
 thought prompt sees her `## Настрій` mood, so thoughts reflect her felt state. Cheap-first (Haiku + cooldown),
 local. *(A deeper always-on inner-voice loop coupled to plans stays a later v2 extension — cf. 2.2 Plans.)*
 **Tasks:**
-- **Reflection need + trigger.** Add a `reflection` need (Ukrainian label «самозаглиблення») to `DRIFT` (slow
+- **Reflection need + trigger.** Add a `reflection` need (Ukrainian label «незібраність» — the felt
+  pressure; high = scattered, low = collected, so it matches the no-inversion mood labels) to `DRIFT` (slow
   upward drift) and `NEED_TRIGGERS` (`threshold`, `action: "thought"`). A `select_thought_trigger` (parallel
   to `select_self_trigger`) fires it with the same **hysteresis + cooldown** via the `TriggerBook`. Loop
   priority becomes **user input > reach-out (connection) > thought (reflection) > idle** — a thought fires
@@ -359,7 +362,7 @@ local. *(A deeper always-on inner-voice loop coupled to plans stays a later v2 e
   lists them; store round-trips with `thoughts` + migration; `apply_satiation('thought', …)` discharges
   `reflection`; `build_system` places `## Думки` separate from the rest; `THOUGHTS_ENABLED` toggles — all
   deterministic (seeded RNG, fixed clock, **mock brain, zero paid calls**).
-**DoD:** a new `самозаглиблення` (reflection) need drifts and, on crossing, makes Agnika **think** via Haiku;
+**DoD:** a new `незібраність` (reflection) need drifts and, on crossing, makes Agnika **think** via Haiku;
 the thought is **hidden by default**, **satiates** the need, is **saved to `.kiln/store.json`**, and feeds a
 `## Думки` section with the **last N cross-session** thoughts; **randomly ~1/M** a thought **surfaces in chat**
 (marked) **and becomes a real conversation turn**; `/thoughts` shows them; `THOUGHTS_ENABLED` / N / M / cooldown
@@ -475,7 +478,7 @@ memory now so the hub is additive.
 **DoD:** the agent recalls durable facts and impressions, scoped per agent/user.
 
 ### 2.4 Inner monologue — moved to 0.10 ⤴
-The internal-monologue **baseline** shipped early as **0.10** (a `самозаглиблення` need →
+The internal-monologue **baseline** shipped early as **0.10** (a `незібраність` need →
 Haiku thoughts, `## Думки` in the prompt, `thoughts` in the store, `/thoughts`, random
 surfacing-as-a-turn). What stays for v2: a deeper **always-on inner-voice loop** that
 reflects between turns, **updates plans/mood**, and decides whether to speak (Lumi
