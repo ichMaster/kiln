@@ -31,6 +31,7 @@ DEFAULT_MOOD = {
         "novelty": {"label": "нудьга", "cues": {}},
         "rest": {"label": "втома", "cues": {}},
         "intensity": {"label": "напруга", "cues": {}},
+        "reflection": {"label": "незібраність", "cues": {}},
     },
     "biorhythm": {
         "periods": {"physical": 23, "emotional": 28, "intellectual": 33},

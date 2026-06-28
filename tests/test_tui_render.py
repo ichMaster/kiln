@@ -11,11 +11,18 @@ from tui.render import (
     agent_label,
     fmt_tok,
     need_color,
+    need_label,
     needs_panel_lines,
     short_model,
     status_line1,
     status_line2,
 )
+
+
+def test_need_label_includes_reflection():
+    assert need_label("reflection") == "незібраність"  # v0.10 need in the TUI panel
+    assert need_label("connection") == "самотність"
+    assert need_label("unknown") == "unknown"  # raw key fallback
 
 
 def _snap(**over):

@@ -83,6 +83,20 @@ def test_mood_block_missing_need_is_zero():
     assert "нудьга 0.00 — низька" in block  # absent need -> 0.0
 
 
+def test_mood_block_renders_reflection_with_a_cue_per_band():
+    # v0.10: the reflection need «незібраність» is registered in state/mood.json
+    bio = {"physical": 0.0, "emotional": 0.0, "intellectual": 0.0}
+    cases = {
+        0.10: "зібрана, ясно в голові",  # низька
+        0.50: "думки трохи розбігаються",  # помірна
+        0.72: "думки врозтіч",  # висока
+        0.95: "у голові безлад",  # дуже висока
+    }
+    for level, cue in cases.items():
+        block = mood_block({"reflection": level}, bio)
+        assert f"незібраність {level:.2f}" in block and cue in block
+
+
 # --- mood config loaded from state/mood.json ---
 
 
