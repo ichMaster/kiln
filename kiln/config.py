@@ -156,6 +156,8 @@ USAGE_REPORT = os.environ.get("USAGE_REPORT", "1") == "1"
 USER_LOCATION = os.environ.get("USER_LOCATION", "")
 # Optional IANA timezone for the world clock (e.g. "Europe/Kyiv"); empty = the machine's local time.
 TIMEZONE = os.environ.get("TIMEZONE", "")
+# How many recent turns go into the `## Останні повідомлення` block (timestamped); 0 = off.
+RECENT_MESSAGES = int(os.environ.get("RECENT_MESSAGES", "10"))
 
 # Tools/skills allowed on the reasoning branch (example).
 DEEP_TOOLS = ["Read", "Write", "Bash"]

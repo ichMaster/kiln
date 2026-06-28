@@ -11,8 +11,12 @@ from __future__ import annotations
 
 import datetime as _dt
 
+from .history import ROLE_BOT, ROLE_USER
+
 # Ukrainian names (persona layer). Weekday index matches datetime.weekday() (Mon=0).
 _WEEKDAYS = ["понеділок", "вівторок", "середа", "четвер", "п'ятниця", "субота", "неділя"]
+_WEEKDAYS_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"]
+_ROLE_LABEL = {ROLE_USER: "Користувач", ROLE_BOT: "Ти"}
 _MONTHS = [
     "січня", "лютого", "березня", "квітня", "травня", "червня",
     "липня", "серпня", "вересня", "жовтня", "листопада", "грудня",
@@ -59,3 +63,31 @@ def world_now(now: _dt.datetime, location: str = "") -> str:
     if location.strip():
         head += f" {location.strip()}."
     return f"{head}\nОрієнтуйся на час доби: {_RHYTHM[part]}."
+
+
+def recent_timed(history: list[dict], n: int, now: _dt.datetime) -> str:
+    """The last `n` turns as a timestamped timeline — `[Сб 11:52] Користувач: …` / `[11:55] Ти: …`.
+    The weekday prefix shows only when the day changes (from the previous line, starting at `now`'s
+    day — so same-day-as-now lines show just the time, since `## Зараз` already gives today's date).
+    Turns without a parseable `at` show no timestamp. Empty / `n <= 0` → "". Pure (now injected)."""
+    if n <= 0 or not history:
+        return ""
+    lines = []
+    prev_day = now.date()
+    for t in history[-n:]:
+        who = _ROLE_LABEL.get(t.get("role"), t.get("role") or "?")
+        text = (t.get("text") or "").strip()
+        stamp = ""
+        at = t.get("at")
+        try:
+            d = _dt.datetime.fromisoformat(at) if at else None
+        except ValueError:
+            d = None
+        if d:
+            if d.date() != prev_day:
+                stamp = f"[{_WEEKDAYS_SHORT[d.weekday()]} {d:%H:%M}] "
+                prev_day = d.date()
+            else:
+                stamp = f"[{d:%H:%M}] "
+        lines.append(f"{stamp}{who}: {text}")
+    return "\n".join(lines)
