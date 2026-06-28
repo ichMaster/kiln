@@ -10,14 +10,20 @@ from __future__ import annotations
 
 import json
 
-from kiln.store import add_facts, empty_store, load_store, save_store
+from kiln.store import add_facts, add_thought, empty_store, load_store, save_store
 
-STORE_KEYS = {"sessions", "messages", "summaries", "facts"}
+STORE_KEYS = {"sessions", "messages", "summaries", "facts", "thoughts"}
 
 
 def test_empty_store_shape():
     assert set(empty_store()) == STORE_KEYS
-    assert empty_store() == {"sessions": [], "messages": {}, "summaries": [], "facts": []}
+    assert empty_store() == {
+        "sessions": [],
+        "messages": {},
+        "summaries": [],
+        "facts": [],
+        "thoughts": [],
+    }
 
 
 def test_missing_file_loads_fresh(tmp_path):
@@ -37,6 +43,15 @@ def test_round_trip_preserves_all_sections(tmp_path):
                 "first_seen": "2026-06-27",
                 "last_seen": "2026-06-27",
                 "source_session": "s1",
+            }
+        ],
+        "thoughts": [
+            {
+                "id": "t1",
+                "text": "тихо",
+                "at": "2026-06-27T20:00:00",
+                "session": "s1",
+                "shown": False,
             }
         ],
     }
@@ -117,6 +132,31 @@ def test_add_facts_skips_empty_and_returns_count():
     store = empty_store()
     assert add_facts(store, ["", "   ", "реальний факт"], "s1", "x") == 1
     assert len(store["facts"]) == 1 and store["facts"][0]["text"] == "реальний факт"
+
+
+def test_add_thought_appends_and_round_trips(tmp_path):
+    store = empty_store()
+    t = add_thought(store, "  думки врозтіч  ", "s1", "2026-06-28T19:00:00")
+    assert t == {
+        "id": "t1",
+        "text": "думки врозтіч",  # stripped
+        "at": "2026-06-28T19:00:00",
+        "session": "s1",
+        "shown": False,
+    }
+    add_thought(store, "озвучена", "s1", "2026-06-28T19:01:00", shown=True)
+    assert [x["id"] for x in store["thoughts"]] == ["t1", "t2"]  # stable ids, order preserved
+    assert store["thoughts"][1]["shown"] is True
+    p = tmp_path / "store.json"
+    save_store(store, p)
+    assert load_store(p)["thoughts"] == store["thoughts"]  # round-trips
+
+
+def test_pre_v010_store_without_thoughts_is_healed(tmp_path):
+    """A pre-v0.10 store (no `thoughts` key) loads forward, healed to thoughts: []."""
+    p = tmp_path / "store.json"
+    p.write_text(json.dumps({"facts": [], "summaries": []}), encoding="utf-8")
+    assert load_store(p)["thoughts"] == []
 
 
 def p_b_t(tmp_path):

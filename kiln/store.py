@@ -5,7 +5,8 @@ One JSON file holds the whole cross-session record, mirroring Lumi's `.lumi/stor
   - `sessions`:  ``[{id, started_at, ended_at, mode, turns}]`` — one per closed session;
   - `messages`:  ``{session_id: [{role, text}, …]}`` — the raw turns (the RAG corpus);
   - `summaries`: ``[{session_id, stamp, text}]`` — one summary per session;
-  - `facts`:     ``[{id, text, first_seen, last_seen, source_session}]`` — durable user facts.
+  - `facts`:     ``[{id, text, first_seen, last_seen, source_session}]`` — durable user facts;
+  - `thoughts`:  ``[{id, text, at, session, shown}]`` — Agnika's inner monologue (v0.10).
 
 Writes are **atomic** (temp file + ``os.replace``) and keep a ``.bak`` of the previous good
 file, so a crash mid-write never corrupts the store. A corrupt `store.json` is recovered from
@@ -24,8 +25,8 @@ from .config import STORE_FILE
 
 
 def empty_store() -> dict:
-    """A fresh, empty store with all four sections."""
-    return {"sessions": [], "messages": {}, "summaries": [], "facts": []}
+    """A fresh, empty store with all sections."""
+    return {"sessions": [], "messages": {}, "summaries": [], "facts": [], "thoughts": []}
 
 
 def _norm(text: str) -> str:
@@ -65,6 +66,22 @@ def add_facts(store: dict, texts, session_id: str, stamp: str) -> int:
     return added
 
 
+def add_thought(store: dict, text: str, session: str, at: str, *, shown: bool = False) -> dict:
+    """Append an inner thought to the store's `thoughts` as `{id, text, at, session, shown}` — a
+    stable id (`t<n>`), `at` passed in for determinism, `shown` = was it surfaced in the chat.
+    Returns the new record (the order is preserved)."""
+    thoughts = store.setdefault("thoughts", [])
+    thought = {
+        "id": f"t{len(thoughts) + 1}",
+        "text": (text or "").strip(),
+        "at": at,
+        "session": session,
+        "shown": bool(shown),
+    }
+    thoughts.append(thought)
+    return thought
+
+
 def _read(path: Path) -> dict | None:
     """Parse a store file; None if missing or not a valid JSON object."""
     try:
@@ -98,6 +115,8 @@ def load_store(path: Path = STORE_FILE) -> dict:
         store["summaries"] = data["summaries"]
     if isinstance(data.get("facts"), list):  # v0.5 stores have no `facts` — healed to []
         store["facts"] = data["facts"]
+    if isinstance(data.get("thoughts"), list):  # pre-v0.10 stores have no `thoughts` — healed to []
+        store["thoughts"] = data["thoughts"]
     return store
 
 

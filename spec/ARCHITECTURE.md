@@ -179,10 +179,12 @@ multi-agent is additive, not a rewrite:
   clock and the needs stay live; the world timeline is the **previous session's** tail (current-session
   turns already ride in the messages array / transcript) and the biorhythm is computed **once at
   session start** (static for the session).
-- **Store (v0.5–0.6):** `.kiln/store.json` = `{sessions: [{id, started_at, ended_at, mode, turns}],
+- **Store (v0.5–0.10):** `.kiln/store.json` = `{sessions: [{id, started_at, ended_at, mode, turns}],
   messages: {session_id: [{role, text, at}]}, summaries: [{session_id, stamp, text}],
-  facts: [{id, text, first_seen, last_seen, source_session}]}`, via `store.load_store`/`save_store`
-  (atomic write + `.bak`; corrupt → recover from `.bak` or fresh; missing sections healed).
+  facts: [{id, text, first_seen, last_seen, source_session}],
+  thoughts: [{id, text, at, session, shown}]}`, via `store.load_store`/`save_store` (atomic write +
+  `.bak`; corrupt → recover from `.bak` or fresh; missing sections healed). `thoughts` (v0.10) is
+  Agnika's inner monologue, appended by `store.add_thought`.
 - **Usage ledger (v0.7):** `.kiln/usage-ledger.jsonl` — one append-only JSON line per closed
   session: `{session_id, model, started_at, ended_at, turns, input, output, cache_read,
   cache_write, cache_ttl, cost_usd, cli_calls, by_model}`, via `ledger.append_session`/`read_ledger`.
