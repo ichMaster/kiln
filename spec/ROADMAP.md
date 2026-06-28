@@ -219,6 +219,45 @@ regenerates with the overall summary, per-bucket cost breakdown (cache-aware), a
 by-month/week/day + recent-sessions tables (Lumi layout); per-turn and per-session token +
 `$` stay visible live; `/usage` shows the session cost and report path.
 
+### 0.8 World & temporal awareness — time / place + recent timed messages — ⬜
+**Goal:** give Agnika awareness of the real world and the conversation's tempo — the current
+**time, date, weekday, time-of-day, season, and the user's location**, plus the **last N exchanges,
+each tagged with a precise timestamp** — injected into the system prompt of every branch, refreshed
+each session start (alongside the facts digest). A "clock" so her replies fit the moment (brighter
+in the morning, quieter and warmer late at night), a sense of place, and a feel for how recently
+things were said (gaps, a late-night ping). Computed **locally** — no external calls; weather /
+calendar / news are a later, tool-backed layer (out of scope here). The sections are short
+**Ukrainian** text with a rhythm cue (the system prompt is the persona layer).
+**Tasks:**
+- **World-now builder.** A pure `world_now(now, location) -> str` (new `kiln/world.py`): a short
+  Ukrainian paragraph — weekday + date, time + time-of-day (ранок/день/вечір/ніч), season, location,
+  and a one-line rhythm cue. **Deterministic** — takes an injected `now`, so unit tests pass a fixed
+  clock (no real `datetime.now()` in the pure function).
+- **Timestamp each turn.** When a turn is appended to `history`, attach an ISO timestamp — the item
+  becomes `{role, text, at}`. `to_messages`/`to_transcript` ignore `at` (back-compatible); the store's
+  `messages` persist it (a richer transcript for RAG). *(Seam: the history/store turn shape →
+  ARCHITECTURE update + contract test in the same issue.)*
+- **Recent timed-messages block.** A pure builder + a `## Останні повідомлення` section: the last
+  `RECENT_MESSAGES` turns, each as `[Сб 11:52] Користувач: …` / `[11:55] Ти: …` (the date shown when
+  it changes), so the model sees the recent timeline with precise time/date. Deterministic from the
+  turns' `at` stamps; turns without `at` degrade gracefully.
+- **Config.** `USER_LOCATION` (+ optional `TIMEZONE`), `RECENT_MESSAGES` (N, default e.g. 10; 0 = off),
+  and `WORLD_AWARENESS` (master on/off for the section) — all `.env`-overridable.
+- **World + messages → system prompt.** Extend `build_system(canon, memory, facts="", world="")` with
+  the `## Зараз` and `## Останні повідомлення` sections, **separate** from canon / memory / facts;
+  empty → the v0.7 output (back-compatible). `run()` start composes them (per-turn refresh so the clock
+  advances mid-session is a stretch/follow-up).
+- **Tests.** `world_now` formats for fixture times (morning/day/evening/night + season boundaries,
+  ±location); the timed block renders the last N turns with timestamps (and the date-change rule);
+  `build_system` places both sections, separate from the rest, with `world=""` v0.7-equivalent;
+  disabled → no section; appended turns carry an `at` stamp — all deterministic (a fixed clock, mock
+  brain, **zero paid calls**).
+**DoD:** every new session's system prompt carries a `## Зараз` section (date / weekday / time /
+time-of-day / season + location, a short Ukrainian paragraph with a rhythm cue) **and** a
+`## Останні повідомлення` section with the last `RECENT_MESSAGES` turns each precisely timestamped;
+turns are stamped with `at`; it's deterministic given an injected clock; `WORLD_AWARENESS` /
+`RECENT_MESSAGES` toggle and size it; no external calls in the core (weather / calendar deferred).
+
 ## v1 — Engine (the tick-server & hub foundation)
 
 ### 1.1 Tick-server: engine = WS/HTTP server, clients attach — ⬜
