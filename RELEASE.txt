@@ -1,6 +1,17 @@
 kiln — Release Notes
 ====================
 
+Version 0.9.0 (2026-06-28)
+---------------------------
+- Mood & biorhythm (v0.9): every message's system prompt carries a per-turn ## Настрій section
+- Needs shown as felt-pressure labels (самотність / нудьга / втома / напруга) + a band (низька/помірна/висока) + a behavioural cue (how to act at that level) — no inversion
+- Per-day biorhythm (physical/emotional/intellectual sine cycles) computed once at session start from Agnika's canon birthday, static for the session, with a cue per cycle
+- Bands, labels, and cues live in editable state/mood.json (DEFAULT_MOOD fallback)
+- build_system gains the mood layer; new .env knobs MOOD_AWARENESS / BIORHYTHM / AGENT_BIRTH
+- /mood command shows the ## Настрій block from the prompt; TUI needs panel shows the Ukrainian names
+- Fix: strip the agent's echoed name (**Агніка:**) from replies (mirrors the timeline labels)
+- Calibration: slower intensity drift + gentler idle drift
+
 Version 0.8.2 (2026-06-28)
 ---------------------------
 - Canon: adopted the full Agnika persona — replaced the compressed canon with the full unabridged sections (Хто ти, Звідки ти, Темперамент, Цінності, Голос, Як ти ставишся до людини, Правила поведінки, ЗАБОРОНИ, Як тече розмова + full natal chart); emotion palette / motifs / creative-self stay in the agnika.md source
