@@ -13,7 +13,7 @@ client (console today, TUI/web later) receives the result. handle_command() retu
 from __future__ import annotations
 
 from .config import USAGE_REPORT, USAGE_REPORT_FILE
-from .history import to_messages
+from .history import role_label, to_messages
 from .output import Output
 from .report import write_report
 
@@ -74,7 +74,7 @@ def handle_command(
         if not msgs:
             output.notice("  (no messages yet)")
         for m in msgs:
-            output.notice(f"  [{m['role']}] {m['content']}")
+            output.notice(f"  [{role_label(m['role'])}] {m['content']}")
 
     elif cmd == "usage":
         # Session-so-far tokens + estimated cost + the report path (the v0.7 cost visibility).

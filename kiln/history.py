@@ -10,8 +10,20 @@ from __future__ import annotations
 
 import datetime as _dt
 
+from .config import AGENT_NAME, USER_NAME
+
 ROLE_USER = "user"
 ROLE_BOT = "assistant"
+
+
+def role_label(role: str) -> str:
+    """Speaker name for a turn's role in transcripts / timeline / `/prompt` (USER_NAME /
+    AGENT_NAME; falls back to the raw role for anything else)."""
+    if role == ROLE_USER:
+        return USER_NAME
+    if role == ROLE_BOT:
+        return AGENT_NAME
+    return role
 
 
 def turn(role: str, text: str, at: str | None = None) -> dict:
@@ -30,6 +42,5 @@ def to_messages(history: list[dict]) -> list[dict]:
 
 
 def to_transcript(history: list[dict]) -> str:
-    """History -> a plain text transcript for embedding into the CLI prompt."""
-    label = {ROLE_USER: "Користувач", ROLE_BOT: "Ти"}
-    return "\n".join(f"{label.get(h['role'], h['role'])}: {h['text']}" for h in history)
+    """History -> a plain text transcript for embedding into the CLI prompt (named speakers)."""
+    return "\n".join(f"{role_label(h['role'])}: {h['text']}" for h in history)

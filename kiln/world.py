@@ -11,12 +11,11 @@ from __future__ import annotations
 
 import datetime as _dt
 
-from .history import ROLE_BOT, ROLE_USER
+from .history import role_label
 
 # Ukrainian names (persona layer). Weekday index matches datetime.weekday() (Mon=0).
 _WEEKDAYS = ["понеділок", "вівторок", "середа", "четвер", "п'ятниця", "субота", "неділя"]
 _WEEKDAYS_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"]
-_ROLE_LABEL = {ROLE_USER: "Користувач", ROLE_BOT: "Ти"}
 _MONTHS = [
     "січня", "лютого", "березня", "квітня", "травня", "червня",
     "липня", "серпня", "вересня", "жовтня", "листопада", "грудня",
@@ -75,7 +74,7 @@ def recent_timed(history: list[dict], n: int, now: _dt.datetime) -> str:
     lines = []
     prev_day = now.date()
     for t in history[-n:]:
-        who = _ROLE_LABEL.get(t.get("role"), t.get("role") or "?")
+        who = role_label(t.get("role") or "?")
         text = (t.get("text") or "").strip()
         stamp = ""
         at = t.get("at")

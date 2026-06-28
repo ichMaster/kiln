@@ -73,14 +73,20 @@ def test_clear_clears_history_and_notifies():
     assert any("[clear]" in n for n in out.notices)
 
 
-def test_prompt_shows_system_and_messages():
+def test_prompt_shows_system_and_messages(monkeypatch):
+    import kiln.history as h
+
+    monkeypatch.setattr(h, "USER_NAME", "Віталік")  # named speakers in /prompt
+    monkeypatch.setattr(h, "AGENT_NAME", "Агніка")
     out = RecordingOutput()
     history = [{"role": "user", "text": "привіт"}, {"role": "assistant", "text": "вітаю"}]
     action = handle_command("/prompt", State(needs={}), history, "SYSTEM-PROMPT", False, out)
     assert action == "handled"
     joined = "\n".join(out.notices)
     assert "SYSTEM-PROMPT" in joined  # the system prompt is shown
-    assert "привіт" in joined and "вітаю" in joined  # both messages are shown
+    assert (
+        "[Віталік] привіт" in joined and "[Агніка] вітаю" in joined
+    )  # named, not [user]/[assistant]
     assert "messages (2)" in joined  # with the count
 
 

@@ -161,6 +161,10 @@ RECENT_MESSAGES = int(os.environ.get("RECENT_MESSAGES", "10"))
 # Master switch for the world block (## Зараз + ## Повідомлення з минулої сесії); 0 = off.
 WORLD_AWARENESS = os.environ.get("WORLD_AWARENESS", "1") == "1"
 
+# Speaker names used to label turns in transcripts / the timeline / `/prompt` (persona layer).
+USER_NAME = os.environ.get("USER_NAME", "Користувач")
+AGENT_NAME = os.environ.get("AGENT_NAME", "Агніка")
+
 # Tools/skills allowed on the reasoning branch (example).
 DEEP_TOOLS = ["Read", "Write", "Bash"]
 DEEP_SKILLS: list[str] = []  # e.g. ["search", "summarize"]

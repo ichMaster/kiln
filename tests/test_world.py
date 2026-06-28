@@ -4,8 +4,17 @@ from __future__ import annotations
 
 import datetime as dt
 
+import pytest
+
+import kiln.history as _h
 import kiln.world as w
 from kiln.world import world_now
+
+
+@pytest.fixture(autouse=True)
+def _pin_names(monkeypatch):
+    monkeypatch.setattr(_h, "USER_NAME", "Користувач")  # speaker labels -> deterministic
+    monkeypatch.setattr(_h, "AGENT_NAME", "Агніка")
 
 
 def _at(y, m, d, h, mi=0):
@@ -67,7 +76,7 @@ def test_recent_timed_same_day_shows_time_only():
     ]
     out = recent_timed(h, 10, now)
     assert "[11:50] Користувач: привіт" in out
-    assert "[11:51] Ти: вітаю" in out
+    assert "[11:51] Агніка: вітаю" in out
     assert "Сб" not in out and "Нд" not in out  # same day as `now` -> no weekday prefix
 
 
@@ -79,7 +88,7 @@ def test_recent_timed_day_change_shows_weekday():
     ]
     out = recent_timed(h, 10, now)
     assert "[Сб 22:00] Користувач: вчора" in out  # day differs from now -> weekday
-    assert "[Нд 09:00] Ти: сьогодні" in out  # day changed from the previous line -> weekday
+    assert "[Нд 09:00] Агніка: сьогодні" in out  # day changed from the previous line -> weekday
 
 
 def test_recent_timed_caps_to_last_n():
