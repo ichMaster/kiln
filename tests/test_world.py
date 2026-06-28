@@ -111,9 +111,9 @@ def test_world_block_has_now_and_messages():
     h = [turn(ROLE_USER, "привіт", at="2026-06-28T11:50:00")]
     b = world_block(now, "Львів", h, 10)
     assert "## Зараз" in b and "Львів" in b
-    assert "## Останні повідомлення" in b and "привіт" in b
+    assert "## Повідомлення з минулої сесії" in b and "привіт" in b
 
 
 def test_world_block_no_history_is_only_now():
     b = world_block(_at(2026, 6, 28, 12), "Львів", [], 10)
-    assert "## Зараз" in b and "## Останні повідомлення" not in b  # timeline empty at start
+    assert "## Зараз" in b and "## Повідомлення з минулої сесії" not in b  # timeline empty at start

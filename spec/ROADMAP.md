@@ -238,7 +238,7 @@ tool-backed layer (out of scope here). The sections are short **Ukrainian** text
   becomes `{role, text, at}`. `to_messages`/`to_transcript` ignore `at` (back-compatible); the store's
   `messages` persist it (a richer transcript for RAG). *(Seam: the history/store turn shape →
   ARCHITECTURE update + contract test in the same issue.)*
-- **Recent timed-messages block.** A pure builder + a `## Останні повідомлення` section: the last
+- **Recent timed-messages block.** A pure builder + a `## Повідомлення з минулої сесії` section: the last
   `RECENT_MESSAGES` turns, each as `[Сб 11:52] Користувач: …` / `[11:55] Ти: …` (the date shown when
   it changes), so the model sees the recent timeline with precise time/date. Deterministic from the
   turns' `at` stamps; turns without `at` degrade gracefully.
@@ -247,7 +247,7 @@ tool-backed layer (out of scope here). The sections are short **Ukrainian** text
   for `USER_LOCATION` is empty (general); **`.env` ships pre-seeded to the user's location (`Львів`)**,
   derived from the stored location fact, so the section works out of the box without manual setup.
 - **World + messages → system prompt.** Extend `build_system(canon, memory, facts="", world="")` with
-  the `## Зараз` and `## Останні повідомлення` sections, **separate** from canon / memory / facts;
+  the `## Зараз` and `## Повідомлення з минулої сесії` sections, **separate** from canon / memory / facts;
   empty → the v0.7 output (back-compatible). `run()` start composes them (per-turn refresh so the clock
   advances mid-session is a stretch/follow-up).
 - **Tests.** `world_now` formats for fixture times (morning/day/evening/night + season boundaries,
@@ -257,7 +257,7 @@ tool-backed layer (out of scope here). The sections are short **Ukrainian** text
   brain, **zero paid calls**).
 **DoD:** every new session's system prompt carries a `## Зараз` section (date / weekday / time /
 time-of-day / season + location, a short Ukrainian paragraph with a rhythm cue) **and** a
-`## Останні повідомлення` section with the last `RECENT_MESSAGES` turns each precisely timestamped;
+`## Повідомлення з минулої сесії` section with the last `RECENT_MESSAGES` turns each precisely timestamped;
 turns are stamped with `at`; it's deterministic given an injected clock; `WORLD_AWARENESS` /
 `RECENT_MESSAGES` toggle and size it; no external calls in the core (weather / calendar deferred).
 

@@ -330,7 +330,7 @@ def test_run_turn_timestamps_history_and_store(monkeypatch, tmp_path):
 
 
 def test_run_injects_world_block_per_turn(monkeypatch, tmp_path):
-    """KILN-034: run() composes the world block per turn — live ## Зараз + the PRIOR session's tail."""
+    """KILN-034: run() composes the world block per turn — live ## Зараз + the prior session."""
     import kiln.engine as eng
     from kiln import store as kstore
 
@@ -376,7 +376,9 @@ def test_run_injects_world_block_per_turn(monkeypatch, tmp_path):
         output=StatusRecorder(),
     )
     assert "## Зараз" in seen[0] and "Львів" in seen[0]  # the live clock
-    assert "## Останні повідомлення" in seen[0]  # the PRIOR session's tail (ready from turn 1)
+    assert (
+        "## Повідомлення з минулої сесії" in seen[0]
+    )  # the PRIOR session's tail (ready from turn 1)
     assert "вчора питав" in seen[0]  # from the previous session, not the current one
 
 

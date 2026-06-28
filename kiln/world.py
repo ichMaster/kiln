@@ -95,13 +95,13 @@ def recent_timed(history: list[dict], n: int, now: _dt.datetime) -> str:
 
 def world_block(now: _dt.datetime, location: str, history: list[dict], n: int) -> str:
     """The full world block for the system prompt: the `## Зараз` paragraph + the
-    `## Останні повідомлення` timeline. Each section is omitted when empty (the timeline is empty
-    at session start); `""` when both are. Pure (now injected)."""
+    `## Повідомлення з минулої сесії` timeline. Each section is omitted when empty (the timeline
+    is empty when there's no prior session); `""` when both are. Pure (now injected)."""
     parts = []
     nowtext = world_now(now, location)
     if nowtext.strip():
         parts.append("## Зараз\n" + nowtext)
     timed = recent_timed(history, n, now)
     if timed.strip():
-        parts.append("## Останні повідомлення\n" + timed)
+        parts.append("## Повідомлення з минулої сесії\n" + timed)
     return "\n\n".join(parts)

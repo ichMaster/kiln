@@ -402,7 +402,7 @@ def run(
         return _dt.datetime.now()
 
     def _system() -> str:
-        # v0.8: append the world block (## Зараз + ## Останні повідомлення) per turn — the clock
+        # v0.8: append the world block (## Зараз + the prior-session timeline) per turn — the clock
         # stays live; the timeline is the PRIOR session's tail (static). Off -> the static base.
         if not WORLD_AWARENESS:
             return base_system
