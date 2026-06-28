@@ -362,6 +362,36 @@ the thought is **hidden by default**, **satiates** the need, is **saved to `.kil
 configurable; deterministic under a seeded RNG + injected clock; cheap (Haiku) and cooldown-capped; no paid
 calls in tests.
 
+### 0.11 Curiosity — ask, don't mirror — ⬜
+**Goal:** a `curiosity` need (Ukrainian «цікавість») with a **low threshold (~0.5)** and a **very small
+drift**, so after a short warm-up she settles into a curious disposition. While curiosity is **over the
+threshold**, the system prompt of **every message** carries a short **provocation** that pushes Agnika to
+**ask real, specific questions and dig deeper instead of mirroring / paraphrasing** the user. Per-turn,
+Ukrainian, deterministic, local — like 0.9's mood, but a **behavioral nudge** rather than a status line.
+Curiosity does **not** self-trigger a separate message; it only colors how she answers.
+**Tasks:**
+- **Curiosity need.** Add `curiosity` to `DRIFT` with a **very small** upward step; a `CURIOSITY_THRESHOLD`
+  config constant (default **0.5**, `.env`-overridable). It does **not** go in `NEED_TRIGGERS` / the
+  `TriggerBook` (no self-message). Satiation is **light / optional** (a small discharge on engaged `deep` /
+  `tool` turns, so an intense exploratory stretch briefly sates it) — by default it trends up and **stays**
+  curious; the exact drift / satiation is a calibration detail.
+- **Curiosity provocation (prompt).** A pure `curiosity_nudge(curiosity, threshold) -> str` (in
+  `kiln/mood.py`): when `curiosity >= threshold`, a short Ukrainian `## Цікавість` line — e.g. *«Тобі зараз
+  цікаво. Постав живе, конкретне питання й копай глибше — не дзеркаль і не переказуй співрозмовника, веди
+  розмову вперед.»*; below threshold → "". Persona-layer text (config / `state/prompts.md`).
+- **Curiosity → system prompt.** `_system()` appends the nudge **per turn** when over threshold (curiosity
+  drifts each tick), separate from canon / memory / facts / world / mood; empty below threshold →
+  back-compatible. `CURIOSITY` master on/off.
+- **Config.** `CURIOSITY` (on/off), `CURIOSITY_THRESHOLD` (0.5), the Ukrainian nudge text (persona) — scalars
+  `.env`-overridable; curiosity's drift / (light) satiation live in the structured dicts in code.
+- **Tests.** Curiosity drift (and any satiation); `curiosity_nudge` is "" below the threshold and present
+  at / above it; `_system()` includes the `## Цікавість` line only when over threshold and `CURIOSITY` is on;
+  toggling off / a sub-threshold level → no line; deterministic — fixed needs, **mock brain, zero paid calls**.
+**DoD:** a `curiosity` («цікавість») need with a low threshold (~0.5) and a very small drift; while over the
+threshold, every message's system prompt carries a provocation to **ask questions and dig deeper rather than
+mirror** the user; it's a per-turn prompt nudge (no separate self-message); `CURIOSITY` / `CURIOSITY_THRESHOLD`
+configurable; deterministic; local — no external calls.
+
 ## v1 — Engine (the tick-server & hub foundation)
 
 ### 1.1 Tick-server: engine = WS/HTTP server, clients attach — ⬜
