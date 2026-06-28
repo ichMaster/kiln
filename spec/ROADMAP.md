@@ -242,7 +242,9 @@ calendar / news are a later, tool-backed layer (out of scope here). The sections
   it changes), so the model sees the recent timeline with precise time/date. Deterministic from the
   turns' `at` stamps; turns without `at` degrade gracefully.
 - **Config.** `USER_LOCATION` (+ optional `TIMEZONE`), `RECENT_MESSAGES` (N, default e.g. 10; 0 = off),
-  and `WORLD_AWARENESS` (master on/off for the section) — all `.env`-overridable.
+  and `WORLD_AWARENESS` (master on/off for the section) — all `.env`-overridable. The **code** default
+  for `USER_LOCATION` is empty (general); **`.env` ships pre-seeded to the user's location (`Львів`)**,
+  derived from the stored location fact, so the section works out of the box without manual setup.
 - **World + messages → system prompt.** Extend `build_system(canon, memory, facts="", world="")` with
   the `## Зараз` and `## Останні повідомлення` sections, **separate** from canon / memory / facts;
   empty → the v0.7 output (back-compatible). `run()` start composes them (per-turn refresh so the clock
