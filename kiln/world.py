@@ -91,3 +91,17 @@ def recent_timed(history: list[dict], n: int, now: _dt.datetime) -> str:
                 stamp = f"[{d:%H:%M}] "
         lines.append(f"{stamp}{who}: {text}")
     return "\n".join(lines)
+
+
+def world_block(now: _dt.datetime, location: str, history: list[dict], n: int) -> str:
+    """The full world block for the system prompt: the `## Зараз` paragraph + the
+    `## Останні повідомлення` timeline. Each section is omitted when empty (the timeline is empty
+    at session start); `""` when both are. Pure (now injected)."""
+    parts = []
+    nowtext = world_now(now, location)
+    if nowtext.strip():
+        parts.append("## Зараз\n" + nowtext)
+    timed = recent_timed(history, n, now)
+    if timed.strip():
+        parts.append("## Останні повідомлення\n" + timed)
+    return "\n\n".join(parts)

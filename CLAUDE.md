@@ -69,8 +69,9 @@ empty needs/prompts otherwise).
 reads `.env` from the repo root **before** the config constants are defined, so these can be set
 without touching code: `CHAT_MODEL`, `DEEP_MODEL`, `TICK_SECONDS`, `THINK_THRESHOLD`,
 `SELF_COOLDOWN`, `REST_WAKE`, `THINKING_TOKENS`, `FACTS_DIGEST_LINES`, `MAX_FACTS`,
-`FACTS_ENABLED`, `MEMORY_SUMMARIES`, `SUMMARY_SENTENCES`, `USAGE_REPORT` (plus `KILN_LIVE`,
-`ANTHROPIC_API_KEY` for live mode). It uses `os.environ.setdefault`,
+`FACTS_ENABLED`, `MEMORY_SUMMARIES`, `SUMMARY_SENTENCES`, `USAGE_REPORT`, `USER_LOCATION`,
+`TIMEZONE`, `RECENT_MESSAGES`, `WORLD_AWARENESS` (plus `KILN_LIVE`, `ANTHROPIC_API_KEY` for live
+mode). It uses `os.environ.setdefault`,
 so a real environment variable always wins over `.env`. `.env` is gitignored; the structured dict
 knobs (`DRIFT`/`SATIATION`/`NEED_TRIGGERS`) stay in code.
 

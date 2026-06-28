@@ -84,6 +84,21 @@ def test_build_system_facts_without_memory():
     assert "Довга пам'ять" not in system  # no memory section when memory is empty
 
 
+# --- world block -> system prompt (KILN-034) ---
+
+
+def test_build_system_appends_world_block_last():
+    system = mem.build_system("CANON", "MEM", "FACTS", "## Зараз\nсьогодні неділя")
+    assert "CANON" in system and "## Зараз\nсьогодні неділя" in system
+    assert system.index("## Facts about the user") < system.index("## Зараз")  # world comes last
+
+
+def test_build_system_empty_world_is_v07_backcompat():
+    assert mem.build_system("CANON", "MEM", "FACTS", "") == mem.build_system(
+        "CANON", "MEM", "FACTS"
+    )
+
+
 # --- MEMORY_SUMMARIES cap (how many summaries enter the prompt) ---
 
 

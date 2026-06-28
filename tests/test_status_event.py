@@ -329,6 +329,59 @@ def test_run_turn_timestamps_history_and_store(monkeypatch, tmp_path):
     assert all("at" in m and m["at"] for m in msgs)  # every stored turn carries an `at` stamp
 
 
+def test_run_injects_world_block_per_turn(monkeypatch, tmp_path):
+    """KILN-034: run() composes the live world block (## Зараз + ## Останні) per turn."""
+    import kiln.engine as eng
+
+    _isolate(monkeypatch, eng, tmp_path)
+    monkeypatch.setattr(eng, "load_canon", lambda *a, **k: "CANON")
+    monkeypatch.setattr(eng, "load_memory", lambda *a, **k: "")
+    monkeypatch.setattr(eng, "digest_facts", lambda *a, **k: "")
+    monkeypatch.setattr(eng, "USER_LOCATION", "Львів")
+    monkeypatch.setattr(eng, "WORLD_AWARENESS", True)
+    monkeypatch.setattr(eng, "RECENT_MESSAGES", 10)
+
+    seen = []
+
+    class RB(MockBrain):
+        def chat(self, history, system):
+            seen.append(system)
+            return super().chat(history, system)
+
+    eng.run(
+        ticks=4,
+        live=False,
+        channel=eng.ScriptedChannel({1: "привіт", 3: "ще"}),
+        brain=RB(),
+        output=StatusRecorder(),
+    )
+    assert "## Зараз" in seen[0] and "Львів" in seen[0]  # first turn: the clock is present
+    assert "## Останні повідомлення" in seen[-1]  # a later turn: the timeline has filled in
+
+
+def test_run_world_awareness_off_no_section(monkeypatch, tmp_path):
+    import kiln.engine as eng
+
+    _isolate(monkeypatch, eng, tmp_path)
+    monkeypatch.setattr(eng, "WORLD_AWARENESS", False)
+
+    seen = []
+
+    class RB(MockBrain):
+        def chat(self, history, system):
+            seen.append(system)
+            return super().chat(history, system)
+
+    eng.run(
+        ticks=2,
+        live=False,
+        channel=eng.ScriptedChannel({1: "привіт"}),
+        brain=RB(),
+        output=StatusRecorder(),
+    )
+    assert seen and "## Зараз" not in seen[0]  # disabled -> no world block
+
+
 def test_usage_report_off_skips_ledger_and_report(monkeypatch, tmp_path):
     """KILN-030: USAGE_REPORT=0 -> a session close writes no ledger line and no report."""
     import kiln.engine as eng

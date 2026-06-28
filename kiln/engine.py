@@ -40,6 +40,7 @@ from .config import (
     NEED_TRIGGERS,
     REACH_OUT_MODELS,
     REACH_OUT_NEED,
+    RECENT_MESSAGES,
     REST_MESSAGE,
     REST_WAKE,
     SATIATION,
@@ -49,8 +50,11 @@ from .config import (
     THINK_HINTS,
     THINK_THRESHOLD,
     TICK_SECONDS,
+    TIMEZONE,
     TOOL_HINTS,
     USAGE_REPORT,
+    USER_LOCATION,
+    WORLD_AWARENESS,
 )
 from .history import ROLE_BOT, ROLE_USER, turn
 from .ledger import append_session
@@ -69,6 +73,7 @@ from .output import ConsoleOutput, Output
 from .report import write_report
 from .stats import SessionStats
 from .store import add_facts, load_store, save_store
+from .world import world_block
 
 # === State ==================================================================
 
@@ -365,15 +370,34 @@ def run(
     canon = load_canon()  # persona/voice from state/canon.md
     memory = load_memory()  # long-term memory: summaries of past sessions
     facts = digest_facts(live)  # v0.6 long memory: N-line digest of durable user facts
-    system = build_system(canon, memory, facts)  # canon + memory summaries + facts digest
+    base_system = build_system(canon, memory, facts)  # static: canon + memory summaries + facts
     prompts = load_prompts()  # self-trigger prompts from state/prompts.md
     tg = TriggerBook()  # trigger hysteresis + cooldown
     stats = SessionStats()  # session token/turn/latency totals (for the status bar)
 
+    def _now() -> _dt.datetime:
+        # The world clock — TIMEZONE if set, else the machine's local time.
+        if TIMEZONE:
+            try:
+                from zoneinfo import ZoneInfo
+
+                return _dt.datetime.now(ZoneInfo(TIMEZONE))
+            except Exception:
+                pass
+        return _dt.datetime.now()
+
+    def _system() -> str:
+        # v0.8: append the LIVE world block (## Зараз + ## Останні повідомлення) per turn, so the
+        # clock advances and the timeline updates within a session. Off -> the static base.
+        if not WORLD_AWARENESS:
+            return base_system
+        world = world_block(_now(), USER_LOCATION, history, RECENT_MESSAGES)
+        return build_system(canon, memory, facts, world)
+
     def _turn(prompt: str, force: str | None = None, agent: str | None = None) -> dict:
         # One model turn, timed; folds tokens + latency into the session stats.
         t0 = time.monotonic()
-        out = respond(prompt, state, history, system, brain, force=force, agent=agent)
+        out = respond(prompt, state, history, _system(), brain, force=force, agent=agent)
         stats.record(out["class"], out.get("usage"), time.monotonic() - t0)
         return out
 
@@ -416,7 +440,7 @@ def run(
 
             status_label = "idle"
             if user_msg is not None:
-                action = handle_command(user_msg, state, history, system, live, output, stats)
+                action = handle_command(user_msg, state, history, _system(), live, output, stats)
                 if action == "quit":
                     output.notice("[exit] exit by command")
                     break

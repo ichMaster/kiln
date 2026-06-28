@@ -99,3 +99,21 @@ def test_recent_timed_missing_at_has_no_timestamp():
     now = _at(2026, 6, 28, 12)
     out = recent_timed([{"role": "user", "text": "без часу"}], 10, now)
     assert out == "Користувач: без часу"  # no [time] prefix when `at` is absent
+
+
+# --- world_block (KILN-034) ---
+
+from kiln.world import world_block  # noqa: E402
+
+
+def test_world_block_has_now_and_messages():
+    now = _at(2026, 6, 28, 12)
+    h = [turn(ROLE_USER, "привіт", at="2026-06-28T11:50:00")]
+    b = world_block(now, "Львів", h, 10)
+    assert "## Зараз" in b and "Львів" in b
+    assert "## Останні повідомлення" in b and "привіт" in b
+
+
+def test_world_block_no_history_is_only_now():
+    b = world_block(_at(2026, 6, 28, 12), "Львів", [], 10)
+    assert "## Зараз" in b and "## Останні повідомлення" not in b  # timeline empty at start

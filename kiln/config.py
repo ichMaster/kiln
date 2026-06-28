@@ -158,6 +158,8 @@ USER_LOCATION = os.environ.get("USER_LOCATION", "")
 TIMEZONE = os.environ.get("TIMEZONE", "")
 # How many recent turns go into the `## Останні повідомлення` block (timestamped); 0 = off.
 RECENT_MESSAGES = int(os.environ.get("RECENT_MESSAGES", "10"))
+# Master switch for the world block (## Зараз + ## Останні повідомлення); 0 = off.
+WORLD_AWARENESS = os.environ.get("WORLD_AWARENESS", "1") == "1"
 
 # Tools/skills allowed on the reasoning branch (example).
 DEEP_TOOLS = ["Read", "Write", "Bash"]
