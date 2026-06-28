@@ -235,9 +235,10 @@ tool-backed layer (out of scope here). The sections are short **Ukrainian** text
   and a one-line rhythm cue. **Deterministic** — takes an injected `now`, so unit tests pass a fixed
   clock (no real `datetime.now()` in the pure function).
 - **Timestamp each turn.** When a turn is appended to `history`, attach an ISO timestamp — the item
-  becomes `{role, text, at}`. Every message carried into the prompt is prefixed with its `[date time]`
-  stamp (`to_messages` content + `to_transcript` lines + the timeline, via `history.fmt_stamp`); the
-  store's `messages` persist `at` (a richer transcript for RAG). *(Seam: the history/store turn shape →
+  becomes `{role, text, at}`. The `[date time]` stamp (`history.fmt_stamp`) appears in the
+  prior-session **timeline** only — NOT in the live conversation (`to_messages`/`to_transcript`),
+  since the chat model mirrors a per-message prefix into its replies; `strip_leading_stamp` cleans
+  any echoed stamp. The store's `messages` persist `at`. *(Seam: the history/store turn shape →
   ARCHITECTURE update + contract test in the same issue.)*
 - **Recent timed-messages block.** A pure builder + a `## Повідомлення з минулої сесії` section: the last
   `RECENT_MESSAGES` turns, each as `[Сб 11:52] Користувач: …` / `[11:55] Ти: …` (the date shown when

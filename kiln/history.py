@@ -2,14 +2,16 @@
 kiln — conversation history: the shared message feed of a session.
 
 No trimming or summarization: we accumulate everything and append it to the prompt.
-Each item is {"role": "user"|"assistant", "text": ..., "at": "<ISO timestamp>"} (v0.8). Every
-message carried into the prompt (the messages array, the transcript, the timeline) is prefixed
-with its date+time stamp `[Сб 28.06.2026 11:52]` (v0.8).
+Each item is {"role": "user"|"assistant", "text": ..., "at": "<ISO timestamp>"} (v0.8). Date+time
+stamps appear ONLY in the prior-session timeline (`world.recent_timed`, via `fmt_stamp`) — NOT in
+the live conversation (`to_messages`/`to_transcript`), because the chat model mirrors a per-message
+`[time]` prefix into its own replies. `strip_leading_stamp` cleans any such echo from stored text.
 """
 
 from __future__ import annotations
 
 import datetime as _dt
+import re
 
 from .config import AGENT_NAME, USER_NAME
 
@@ -18,6 +20,8 @@ ROLE_BOT = "assistant"
 
 # short Ukrainian weekday names (index matches datetime.weekday(), Mon=0)
 _WEEKDAYS_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"]
+# one or more leading `[… HH:MM …]` stamps the model may have echoed into a reply
+_ECHOED_STAMP = re.compile(r"^(?:\s*\[[^\]]*\d{1,2}:\d{2}[^\]]*\]\s*)+")
 
 
 def role_label(role: str) -> str:
@@ -41,6 +45,12 @@ def fmt_stamp(at: str | None) -> str:
     return f"[{_WEEKDAYS_SHORT[d.weekday()]} {d:%d.%m.%Y %H:%M}]"
 
 
+def strip_leading_stamp(text: str) -> str:
+    """Drop any leading `[… time …]` stamp the model echoed into a reply (so old echoes don't
+    show in the live conversation or the timeline). Leaves stamp-free text untouched."""
+    return _ECHOED_STAMP.sub("", text or "").lstrip()
+
+
 def turn(role: str, text: str, at: str | None = None) -> dict:
     """A conversation turn: {role, text, at}. `at` is an ISO timestamp (seconds); when None it
     is stamped with the current local time (the source of `at` for the timeline, KILN-033)."""
@@ -52,21 +62,12 @@ def turn(role: str, text: str, at: str | None = None) -> dict:
 
 
 def to_messages(history: list[dict]) -> list[dict]:
-    """History -> Anthropic Messages API format ({role, content}); each content is prefixed with
-    its `[date time]` stamp so the model sees when every message was sent."""
-    out = []
-    for h in history:
-        stamp = fmt_stamp(h.get("at"))
-        out.append({"role": h["role"], "content": f"{stamp} {h['text']}" if stamp else h["text"]})
-    return out
+    """History -> Anthropic Messages API format ({role, content}). NO timestamps in the live
+    conversation (the model would mirror them); any echoed stamp is stripped from the text."""
+    return [{"role": h["role"], "content": strip_leading_stamp(h["text"])} for h in history]
 
 
 def to_transcript(history: list[dict]) -> str:
-    """History -> a plain text transcript for the CLI prompt: `[date time] Name: text` per turn
-    (named speakers + a date+time stamp; the stamp is dropped when `at` is absent)."""
-    lines = []
-    for h in history:
-        stamp = fmt_stamp(h.get("at"))
-        prefix = f"{stamp} " if stamp else ""
-        lines.append(f"{prefix}{role_label(h['role'])}: {h['text']}")
-    return "\n".join(lines)
+    """History -> a plain text transcript for the CLI prompt: `Name: text` per turn (named
+    speakers; no timestamps in the live conversation; any echoed stamp is stripped)."""
+    return "\n".join(f"{role_label(h['role'])}: {strip_leading_stamp(h['text'])}" for h in history)

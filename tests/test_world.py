@@ -104,6 +104,12 @@ def test_recent_timed_missing_at_has_no_timestamp():
     assert out == "Користувач: без часу"  # no [date time] prefix when `at` is absent
 
 
+def test_recent_timed_strips_echoed_stamp_from_text():
+    h = [{"role": "assistant", "text": "[Нд 28.06.2026 15:46] Хе.", "at": "2026-06-28T15:46:00"}]
+    out = recent_timed(h, 10)
+    assert out == "[Нд 28.06.2026 15:46] Агніка: Хе."  # one (timeline) stamp; echo removed
+
+
 # --- world_block (KILN-034) ---
 
 from kiln.world import world_block  # noqa: E402
