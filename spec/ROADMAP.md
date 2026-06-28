@@ -311,6 +311,57 @@ session, shifting her daily baseline); the section is composed **per turn** (nee
 fixed); `MOOD_AWARENESS` / `BIORHYTHM` toggle it; it's **deterministic** given an injected clock +
 birth; **local-only**, no external calls.
 
+### 0.10 Inner thoughts — internal monologue (moved up from v2.4) — ⬜
+**Goal:** give Agnika an **inner monologue** — a new **`самозаглиблення`** (reflection) need that, on
+crossing its threshold, makes her **think a private thought** (cheap **Haiku**, like chat). Thoughts are
+**internal by default** (not shown), **saved to `.kiln/store.json`**, and the **last N (cross-session)** ride
+in a `## Думки` system-prompt section so her inner life carries forward. **Randomly ~1 in M** a thought
+**surfaces in the chat** (marked «думка:») and **enters the conversation as a real turn** (she remembers
+voicing it). A `/thoughts` command shows them; generating a thought **satiates** the need. Builds on 0.9 — the
+thought prompt sees her `## Настрій` mood, so thoughts reflect her felt state. Cheap-first (Haiku + cooldown),
+local. *(A deeper always-on inner-voice loop coupled to plans stays a later v2 extension — cf. 2.2 Plans.)*
+**Tasks:**
+- **Reflection need + trigger.** Add a `reflection` need (Ukrainian label «самозаглиблення») to `DRIFT` (slow
+  upward drift) and `NEED_TRIGGERS` (`threshold`, `action: "thought"`). A `select_thought_trigger` (parallel
+  to `select_self_trigger`) fires it with the same **hysteresis + cooldown** via the `TriggerBook`. Loop
+  priority becomes **user input > reach-out (connection) > thought (reflection) > idle** — a thought fires
+  only on an input-free, non-resting tick.
+- **Thought generation (Haiku).** On a `reflection` crossing, generate a short **internal thought** through
+  the **chat brain** (Haiku/SDK) from a `[thought]` reflection prompt (`state/prompts.md`, Ukrainian) with the
+  full system prompt (canon + memory + facts + world + **mood**). The result is a thought, **not** a
+  conversation turn (unless surfaced). Token usage logged like chat; **cooldown-capped** so it never spams.
+- **Satiation.** Add a **`thought`** event to `SATIATION` that discharges `reflection` (the need that drove
+  it), mirroring how `chat`/`deep` close their needs. *(Seam: `apply_satiation` event set → contract test.)*
+- **Persist thoughts in the store.** `.kiln/store.json` gains a **`thoughts`** key (id, text, `at`, session,
+  `shown` flag) alongside `sessions`/`messages`/`summaries`/`facts`; `add_thought`, `empty_store`, and
+  `migrate_legacy` updated. *(Seam: the store shape → ARCHITECTURE + contract test.)*
+- **Thoughts → system prompt (`## Думки`).** A new section with the **last `THOUGHTS_IN_PROMPT` (N)
+  cross-session** thoughts (loaded from the store at start, like facts; appended live as new ones form),
+  separate from canon / memory / facts / world / mood; empty → back-compatible. Composed per turn in
+  `_system()`. A thought that became a turn is de-duped out of `## Думки` (already in history).
+- **Random visibility → a real turn.** With probability ~`1/THOUGHT_VISIBLE_EVERY` (M) (seedable RNG), a
+  freshly generated thought is **shown** in the chat — marked as a thought via the Output seam
+  (`agent(..., is_thought=True)`, rendered dim / «думка:») — **and appended to `history` as an assistant
+  turn** so she remembers it. Otherwise it stays internal (stored + in `## Думки`, never displayed).
+  *(Seam: the Output `agent` event gains `is_thought` → contract test.)*
+- **`/thoughts` command.** Show the recent thoughts (store + current session) with timestamps and a marker
+  for the surfaced ones, through the Output seam (`notice`), like `/usage`.
+- **Config.** `THOUGHTS_ENABLED` (master on/off), `THOUGHTS_IN_PROMPT` (N), `THOUGHT_VISIBLE_EVERY` (M),
+  `THOUGHT_COOLDOWN`, the `reflection` Ukrainian label, and `THOUGHT_MODEL` (= `CHAT_MODEL` Haiku) — scalars
+  `.env`-overridable; the `reflection` drift / satiation / threshold live in the structured dicts in code.
+- **Tests.** `reflection` drift / satiation; the thought trigger's hysteresis / cooldown; a thought is
+  generated (mock brain, zero paid), stored, and added to `## Думки` (last N, cross-session) while staying
+  hidden; the surfaced case (seeded RNG hits 1/M) both displays **and** appends a history turn; `/thoughts`
+  lists them; store round-trips with `thoughts` + migration; `apply_satiation('thought', …)` discharges
+  `reflection`; `build_system` places `## Думки` separate from the rest; `THOUGHTS_ENABLED` toggles — all
+  deterministic (seeded RNG, fixed clock, **mock brain, zero paid calls**).
+**DoD:** a new `самозаглиблення` (reflection) need drifts and, on crossing, makes Agnika **think** via Haiku;
+the thought is **hidden by default**, **satiates** the need, is **saved to `.kiln/store.json`**, and feeds a
+`## Думки` section with the **last N cross-session** thoughts; **randomly ~1/M** a thought **surfaces in chat**
+(marked) **and becomes a real conversation turn**; `/thoughts` shows them; `THOUGHTS_ENABLED` / N / M / cooldown
+configurable; deterministic under a seeded RNG + injected clock; cheap (Haiku) and cooldown-capped; no paid
+calls in tests.
+
 ## v1 — Engine (the tick-server & hub foundation)
 
 ### 1.1 Tick-server: engine = WS/HTTP server, clients attach — ⬜
@@ -379,14 +430,12 @@ conversation, recalled via RAG. Adopt Lumi's three-layer, **agent/user-scoped**
 memory now so the hub is additive.
 **DoD:** the agent recalls durable facts and impressions, scoped per agent/user.
 
-### 2.4 Inner monologue — ⬜
-**Goal:** the agent thinks between turns.
-**Tasks:** a quiet cheap-model loop on input-free ticks (reflect, update
-plans/mood, decide whether to speak); some surfaces (debug/panel), some stays in
-state. Port from Lumi (`core/inner_voice*`, `nudge.py`); sits on the FSM +
-self-triggers; cost-capped.
-**DoD:** between turns Agnika produces internal thoughts that update her state and
-occasionally prompt a self-initiated message.
+### 2.4 Inner monologue — moved to 0.10 ⤴
+The internal-monologue **baseline** shipped early as **0.10** (a `самозаглиблення` need →
+Haiku thoughts, `## Думки` in the prompt, `thoughts` in the store, `/thoughts`, random
+surfacing-as-a-turn). What stays for v2: a deeper **always-on inner-voice loop** that
+reflects between turns, **updates plans/mood**, and decides whether to speak (Lumi
+`core/inner_voice*` + `nudge.py`, on the FSM) — built on **2.2 Plans** once it lands.
 
 ## v3 — Web & multi-agent hub
 
