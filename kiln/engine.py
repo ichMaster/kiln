@@ -641,6 +641,16 @@ def run(
                 if action == "quit":
                     output.notice("[exit] exit by command")
                     break
+                elif action == "reload":
+                    # Re-read the file-backed prompt sources mid-session (no session drop).
+                    # config.yaml knobs are module constants -> still need a restart; the canon
+                    # birthday/biorhythm is session-static -> a /rotate or restart picks it up.
+                    canon = load_canon(paths.canon_file)
+                    prompts = load_prompts(paths.prompts_file)
+                    memory = load_memory(paths.store_file)
+                    base_system = build_system(canon, memory, facts)
+                    prev_turns = _previous_session_turns(paths.store_file, started)
+                    output.notice("[reload] canon, prompts, and memory reloaded")
                 elif action == "handled":
                     pass  # command handled (commands work even while resting)
                 elif resting:

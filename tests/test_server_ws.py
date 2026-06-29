@@ -188,3 +188,17 @@ def test_http_agents_and_history(monkeypatch, tmp_path):
         assert hist["turns"][-1]["text"] == "в"
 
         assert client.get("/agent/nobody/history").status_code == 404
+
+
+def test_http_reload_endpoint(monkeypatch, tmp_path):
+    from starlette.testclient import TestClient
+
+    _stub_model(monkeypatch)
+    host = AgentHost()
+    monkeypatch.setattr(appmod, "host", host)
+    host.start("agnika", brain=MockBrain(), ticks=1, live=False, paths=_tmp_paths(tmp_path))
+
+    with TestClient(appmod.app) as client:
+        r = client.post("/agent/agnika/reload")
+        assert r.status_code == 200 and r.json()["reload"] == "queued"
+        assert client.post("/agent/ghost/reload").status_code == 404

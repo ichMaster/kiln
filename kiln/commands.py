@@ -6,6 +6,7 @@ Command output goes through the Output seam (output.notice), not print — so an
 client (console today, TUI/web later) receives the result. handle_command() returns:
   "handled"        — command executed, continue the loop;
   "quit"           — user asks to exit;
+  "reload"         — re-read canon/prompts/memory (the run loop does it; no session drop);
   ("ask", text)    — forced deep turn (the run loop makes the call itself);
   None             — not a command, fall through to normal handling.
 """
@@ -30,6 +31,7 @@ COMMANDS = (
     "usage",
     "report",
     "ask",
+    "reload",
     "clear",
     "help",
     "quit",
@@ -57,6 +59,9 @@ def handle_command(
 
     if cmd in ("quit", "exit", "q"):
         return "quit"
+
+    elif cmd == "reload":
+        return "reload"  # the run loop re-reads canon/prompts/memory + rebuilds the system prompt
 
     elif cmd in ("help", "h", "?"):
         output.notice("Commands: " + command_hints())

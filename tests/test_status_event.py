@@ -452,6 +452,51 @@ def test_session_persisted_in_real_time(monkeypatch, tmp_path):
     assert max(mid_turns) >= 2  # the turn hit the store mid-session, before the close finalize
 
 
+def test_reload_command_rereads_canon(tmp_path, monkeypatch):
+    """/reload re-reads canon mid-session — the system prompt swaps, no restart, no session drop."""
+    import kiln.engine as eng
+    from kiln.config import AgentPaths
+
+    monkeypatch.setattr(eng, "summarize", lambda *a, **k: "")
+    monkeypatch.setattr(eng, "extract_facts", lambda *a, **k: [])
+    monkeypatch.setattr(eng, "digest_facts", lambda *a, **k: "")
+
+    canon = tmp_path / "canon.md"
+    canon.write_text("CANON-V1", encoding="utf-8")
+    paths = AgentPaths(
+        state_dir=tmp_path / "s",
+        needs_file=tmp_path / "n.json",
+        store_file=tmp_path / "store.json",
+        usage_ledger=tmp_path / "l.jsonl",
+        usage_report=tmp_path / "r.md",
+        canon_file=canon,
+        prompts_file=tmp_path / "p.md",
+    )
+    systems = []
+
+    class RecBrain(MockBrain):
+        def chat(self, history, system):
+            systems.append(system)
+            return super().chat(history, system)
+
+    class Chan:  # tick 2 edits the canon on disk; tick 3 sends /reload
+        def __init__(self):
+            self.t = 0
+
+        def poll(self):
+            self.t += 1
+            if self.t == 2:
+                canon.write_text("CANON-V2", encoding="utf-8")
+                return None
+            return {1: "first", 3: "/reload", 4: "second"}.get(self.t)
+
+    eng.run(
+        ticks=5, live=False, paths=paths, brain=RecBrain(), output=StatusRecorder(), channel=Chan()
+    )
+    assert systems[0].startswith("CANON-V1")  # turn before /reload
+    assert systems[-1].startswith("CANON-V2")  # turn after /reload picked up the new canon
+
+
 def _mood_scenario(monkeypatch, eng, tmp_path):
     """Common setup: isolate, mute world, fixed needs — so only the ## Настрій block varies."""
     _isolate(monkeypatch, eng, tmp_path)

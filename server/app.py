@@ -64,6 +64,17 @@ def agent_history(agent_id: str, limit: int = 20) -> dict:
     return {"agent_id": agent_id, "turns": runtime.recent_history(limit)}
 
 
+@app.post("/agent/{agent_id}/reload")
+def agent_reload(agent_id: str) -> dict:
+    """Queue a `/reload` for an agent — re-read its canon/prompts/memory without dropping the
+    session (the agent applies it on its next tick). 404 if it isn't hosted."""
+    runtime = host.get(agent_id)
+    if runtime is None:
+        raise HTTPException(status_code=404, detail=f"no such agent: {agent_id}")
+    runtime.submit("/reload")
+    return {"agent_id": agent_id, "reload": "queued"}
+
+
 @app.websocket("/agent/{agent_id}")
 async def agent_ws(ws: WebSocket, agent_id: str) -> None:
     """Attach a client to an agent: snapshot, then stream its events; relay input to its inbox.
