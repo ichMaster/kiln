@@ -27,6 +27,7 @@ def _tmp_paths(tmp_path) -> AgentPaths:
     k = tmp_path / "kiln"
     return AgentPaths(
         state_dir=s,
+        needs_file=k / "needs.json",
         store_file=k / "store.json",
         usage_ledger=k / "usage-ledger.jsonl",
         usage_report=k / "usage-report.md",
@@ -100,4 +101,4 @@ def test_v1_1_full_dod(monkeypatch, tmp_path):
 
     host.stop_all()
     # (5b) all persistence stayed under the agent's own root — nothing leaked to repo paths
-    assert (tmp_path / "state" / "needs.json").exists()
+    assert (tmp_path / "kiln" / "needs.json").exists()

@@ -86,12 +86,12 @@ on the next tick.
 
 ## State and persistence
 
-All mutable state lives under the `state/` directory (`run()` creates it as
-needed, so a fresh clone doesn't crash):
+Persistence splits into committed **config** under `state/` and generated **runtime**
+under `.kiln/` (gitignored); `run()` creates both as needed, so a fresh clone doesn't crash:
 
 | File | Role | Who writes / reads |
 |---|---|---|
-| `state/needs.json` | need levels `0..1` (seed; rewritten each session) | `load_state` / `save_state` |
+| `.kiln/needs.json` | live need levels `0..1` (generated; rewritten each run) | `load_state` / `save_state` |
 | `state/canon.md` | the canon — persona/voice (system prompt of both branches) | `load_canon` (fallback — `DEFAULT_CANON`) |
 | `state/prompts.md` | self-trigger prompts per need | `load_prompts` |
 | `state/memory.md` | long-term memory: summaries of past conversations (generated, not committed) | `save_summary` / `load_memory` |

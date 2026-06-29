@@ -56,7 +56,6 @@ def test_tuioutput_user_is_echo_free_noop():
 def test_run_turn_emits_to_outbox(monkeypatch, tmp_path):
     import kiln.engine as eng
 
-    monkeypatch.setattr(eng, "STATE_DIR", tmp_path)
     monkeypatch.setattr(
         eng,
         "load_state",

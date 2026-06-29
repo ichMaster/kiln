@@ -180,13 +180,13 @@ The live (not-yet-persisted) turns of the current session aren't in `history` �
 
 ## 7. Where data lives
 
-Persistence is **`agent_id`-scoped**. The default agent (`agnika`) keeps the existing flat paths, so
-nothing migrates:
+Persistence is **`agent_id`-scoped**, split into committed **config** (`state/`) and generated
+**runtime** (`.kiln/`, gitignored). The default agent (`agnika`) keeps the flat layout:
 
 | Data | `agnika` (default) | any other `agent_id` |
 |------|--------------------|----------------------|
-| need levels | `state/needs.json` | `state/{id}/needs.json` |
-| canon / prompts | `state/canon.md`, `state/prompts.md` | `state/{id}/…` |
+| canon / prompts (committed config) | `state/canon.md`, `state/prompts.md` | `state/{id}/…` |
+| need **levels** (live, auto-written) | `.kiln/needs.json` | `.kiln/{id}/needs.json` |
 | store (summaries, transcripts, facts, thoughts) | `.kiln/store.json` | `.kiln/{id}/store.json` |
 | usage ledger / report | `.kiln/usage-*.{jsonl,md}` | `.kiln/{id}/usage-*` |
 

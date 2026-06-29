@@ -140,7 +140,6 @@ class StatusRecorder:
 
 
 def _isolate(monkeypatch, eng, tmp_path):
-    monkeypatch.setattr(eng, "STATE_DIR", tmp_path)
     monkeypatch.setattr(
         eng,
         "load_state",

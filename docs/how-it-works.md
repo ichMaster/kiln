@@ -32,7 +32,7 @@ exactly that many ticks (for the demo).
 
 ## Needs model
 
-State is a set of needs, each `0..1` (`state/needs.json`). Two forces: slow
+State is a set of needs, each `0..1` (`.kiln/needs.json`). Two forces: slow
 **upward drift** every tick and **closure by events**.
 
 ### Drift and what each need means

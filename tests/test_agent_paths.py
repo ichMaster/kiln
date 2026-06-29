@@ -18,6 +18,7 @@ from kiln.brain import MockBrain
 from kiln.config import (
     CANON_FILE,
     KILN_DIR,
+    NEEDS_LEVELS_FILE,
     PROMPTS_FILE,
     STATE_DIR,
     STORE_FILE,
@@ -50,6 +51,7 @@ def test_default_agent_maps_to_global_paths():
     for agent in (None, "", "agnika"):
         p = AgentPaths.for_agent(agent)
         assert p.state_dir == STATE_DIR
+        assert p.needs_file == NEEDS_LEVELS_FILE  # live levels under .kiln, not state/
         assert p.store_file == STORE_FILE
         assert p.usage_ledger == USAGE_LEDGER
         assert p.usage_report == USAGE_REPORT_FILE
@@ -60,6 +62,7 @@ def test_default_agent_maps_to_global_paths():
 def test_named_agent_nests_under_its_id():
     p = AgentPaths.for_agent("pashu")
     assert p.state_dir == STATE_DIR / "pashu"
+    assert p.needs_file == KILN_DIR / "pashu" / "needs.json"  # runtime levels under .kiln/{id}/
     assert p.store_file == KILN_DIR / "pashu" / "store.json"
     assert p.usage_ledger == KILN_DIR / "pashu" / "usage-ledger.jsonl"
     assert p.usage_report == KILN_DIR / "pashu" / "usage-report.md"
@@ -80,6 +83,7 @@ def test_run_with_agent_root_writes_only_under_it(monkeypatch, tmp_path):
     kdir = tmp_path / "kiln"
     paths = AgentPaths(
         state_dir=sdir,
+        needs_file=kdir / "needs.json",
         store_file=kdir / "store.json",
         usage_ledger=kdir / "usage-ledger.jsonl",
         usage_report=kdir / "usage-report.md",
@@ -98,8 +102,9 @@ def test_run_with_agent_root_writes_only_under_it(monkeypatch, tmp_path):
         paths=paths,
     )
 
-    # everything the session persisted is under the agent root
-    assert (sdir / "needs.json").exists()
+    # everything the session persisted is under the agent root (needs.json now lives in .kiln/)
+    assert (kdir / "needs.json").exists()
+    assert not (sdir / "needs.json").exists()  # NOT in state/ anymore
     assert (kdir / "store.json").exists()
     assert (kdir / "usage-ledger.jsonl").exists()
     assert (kdir / "usage-report.md").exists()

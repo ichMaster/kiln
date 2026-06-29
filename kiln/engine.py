@@ -41,6 +41,7 @@ from .config import (
     DRIFT,
     MOOD_AWARENESS,
     NEED_TRIGGERS,
+    NEEDS_LEVELS_FILE,
     REACH_OUT_MODELS,
     REACH_OUT_NEED,
     RECENT_MESSAGES,
@@ -50,7 +51,6 @@ from .config import (
     SATIATION,
     SELF_COOLDOWN,
     SELF_SILENCE_NOTE,
-    STATE_DIR,
     STORE_FILE,
     THINK_HINTS,
     THINK_THRESHOLD,
@@ -111,11 +111,11 @@ class State:
         return (k, self.needs[k])
 
 
-def load_state(state_dir: Path = STATE_DIR) -> State:
-    """Reads needs from state/needs.json ({need: level}); empty state if the file is missing. Any
-    configured need (a `DRIFT` key) absent from the file is healed in at 0.0 — so a new need (e.g.
-    v0.10 `reflection`, v0.11 `curiosity`) appears in the TUI/commands and drifts, no re-seed."""
-    path = state_dir / "needs.json"
+def load_state(path: Path = NEEDS_LEVELS_FILE) -> State:
+    """Reads the live need LEVELS from .kiln/needs.json ({need: level}); empty state if the file is
+    missing. Any configured need (a `DRIFT` key) absent from the file is healed in at 0.0 — so a new
+    need (e.g. v0.10 `reflection`, v0.11 `curiosity`) appears in the TUI/commands and drifts, no
+    re-seed. (The need MODEL — drift/satiation/triggers — is separate: state/needs_model.yaml.)"""
     if not path.exists():
         return State()
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -125,10 +125,11 @@ def load_state(state_dir: Path = STATE_DIR) -> State:
     return State(needs=needs)
 
 
-def save_state(state: State, state_dir: Path = STATE_DIR) -> None:
-    """Writes needs to state/needs.json ({need: level}, rounded to 3 decimal places)."""
+def save_state(state: State, path: Path = NEEDS_LEVELS_FILE) -> None:
+    """Writes the live need LEVELS to .kiln/needs.json ({need: level}, rounded to 3 decimals)."""
     data = {k: round(v, 3) for k, v in state.needs.items()}
-    (state_dir / "needs.json").write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)  # .kiln[/{id}] may not exist on a fresh run
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
 # === Tick ===================================================================
@@ -481,8 +482,8 @@ def run(
     if paths is None:
         paths = AgentPaths.for_agent()  # v1.1: default agent -> today's flat global paths
     paths.state_dir.mkdir(parents=True, exist_ok=True)  # state dir must exist for writing
-    paths.store_file.parent.mkdir(parents=True, exist_ok=True)  # .kiln[/{agent}] for the store
-    state = load_state(paths.state_dir)
+    paths.store_file.parent.mkdir(parents=True, exist_ok=True)  # .kiln[/{agent}] for store + needs
+    state = load_state(paths.needs_file)
     history: list[dict] = []  # shared conversation transcript for the session
     started = _dt.datetime.now().isoformat(timespec="seconds")  # session start (for transcript)
     canon = load_canon(paths.canon_file)  # persona/voice from state/canon.md
@@ -688,7 +689,7 @@ def run(
             time.sleep(TICK_SECONDS if live else 0)
             t += 1
     finally:
-        save_state(state, paths.state_dir)
+        save_state(state, paths.needs_file)
         # Review & prune to real conversation; an all-noise session is skipped entirely.
         cleaned = prune_history(history)
         if cleaned:

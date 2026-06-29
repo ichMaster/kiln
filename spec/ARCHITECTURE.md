@@ -21,7 +21,7 @@ self-trigger.
 - **Config** (`config.py`) — paths, `.env` loader, all tunables (drift, satiation,
   thresholds, models, hints). Imported by everything; never imports back.
 - **Core state** (`engine.py`: `State`, `load_state`/`save_state`) — the needs
-  vector (`state/needs.json`), drift, satiation.
+  vector (`.kiln/needs.json`), drift, satiation.
 - **Tick loop** (`engine.py`: `run`) — the always-on loop; one action per tick
   (input > self-trigger > idle); catch-up drift for real elapsed time.
 - **Two brains** (`brain.py`: `LiveBrain` — `chat` Haiku/SDK + `deep` Opus/`claude
@@ -191,7 +191,7 @@ multi-agent is additive, not a rewrite:
   `usage_record` (SDK `msg.usage` / CLI `data.usage` + `total_cost_usd`). `total` = input+output
   (cache tracked separately, Lumi-style); `cost_usd` = the CLI's actual cost, or `None` for the
   SDK path (estimated from the v0.7 price table).
-- **Needs:** `state/needs.json` = `{need: level(0..1)}`.
+- **Needs:** `.kiln/needs.json` = `{need: level(0..1)}`.
 - **Canon / system prompt:** `build_system(canon, memory, facts, world, mood, thoughts)` composes the
   system prompt of every branch — `canon` (`state/canon.md`, fallback `DEFAULT_CANON`) + the v0.5
   memory summaries + the v0.6 `## Facts about the user` digest + the v0.8 `world` block (`## Зараз` +
@@ -257,7 +257,7 @@ multi-agent is additive, not a rewrite:
 
 ## Data model
 
-- `state/needs.json` — the need **levels** `{connection, rest, novelty, intensity, reflection, curiosity}`
+- `.kiln/needs.json` — the need **levels** `{connection, rest, novelty, intensity, reflection, curiosity}`
   in `0..1` (seed; rewritten each run). `load_state` heals any configured need (a `DRIFT` key) missing
   from the file in at `0.0`, so a new need appears without re-seeding.
 - `state/needs_model.yaml` — the need **model** (config): `need_triggers` / `drift` / `satiation` + the
@@ -310,7 +310,8 @@ server/             # tick-server (v1.1): FastAPI app, AgentHost/AgentRuntime, n
   app.py            # FastAPI app: /health, /agents, /agent/{id}[/history], WS /agent/{id}
   host.py runtime.py bus.py protocol.py ws.py   # registry, per-agent thread, BroadcastHub, wire, lifecycle
 tests/              # pytest: unit + contract (seams) + integration on a mock brain
-state/              # needs.json, canon.md, prompts.md, memory.md (generated)
+state/              # committed config: canon.md, prompts.md, needs_model.yaml, mood.json; memory.md (gen)
+.kiln/              # generated runtime (gitignored): needs.json levels, store.json, usage ledger/report
 history/            # session-*.json transcripts (generated; RAG corpus)
 docs/               # how-it-works, architecture (internals)
 spec/               # MISSION.md, ARCHITECTURE.md, ROADMAP.md, vision.md, roadmap/implementation/

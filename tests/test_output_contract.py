@@ -74,7 +74,6 @@ def test_run_routes_turn_through_output_port(monkeypatch, tmp_path):
     import kiln.engine as eng
 
     # Isolate persistence — no writes to the real state/ or history/.
-    monkeypatch.setattr(eng, "STATE_DIR", tmp_path)
     monkeypatch.setattr(
         eng,
         "load_state",

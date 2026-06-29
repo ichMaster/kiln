@@ -123,6 +123,7 @@ def _tmp_paths(tmp_path):
     k = tmp_path / "kiln"
     return AgentPaths(
         state_dir=s,
+        needs_file=k / "needs.json",
         store_file=k / "store.json",
         usage_ledger=k / "usage-ledger.jsonl",
         usage_report=k / "usage-report.md",

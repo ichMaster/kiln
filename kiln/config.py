@@ -30,6 +30,7 @@ ENV_FILE = PROJECT_ROOT / ".env"  # local configuration (models + calibration)
 
 KILN_DIR = PROJECT_ROOT / ".kiln"  # unified store dir (Lumi-style; shared with later phases)
 STORE_FILE = KILN_DIR / "store.json"  # the single persistence store (sessions/messages/summaries)
+NEEDS_LEVELS_FILE = KILN_DIR / "needs.json"  # live need LEVELS (auto-written each run)
 USAGE_LEDGER = KILN_DIR / "usage-ledger.jsonl"  # v0.7: one append-only line per closed session
 USAGE_REPORT_FILE = KILN_DIR / "usage-report.md"  # v0.7: the generated Markdown cost report
 
@@ -44,7 +45,8 @@ class AgentPaths:
     agent these are the module-level globals, so Agnika + all v0 data/tests are byte-for-byte. (The
     mood / needs-model CONFIG is still module-level/global in v1.1 — per-agent config is v1.2.)"""
 
-    state_dir: Path
+    state_dir: Path  # committed config: needs_model.yaml, canon.md, prompts.md, mood.json
+    needs_file: Path  # live need LEVELS (runtime, under .kiln/ with the rest of the generated data)
     store_file: Path
     usage_ledger: Path
     usage_report: Path
@@ -56,6 +58,7 @@ class AgentPaths:
         if not agent_id or agent_id == DEFAULT_AGENT:
             return cls(
                 state_dir=STATE_DIR,
+                needs_file=NEEDS_LEVELS_FILE,
                 store_file=STORE_FILE,
                 usage_ledger=USAGE_LEDGER,
                 usage_report=USAGE_REPORT_FILE,
@@ -66,6 +69,7 @@ class AgentPaths:
         kdir = KILN_DIR / agent_id
         return cls(
             state_dir=sdir,
+            needs_file=kdir / "needs.json",
             store_file=kdir / "store.json",
             usage_ledger=kdir / "usage-ledger.jsonl",
             usage_report=kdir / "usage-report.md",

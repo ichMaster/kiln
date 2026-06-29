@@ -62,19 +62,23 @@ dry-run demo in `kiln/__main__.py` stays a smoke test.
 
 ### State files live in `state/`
 
-All mutable state is under `STATE_DIR` (defined in `config.py`, = repo root `/state`): `state/needs.json` (seed need
-**levels**, rewritten each run by `save_state`), `state/needs_model.yaml` (the need **MODEL** — committed
-config: `drift`/`satiation`/`need_triggers` + the trigger-wiring scalars `reach_out_need`/`reach_out_models`/`reflect_need`/`self_cooldown`/`thought_cooldown`/`rest_wake`;
+All hand-edited config is under `STATE_DIR` (defined in `config.py`, = repo root `/state`):
+`state/needs_model.yaml` (the need **MODEL** — committed config: `drift`/`satiation`/`need_triggers`
++ the trigger-wiring scalars `reach_out_need`/`reach_out_models`/`reflect_need`/`self_cooldown`/`thought_cooldown`/`rest_wake`;
 `config.load_needs` → `DEFAULT_NEEDS` fallback, needs **PyYAML**), `state/prompts.md` (self-trigger
 prompts), `state/canon.md` (the **canon** — the persona/voice that becomes the system prompt of both
 branches), `state/mood.json` (v0.9 — the need/biorhythm **bands** (thresholds + Ukrainian names) and
 the behavioural **cues** for the `## Настрій` section; `mood.load_mood` → `DEFAULT_MOOD` fallback),
-and `state/memory.md` (cross-session summaries, generated on exit — gitignored).
-`run()` calls `STATE_DIR.mkdir(exist_ok=True)` before reading, so a fresh clone never crashes;
-each loader falls back to a default if its file is missing (`load_canon` → `DEFAULT_CANON`,
-`load_needs` → `DEFAULT_NEEDS`, `load_mood` → `DEFAULT_MOOD`, empty needs/prompts otherwise).
-**Note** the two `needs.*` files are different: `needs.json` = the live levels (state, auto-written);
-`needs_model.yaml` = the model you edit to tune Agnika (calibration, committed like `mood.json`).
+and `state/memory.md` (cross-session summaries, generated on exit — gitignored). The live need
+**LEVELS** — `.kiln/needs.json`, rewritten each run by `save_state` — moved out of `state/` into
+`.kiln/` (v1.1.x), with the rest of the generated runtime data (`store.json`, the usage ledger/report)
+— so a run no longer dirties git. `run()` mkdir's both the state and `.kiln` dirs before reading, so
+a fresh clone never crashes; each loader falls back to a default if its file is missing (`load_canon`
+→ `DEFAULT_CANON`, `load_needs` → `DEFAULT_NEEDS`, `load_mood` → `DEFAULT_MOOD`, empty needs/prompts
+otherwise).
+**Note** the two `needs.*` files are different: `.kiln/needs.json` = the live levels (runtime,
+auto-written, gitignored); `state/needs_model.yaml` = the model you edit to tune Agnika (calibration,
+committed like `mood.json`).
 
 ### Config via `.env`
 

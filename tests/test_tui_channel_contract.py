@@ -33,7 +33,6 @@ def test_poll_is_fifo():
 def test_tuichannel_drives_a_turn(monkeypatch, tmp_path):
     import kiln.engine as eng
 
-    monkeypatch.setattr(eng, "STATE_DIR", tmp_path)
     monkeypatch.setattr(
         eng,
         "load_state",

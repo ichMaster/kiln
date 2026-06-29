@@ -24,7 +24,6 @@ from tui.output import TuiOutput
 
 
 def _isolate_persistence(monkeypatch, eng, tmp_path):
-    monkeypatch.setattr(eng, "STATE_DIR", tmp_path)
     monkeypatch.setattr(
         eng,
         "load_state",
