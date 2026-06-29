@@ -68,7 +68,7 @@ NEED_TRIGGERS = {
     "novelty": {"threshold": 0.85, "action": "tool", "agent": "session-wiki"},
     "intensity": {"threshold": 0.75, "action": "deep"},
     "reflection": {"threshold": 0.60, "action": "thought"},  # v0.10 inner monologue (no self-msg)
-    "curiosity": {"threshold": 0.50, "action": "ask"},  # v0.11: monitor-discharged (no self-msg)
+    "curiosity": {"threshold": 0.65, "action": "ask"},  # v0.11: monitor-discharged (no self-msg)
 }
 # The proactive self-message fires only on this need; intensity/novelty pick the brain that
 # answers it (see the comment above and engine.reach_out_branch). REACH_OUT_MODELS = priority.
