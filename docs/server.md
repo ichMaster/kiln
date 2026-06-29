@@ -162,17 +162,32 @@ with connect("ws://localhost:8000/agent/agnika") as ws:
             break
 ```
 
-## 6. HTTP read endpoints
+## 6. HTTP & control endpoints
 
-| Method · path | Returns |
-|---------------|---------|
+| Method · path | Effect |
+|---------------|--------|
 | `GET /health` | `{"ok": true}` — liveness |
 | `GET /agents` | the hosted agents + each one's latest status snapshot |
-| `GET /agent/{id}/history?limit=N` | the last `N` **persisted** turns for an agent (404 if unhosted) |
+| `GET /agent/{id}/history?limit=N` | the last `N` stored turns (404 if unhosted) |
+| `POST /agent/{id}/reload` | re-read the agent's canon/prompts/memory — **no session drop** |
+| `POST /agent/{id}/rotate` | close+summarize the current session and start a fresh one (**non-blocking**) |
 | `WS /agent/{id}` | attach → snapshot → live stream; send `user.message` / `command` |
 
-The live (not-yet-persisted) turns of the current session aren't in `history` — they stream as
-`agent` events from the moment you attach. `history` carries prior, closed sessions.
+**Real-time storage:** every turn upserts the open session into the store, so `history` and the
+attach `snapshot` include the **current** conversation — not just prior closed sessions — and a
+`kill -9` can't lose turns. The same control verbs also work as slash commands over the WS
+(`/reload`, `/rotate`).
+
+**Session lifecycle on a server.** The agent runs one session from boot to shutdown. To refresh
+*without* a restart:
+- **`/reload`** (or `POST …/reload`) re-reads `canon.md` / `prompts.md` / memory and rebuilds the
+  system prompt in place — use it after editing the canon. (`config.yaml` knobs are loaded at
+  startup and still need a restart.)
+- **`/rotate`** (or `POST …/rotate`) cuts over to a fresh `session_id` instantly; the previous
+  session's summary/facts are computed on a worker thread and folded in a moment later — so memory
+  refreshes and the agent never pauses. Two notices arrive: `[rotate] session rotated…` (cutover)
+  and `[rotate] previous session summarized…` (completion). With multiple clients attached, all of
+  them share the one session and see these notices together.
 
 ## 7. Where data lives
 

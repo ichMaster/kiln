@@ -153,6 +153,16 @@ Lumi-style sections:
 > two agents never share a store. The mood / needs-model *config* is still module-level in v1.1
 > (per-agent config is v1.2).
 
+> **Session lifecycle (v1.1.x).** Turns persist in **real time** — each tick that adds a turn
+> upserts the open session into the store (`store.upsert_session`), so a crash can't lose them and a
+> freshly attached client's snapshot sees the live conversation; the close path upserts the pruned
+> turns over the real-time copy (`store.remove_session` drops an all-noise session). A long-running
+> server is one session boot→shutdown; two control verbs refresh it without a restart: **`/reload`**
+> re-reads canon/prompts/memory and rebuilds the prompt in place; **`/rotate`** cuts over to a fresh
+> `session_id` instantly and computes the previous session's summary/facts on a worker thread that
+> hands the result back to the agent thread to write — so all store writes stay single-threaded (no
+> race) and the agent never pauses. Both are also `POST /agent/{id}/{reload,rotate}`.
+
 - **`summaries`** — `{session_id, stamp, text}`, one per session: at exit the (pruned) session
   is summarized via the Anthropic Messages API (Haiku — cheap/fast) and appended; at start all summaries
   load into the system prompt of every branch (`build_system`). What the agent *remembers*.
