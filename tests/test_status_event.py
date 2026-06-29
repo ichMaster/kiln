@@ -888,21 +888,23 @@ def test_run_curiosity_discharges_on_a_question(monkeypatch, tmp_path):
     """v0.11 monitor: a question reply discharges curiosity via SATIATION['asked'] (and marks the
     reply); curious -> asks -> sated."""
     import kiln.engine as eng
-    from kiln.config import DRIFT, SATIATION
+    from kiln.config import DRIFT, NEED_TRIGGERS, SATIATION
 
-    st, rec = _curiosity_run(monkeypatch, eng, tmp_path, curiosity=0.6, brain=_AskBrain())
+    start = NEED_TRIGGERS["curiosity"]["threshold"] + 0.1  # comfortably over the threshold
+    st, rec = _curiosity_run(monkeypatch, eng, tmp_path, curiosity=start, brain=_AskBrain())
     drop = SATIATION["asked"]["curiosity"]  # negative
-    assert st.needs["curiosity"] == pytest.approx(0.6 + DRIFT["curiosity"] + drop)
+    assert st.needs["curiosity"] == pytest.approx(start + DRIFT["curiosity"] + drop)
     assert rec.curiosity_replies  # the reply carried is_curiosity=True
 
 
 def test_run_curiosity_unchanged_without_a_question(monkeypatch, tmp_path):
     """A no-question reply leaves curiosity high (only drift) — it stays high till she asks."""
     import kiln.engine as eng
-    from kiln.config import DRIFT
+    from kiln.config import DRIFT, NEED_TRIGGERS
 
-    st, rec = _curiosity_run(monkeypatch, eng, tmp_path, curiosity=0.6, brain=MockBrain())
-    assert st.needs["curiosity"] == pytest.approx(0.6 + DRIFT["curiosity"])  # not discharged
+    start = NEED_TRIGGERS["curiosity"]["threshold"] + 0.1  # over the threshold (monitor on)...
+    st, rec = _curiosity_run(monkeypatch, eng, tmp_path, curiosity=start, brain=MockBrain())
+    assert st.needs["curiosity"] == pytest.approx(start + DRIFT["curiosity"])  # ...but no question
     assert not rec.curiosity_replies
 
 
@@ -923,9 +925,11 @@ def test_status_snapshot_curiosity_has_threshold_but_no_self_trigger():
     from kiln.config import NEED_TRIGGERS
     from tui.render import needs_panel_lines
 
-    state = State(needs={"connection": 0.1, "curiosity": 0.70})
+    thr = NEED_TRIGGERS["curiosity"]["threshold"]
+    lvl = thr + 0.05  # over the threshold
+    state = State(needs={"connection": 0.1, "curiosity": lvl})
     snap = _status_snapshot("idle", state, TriggerBook(), SessionStats(), None, 1)
-    assert snap["thresholds"]["curiosity"] == NEED_TRIGGERS["curiosity"]["threshold"]
+    assert snap["thresholds"]["curiosity"] == thr
     assert snap["actions"]["curiosity"] == "ask"
     row = next(r for r in needs_panel_lines(snap) if "цікавість" in r)
-    assert "0.70/0.50" in row and "→ ask" in row  # coloured, over-threshold, like the rest
+    assert f"{lvl:.2f}/{thr:.2f}" in row and "→ ask" in row  # coloured, over-threshold, like the rest
