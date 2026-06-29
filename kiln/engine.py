@@ -443,15 +443,16 @@ def _self_prompt(prompts: dict, need: str, reached_out: bool) -> str:
 
 
 def _previous_session_turns(store_path: Path = STORE_FILE) -> list[dict]:
-    """The most recent CLOSED session's turn list, for the v0.8 world timeline. The current
-    session's own turns already ride in the messages array / transcript, so the timeline carries
-    the prior conversation's tail instead. Empty store / no prior session -> []."""
+    """Turns across ALL closed sessions, oldest→newest, for the v0.8 world timeline. The current
+    session's own turns already ride in the messages array / transcript; `world_block` keeps only
+    the last `RECENT_MESSAGES`, so the tail spans whatever earlier sessions it needs — a short last
+    session no longer starves the block. Empty store -> []."""
     store = load_store(store_path)
-    sessions = store.get("sessions", [])
-    if not sessions:
-        return []
-    last = max(sessions, key=lambda s: s.get("started_at") or "")
-    return store.get("messages", {}).get(last.get("id"), [])
+    ordered = sorted(store.get("sessions", []), key=lambda s: s.get("started_at") or "")
+    turns: list[dict] = []
+    for session in ordered:
+        turns.extend(store.get("messages", {}).get(session.get("id"), []))
+    return turns
 
 
 def run(
@@ -490,9 +491,9 @@ def run(
     memory = load_memory(paths.store_file)  # long-term memory: summaries of past sessions
     facts = digest_facts(live, paths.store_file)  # v0.6: N-line digest of durable user facts
     base_system = build_system(canon, memory, facts)  # static: canon + memory summaries + facts
-    prev_turns = _previous_session_turns(paths.store_file)  # v0.8: the PRIOR session's tail for the
-    # timeline (the current session's own turns already ride in the messages array / transcript, so
-    # they aren't repeated here — this carries continuity from the last conversation instead)
+    prev_turns = _previous_session_turns(paths.store_file)  # v0.8: recent turns across ALL prior
+    # sessions for the timeline (the current session's turns already ride in the messages array, so
+    # they aren't repeated here; world_block keeps the last RECENT_MESSAGES)
     prompts = load_prompts(paths.prompts_file)  # self-trigger prompts from state/prompts.md
     store = load_store(paths.store_file)  # v0.10: held for the session so thoughts persist
     tg = TriggerBook()  # trigger hysteresis + cooldown

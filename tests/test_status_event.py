@@ -391,6 +391,33 @@ def test_run_injects_world_block_per_turn(monkeypatch, tmp_path):
     assert "вчора питав" in seen[0]  # from the previous session, not the current one
 
 
+def test_previous_session_turns_spans_all_sessions(tmp_path):
+    """The v0.8 timeline draws from ALL prior sessions (oldest->newest), not just the last one — so
+    a short final session no longer starves the prior-messages block."""
+    import kiln.engine as eng
+    from kiln import store as kstore
+
+    def turn(role, text):
+        return {"role": role, "text": text}
+
+    st = kstore.empty_store()
+    seed = [
+        ("s1", "2026-06-27T10:00:00", [turn("user", "a1"), turn("bot", "b1")]),
+        ("s2", "2026-06-28T10:00:00", [turn("user", "a2"), turn("bot", "b2")]),
+        ("s3", "2026-06-29T10:00:00", [turn("user", "a3")]),  # short last session
+    ]
+    for sid, started, msgs in seed:
+        st["sessions"].append(
+            {"id": sid, "started_at": started, "ended_at": "x", "mode": "live", "turns": len(msgs)}
+        )
+        st["messages"][sid] = msgs
+    p = tmp_path / "store.json"
+    kstore.save_store(st, p)
+
+    texts = [t["text"] for t in eng._previous_session_turns(p)]
+    assert texts == ["a1", "b1", "a2", "b2", "a3"]  # every session, chronological — not just s3
+
+
 def _mood_scenario(monkeypatch, eng, tmp_path):
     """Common setup: isolate, mute world, fixed needs — so only the ## Настрій block varies."""
     _isolate(monkeypatch, eng, tmp_path)
