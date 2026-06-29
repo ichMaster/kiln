@@ -107,7 +107,7 @@ DRIFT = {
     "rest": -0.005,  # minimal time drift — fatigue mostly comes from activity (deep/chat)
     "novelty": 0.0001,  # deep driver (leads) — bar swings the full 0..0.85
     "intensity": 0.0005,  # discharged by every deep turn — hovers ~0.7, rarely the lead
-    "reflection": 0.0008,  # v0.10: slow build of «незібраність» -> fires an internal thought
+    "reflection": 0.001,  # v0.10: slow build of «незібраність» -> fires an internal thought
 }
 
 # Closing needs by events. Negative = lowering the level. The reset is LARGE relative
