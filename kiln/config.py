@@ -23,7 +23,7 @@ MEMORY_FILE = STATE_DIR / "memory.md"  # long-term memory: summaries of past ses
 CANON_FILE = STATE_DIR / "canon.md"  # canon: persona/voice (system prompt)
 PROMPTS_FILE = STATE_DIR / "prompts.md"  # self-trigger prompts per need
 MOOD_FILE = STATE_DIR / "mood.json"  # v0.9: need/biorhythm bands, labels, behavioural cues
-NEEDS_FILE = STATE_DIR / "needs.yaml"  # the need MODEL: drift/satiation/triggers + scalars (config)
+NEEDS_FILE = STATE_DIR / "needs_model.yaml"  # the need MODEL: drift/satiation/triggers + scalars
 HISTORY_DIR = PROJECT_ROOT / "history"  # raw session transcripts (JSON, for RAG)
 ENV_FILE = PROJECT_ROOT / ".env"  # local configuration (models + calibration)
 
@@ -55,7 +55,7 @@ TICK_SECONDS = float(os.environ.get("TICK_SECONDS", "0.5"))
 
 # --- Needs (the motivational substrate) -------------------------------------
 # The need MODEL — per-need drift, satiation (closing) events, trigger thresholds + the trigger
-# wiring + cooldowns — lives in state/needs.yaml; edit THAT to tune Agnika. It's loaded here;
+# wiring + cooldowns — lives in state/needs_model.yaml; edit THAT to tune Agnika. It's loaded here;
 # DEFAULT_NEEDS is the fallback for a fresh clone / a broken edit / no PyYAML. (The runtime need
 # LEVELS are separate — state/needs.json, save_state/load_state.) `need_triggers` action: chat ->
 # Haiku, deep -> Opus, idle -> rest gate, tool -> sub-agent, thought -> v0.10 monologue, ask ->
@@ -96,7 +96,7 @@ DEFAULT_NEEDS = {
 
 
 def load_needs(path: Path = NEEDS_FILE) -> dict:
-    """The needs config from state/needs.yaml; DEFAULT_NEEDS if the file is missing/invalid or
+    """The needs config from state/needs_model.yaml; DEFAULT_NEEDS if the file is missing/invalid or
     PyYAML isn't installed (a fresh clone / broken edit still starts)."""
     try:
         import yaml

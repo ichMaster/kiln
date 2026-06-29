@@ -242,7 +242,7 @@ class KilnApp(App):
             text = event["text"]
             self._last_reply = text  # raw markdown source (for copy / transcript)
             # Name + (model) on one line; her reply body on the next line, rendered as Markdown
-            # (headers / **bold** / lists / `code` / fences). Plain text renders as a plain paragraph.
+            # (headers / **bold** / lists / `code` / fences); plain text -> a plain paragraph.
             log.write(f"[{name_style}]{escape(name)}[/]{model_part}:")
             log.write(Markdown(text) if text.strip() else escape(text))
             self._transcript.append(f"{name}{f' ({model})' if model else ''}: {text}")

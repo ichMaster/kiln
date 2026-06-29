@@ -1,5 +1,5 @@
 """
-Needs config: state/needs.yaml -> kiln.config constants, with a DEFAULT_NEEDS fallback.
+Needs config: state/needs_model.yaml -> kiln.config constants, with a DEFAULT_NEEDS fallback.
 
 The need MODEL (drift / satiation / triggers + the trigger-wiring scalars) loads from YAML; a
 missing / broken file (or no PyYAML) falls back to DEFAULT_NEEDS. No model calls.
@@ -13,7 +13,7 @@ import kiln.config as c
 
 
 def test_load_needs_reads_the_committed_yaml():
-    cfg = c.load_needs()  # the committed state/needs.yaml
+    cfg = c.load_needs()  # the committed state/needs_model.yaml
     assert cfg["need_triggers"]["connection"] == {"threshold": 0.80, "action": "chat"}
     assert cfg["drift"]["curiosity"] == 0.002
     assert cfg["satiation"]["asked"] == {"curiosity": -0.4}
@@ -53,7 +53,7 @@ def test_exported_constants_come_from_the_yaml():
 
 
 def test_committed_yaml_stays_in_sync_with_default_needs():
-    """The shipped needs.yaml must match the DEFAULT_NEEDS fallback — edit both together."""
+    """The shipped needs_model.yaml must match the DEFAULT_NEEDS fallback — edit both together."""
     cfg = c.load_needs()
     assert cfg["need_triggers"] == c.DEFAULT_NEEDS["need_triggers"]
     assert cfg["drift"] == c.DEFAULT_NEEDS["drift"]

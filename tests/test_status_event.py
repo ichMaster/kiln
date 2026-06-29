@@ -932,4 +932,4 @@ def test_status_snapshot_curiosity_has_threshold_but_no_self_trigger():
     assert snap["thresholds"]["curiosity"] == thr
     assert snap["actions"]["curiosity"] == "ask"
     row = next(r for r in needs_panel_lines(snap) if "цікавість" in r)
-    assert f"{lvl:.2f}/{thr:.2f}" in row and "→ ask" in row  # coloured, over-threshold, like the rest
+    assert f"{lvl:.2f}/{thr:.2f}" in row and "→ ask" in row  # coloured row, over-threshold
