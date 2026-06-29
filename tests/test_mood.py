@@ -97,6 +97,18 @@ def test_mood_block_renders_reflection_with_a_cue_per_band():
         assert f"незібраність {level:.2f}" in block and cue in block
 
 
+def test_mood_block_excludes_nudge_only_curiosity():
+    """v0.11: curiosity is nudge-only (mood_line:false) — it's labeled (so the TUI panel can name
+    it «цікавість») but it is NOT rendered as a `## Настрій` status line."""
+    from kiln.mood import NEED_LABELS
+
+    assert NEED_LABELS["curiosity"] == "цікавість"  # labeled for the panel
+    bio = {"physical": 0.0, "emotional": 0.0, "intellectual": 0.0}
+    block = mood_block({"curiosity": 0.9, "connection": 0.70}, bio)
+    assert "цікавість" not in block  # no curiosity status line
+    assert "самотність 0.70" in block  # the cued needs still render unchanged
+
+
 # --- mood config loaded from state/mood.json ---
 
 

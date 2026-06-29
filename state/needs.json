@@ -3,5 +3,6 @@
   "rest": -0.001,
   "novelty": 0.998,
   "intensity": 0.896,
-  "reflection": 0.2
+  "reflection": 0.2,
+  "curiosity": 0.0
 }

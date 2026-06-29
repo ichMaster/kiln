@@ -15,6 +15,13 @@ def test_drift_raises_each_need_by_its_rate():
     assert st.needs["intensity"] == pytest.approx(DRIFT["intensity"])
 
 
+def test_drift_raises_curiosity():
+    """v0.11: curiosity is in DRIFT (a tiny upward step) so it warms up over a session."""
+    st = State(needs={"curiosity": 0.0})
+    drift(st)
+    assert st.needs["curiosity"] == pytest.approx(DRIFT["curiosity"]) and DRIFT["curiosity"] > 0
+
+
 def test_drift_catch_up_multiplies_by_ticks():
     """ticks>1 — drift catch-up for real elapsed time (×ticks)."""
     st = State(needs={"novelty": 0.0})

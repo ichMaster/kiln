@@ -28,6 +28,17 @@ def test_only_connection_self_triggers():
     assert select_self_trigger(st, TriggerBook()) is None
 
 
+def test_curiosity_never_self_triggers():
+    """v0.11: curiosity is NOT in NEED_TRIGGERS — even pinned high it produces no self-message
+    and no thought; it only conditions the prompt (KILN-048) and discharges on asking (KILN-047)."""
+    from kiln.config import NEED_TRIGGERS
+
+    assert "curiosity" not in NEED_TRIGGERS
+    st = State(needs={"curiosity": 1.0})
+    assert select_self_trigger(st, TriggerBook()) is None
+    assert select_thought_trigger(st, TriggerBook()) is None
+
+
 def test_hysteresis_one_fire_while_staying_above():
     tg = TriggerBook()
     st = State(needs={"connection": 0.85})  # above threshold 0.80

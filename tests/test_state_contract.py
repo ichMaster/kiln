@@ -14,7 +14,14 @@ from kiln.engine import State, load_state, save_state
 
 def test_needs_json_roundtrip(tmp_path):
     """load -> save -> load returns the same needs (round-trip identity) for the canonical set."""
-    needs = {"connection": 0.5, "rest": 0.1, "novelty": 0.85, "intensity": 0.0, "reflection": 0.3}
+    needs = {
+        "connection": 0.5,
+        "rest": 0.1,
+        "novelty": 0.85,
+        "intensity": 0.0,
+        "reflection": 0.3,
+        "curiosity": 0.2,
+    }
     save_state(State(needs=dict(needs)), tmp_path)
 
     loaded = load_state(tmp_path)
@@ -30,7 +37,8 @@ def test_load_state_heals_missing_configured_need(tmp_path):
         encoding="utf-8",
     )
     needs = load_state(tmp_path).needs
-    assert needs["reflection"] == 0.0  # added even though the file lacks it
+    assert needs["reflection"] == 0.0  # v0.10 need added even though the file lacks it
+    assert needs["curiosity"] == 0.0  # v0.11 need likewise healed in
     assert needs["connection"] == 0.7  # existing values untouched
 
 

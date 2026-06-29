@@ -32,6 +32,8 @@ DEFAULT_MOOD = {
         "rest": {"label": "втома", "cues": {}},
         "intensity": {"label": "напруга", "cues": {}},
         "reflection": {"label": "незібраність", "cues": {}},
+        # v0.11 curiosity: nudge-only — labeled (for the TUI panel) but NOT a ## Настрій line.
+        "curiosity": {"label": "цікавість", "mood_line": False, "cues": {}},
     },
     "biorhythm": {
         "periods": {"physical": 23, "emotional": 28, "intellectual": 33},
@@ -80,11 +82,21 @@ def _build(cfg: dict):
     )
 
 
-try:
-    _built = _build(load_mood())
-except (KeyError, TypeError):
-    _built = _build(DEFAULT_MOOD)  # a structurally malformed file falls back to the defaults
+def _resolve():
+    """Load + flatten the mood config; a structurally bad config falls back to DEFAULT_MOOD. Returns
+    `(cfg, built)` so module state derives from the SAME source that was actually used."""
+    cfg = load_mood()
+    try:
+        return cfg, _build(cfg)
+    except (KeyError, TypeError):
+        return DEFAULT_MOOD, _build(DEFAULT_MOOD)
+
+
+_cfg, _built = _resolve()
 NEED_LABELS, NEED_CUES, NEED_BANDS, _PERIODS, _BIO_BANDS, _BIO_LABELS, BIO_CUES = _built
+# Needs flagged `"mood_line": false` (v0.11 curiosity) are nudge-only: they carry a label so the
+# TUI panel can name them, but they are NOT rendered as a `## Настрій` status line.
+NEED_NOMOOD = {k for k, v in _cfg["needs"].items() if v.get("mood_line") is False}
 
 
 def biorhythm(now: _dt.datetime, birth: _dt.datetime) -> dict[str, float]:
@@ -137,6 +149,8 @@ def mood_block(needs: dict[str, float], bio: dict[str, float] | None = None) -> 
     tone."""
     lines = ["## Настрій"]
     for key, label in NEED_LABELS.items():
+        if key in NEED_NOMOOD:  # v0.11: nudge-only needs (curiosity) aren't a mood status line
+            continue
         level = needs.get(key, 0.0)
         band = need_band(level)
         cue = NEED_CUES.get(key, {}).get(band, "")

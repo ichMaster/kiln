@@ -112,8 +112,8 @@ class State:
 
 def load_state(state_dir: Path = STATE_DIR) -> State:
     """Reads needs from state/needs.json ({need: level}); empty state if the file is missing. Any
-    configured need (a `DRIFT` key) absent from the file is **healed in at 0.0** — so a NEW need
-    (e.g. v0.10 `reflection`) shows up in the TUI/commands and drifts, without re-seeding the file."""
+    configured need (a `DRIFT` key) absent from the file is healed in at 0.0 — so a new need (e.g.
+    v0.10 `reflection`, v0.11 `curiosity`) appears in the TUI/commands and drifts, no re-seed."""
     path = state_dir / "needs.json"
     if not path.exists():
         return State()

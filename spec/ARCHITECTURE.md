@@ -217,7 +217,9 @@ multi-agent is additive, not a rewrite:
 
 ## Data model
 
-- `state/needs.json` — `{connection, rest, novelty, intensity}` in `0..1` (seed; rewritten each run).
+- `state/needs.json` — `{connection, rest, novelty, intensity, reflection, curiosity}` in `0..1`
+  (seed; rewritten each run). `load_state` heals any configured need (a `DRIFT` key) missing from
+  the file in at `0.0`, so a new need appears without re-seeding.
 - `state/canon.md` — authored persona (system prompt).
 - `state/prompts.md` — self-trigger prompts per need.
 - `state/memory.md` — datestamped cross-session summaries (generated; gitignored).

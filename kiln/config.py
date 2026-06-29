@@ -108,6 +108,7 @@ DRIFT = {
     "novelty": 0.0001,  # deep driver (leads) — bar swings the full 0..0.85
     "intensity": 0.0005,  # discharged by every deep turn — hovers ~0.7, rarely the lead
     "reflection": 0.001,  # v0.10: slow build of «незібраність» -> fires an internal thought
+    "curiosity": 0.002,  # v0.11: tiny step — short warm-up, then ebbs/flows as asking discharges it
 }
 
 # Closing needs by events. Negative = lowering the level. The reset is LARGE relative
@@ -200,6 +201,14 @@ AGENT_BIRTH = os.environ.get("AGENT_BIRTH", "")
 # BIORHYTHM toggles just the biorhythm sub-block within it.
 MOOD_AWARENESS = os.environ.get("MOOD_AWARENESS", "1") == "1"
 BIORHYTHM = os.environ.get("BIORHYTHM", "1") == "1"
+
+# v0.11 curiosity: a low-threshold need that does NOT self-trigger (not in NEED_TRIGGERS). While it
+# is over CURIOSITY_THRESHOLD, every turn's prompt carries a `## Цікавість` nudge to ASK real
+# questions and dig deeper rather than mirror; it is discharged by CURIOSITY_SATIATION when she
+# actually asks (engine.is_curiosity_reply), so it ebbs and flows. CURIOSITY = master on/off.
+CURIOSITY = os.environ.get("CURIOSITY", "1") == "1"
+CURIOSITY_THRESHOLD = float(os.environ.get("CURIOSITY_THRESHOLD", "0.5"))
+CURIOSITY_SATIATION = float(os.environ.get("CURIOSITY_SATIATION", "0.4"))  # discharge per ask
 
 # Tools/skills allowed on the reasoning branch (example).
 DEEP_TOOLS = ["Read", "Write", "Bash"]
