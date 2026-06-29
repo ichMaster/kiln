@@ -128,9 +128,11 @@ algorithm in [`docs/how-it-works.md`](../docs/how-it-works.md).
 Two needs have a `NEED_TRIGGERS` entry (so the panel shows their threshold + colour) but do **not**
 self-trigger — the selectors only check `connection` / `reflection`. **reflection** (v0.10) fires an
 internal thought that `apply_satiation("thought")` discharges; **curiosity** (v0.11) is shaped by its
-`## Настрій` band cue (ask-don't-mirror at higher levels) and discharged by a post-reply **monitor** —
-when `engine.is_curiosity_reply` sees a question **and** curiosity is over its threshold,
-`apply_satiation("asked")` sates it (curious → asks → sated → curious). Its `action` is `"ask"`.
+`## Настрій` band cue (ask-don't-mirror at higher levels) and its trigger **arms a monitor** rather
+than sending anything: `update_curiosity_monitor` runs each tick — an upward threshold crossing sets
+`tg.curiosity_monitor` on, falling below clears it. **Only while the monitor is on** does a question
+(`engine.is_curiosity_reply`) fire `apply_satiation("asked")` to sate curiosity (curious → asks →
+sated → curious). Its `action` is `"ask"`.
 
 ## Memory and transcripts (+ RAG)
 

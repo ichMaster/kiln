@@ -40,6 +40,19 @@ def test_curiosity_never_self_triggers():
     assert select_thought_trigger(st, TriggerBook()) is None
 
 
+def test_curiosity_monitor_arms_on_crossing_and_disarms_below():
+    """v0.11: curiosity's trigger ENABLES the monitor — an upward crossing of its threshold turns
+    the monitor ON, falling below turns it OFF. The monitor (not a self-message) is what lets a
+    `?` reply discharge curiosity (engine._turn)."""
+    from kiln.engine import update_curiosity_monitor
+
+    tg = TriggerBook()
+    assert update_curiosity_monitor(State(needs={"curiosity": 0.45}), tg) is False  # below -> off
+    assert update_curiosity_monitor(State(needs={"curiosity": 0.55}), tg) is True  # crossing -> on
+    assert update_curiosity_monitor(State(needs={"curiosity": 0.52}), tg) is True  # stays on > thr
+    assert update_curiosity_monitor(State(needs={"curiosity": 0.20}), tg) is False  # below -> off
+
+
 def test_hysteresis_one_fire_while_staying_above():
     tg = TriggerBook()
     st = State(needs={"connection": 0.85})  # above threshold 0.80

@@ -395,10 +395,12 @@ only colours how she answers, and **asking** discharges it.
   (низька «спокійно, не розпитуй» → дуже висока «веди питаннями, копай у суть»). `mood_block` renders it in
   `## Настрій`; there is **no** separate `## Цікавість` block. The ask-don't-mirror nudge **is** the high-band
   cue, graded by level.
-- **Discharge via a question monitor + SATIATION.** A pure `is_curiosity_reply(text) -> bool` (a `?` or a
-  leading Ukrainian interrogative). After every reply, `engine._turn` runs the **monitor**: if she asked,
-  `apply_satiation(state, "asked")` (`SATIATION["asked"] = {"curiosity": -0.4}`) sates it — curious → asks →
-  sated → curious. A statement, or asking below the threshold, leaves it. The question reply is marked with a
+- **Trigger arms a monitor; the monitor + SATIATION discharge.** Curiosity's "trigger" sends nothing — an
+  upward threshold crossing **enables a monitor** (`update_curiosity_monitor` each tick → `tg.curiosity_monitor`;
+  falling below disables it). A pure `is_curiosity_reply(text) -> bool` (a `?` or a leading Ukrainian
+  interrogative). After every reply, `engine._turn`: **only while the monitor is on**, a question fires
+  `apply_satiation(state, "asked")` (`SATIATION["asked"] = {"curiosity": -0.4}`) — curious → asks → sated →
+  curious. A statement, or a question while the monitor is off, leaves it. The question reply is marked with a
   subtle `Output.is_curiosity` (« Agnika (?) »).
 - **Tests.** Curiosity drift; `is_curiosity_reply` true on a question / false on a statement; `mood_block`
   renders curiosity with its band cue; `apply_satiation("asked")` lowers curiosity; an integration turn where

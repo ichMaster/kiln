@@ -154,6 +154,7 @@ class TriggerBook:
 
     armed: dict[str, bool] = field(default_factory=dict)  # ready to fire?
     cooldown: dict[str, int] = field(default_factory=dict)  # silent ticks remaining
+    curiosity_monitor: bool = False  # v0.11: ON between a curiosity crossing and falling below it
 
 
 def _crossing_trigger(state: State, tg: TriggerBook, name: str, cooldown: int) -> str | None:
@@ -193,6 +194,22 @@ def select_thought_trigger(state: State, tg: TriggerBook) -> str | None:
     upward crossing this tick (else None), with the same hysteresis + THOUGHT_COOLDOWN as the
     reach-out. The thought itself (KILN-042) is generated separately — this only decides WHEN."""
     return _crossing_trigger(state, tg, REFLECT_NEED, THOUGHT_COOLDOWN)
+
+
+def update_curiosity_monitor(state: State, tg: TriggerBook) -> bool:
+    """v0.11: curiosity's "trigger" — an upward crossing of its threshold **enables the monitor**
+    (`tg.curiosity_monitor`); falling back below disables it. Unlike a reach-out/thought it sends
+    nothing — it just gates whether a `?` reply discharges curiosity (the monitor, in `_turn`).
+    Run every tick (after drift). Returns the monitor state. No `NEED_TRIGGERS` entry → off."""
+    cfg = NEED_TRIGGERS.get("curiosity")
+    if cfg is None:
+        tg.curiosity_monitor = False
+        return False
+    if _crossing_trigger(state, tg, "curiosity", 0):  # an upward crossing fires -> arm the monitor
+        tg.curiosity_monitor = True
+    elif state.needs.get("curiosity", 0.0) < cfg["threshold"]:  # fell below -> disarm
+        tg.curiosity_monitor = False
+    return tg.curiosity_monitor
 
 
 def reach_out_branch(state: State) -> tuple[str, str | None]:
@@ -510,12 +527,11 @@ def run(
         # One model turn, timed; folds tokens + latency into the session stats.
         t0 = time.monotonic()
         out = respond(prompt, state, history, _system(), brain, force=force, agent=agent)
-        # v0.11 curiosity monitor: post-process the reply — if she ASKED while curious enough (over
-        # the NEED_TRIGGERS threshold), the SATIATION "asked" event discharges curiosity (curious ->
-        # asks -> sated -> curious). A statement, or asking when uncurious, leaves it. `curiosity`
-        # flags the reply for the display marker.
-        cur_thr = NEED_TRIGGERS.get("curiosity", {}).get("threshold", 1.1)
-        asked = is_curiosity_reply(out["reply"]) and state.needs.get("curiosity", 0.0) >= cur_thr
+        # v0.11 curiosity monitor: post-process the reply — only while the monitor is ON (armed by a
+        # threshold crossing, update_curiosity_monitor), a "?" reply fires the SATIATION "asked"
+        # event that discharges curiosity (curious -> asks -> sated -> curious). A statement, or a
+        # question while the monitor is off, leaves it. `curiosity` flags the reply for the marker.
+        asked = tg.curiosity_monitor and is_curiosity_reply(out["reply"])
         out["curiosity"] = asked
         if asked:
             apply_satiation(state, "asked")
@@ -564,6 +580,7 @@ def run(
             steps = max(1, round(elapsed / TICK_SECONDS)) if (live and TICK_SECONDS > 0) else 1
             drift(state, steps)  # catch-up drift over real time (silent)
             total_ticks += steps  # the tick counter tracks real elapsed ticks, not loop iterations
+            update_curiosity_monitor(state, tg)  # v0.11: arm/disarm the curiosity monitor by level
             # Rest gate (hysteresis): when fatigue (rest) reaches its threshold Agnika stops
             # answering and only recovers (idle) until rest falls back to REST_WAKE. The band
             # (sleep >= threshold, wake <= REST_WAKE) makes her actually rest instead of
