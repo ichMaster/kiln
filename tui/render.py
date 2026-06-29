@@ -98,7 +98,7 @@ def needs_panel_lines(snap: dict) -> list[str]:
         action_s = f" → {action}" if action else ""
         color = need_color(level, thr)
         rows.append(
-            f"{mark}{need_label(name):<11} [{color}]{_bar(level)}[/] "
+            f"{mark}{need_label(name):<13} [{color}]{_bar(level)}[/] "
             f"{level:.2f}{thr_s}{flag}{cd_s}{action_s}"
         )
     return rows
