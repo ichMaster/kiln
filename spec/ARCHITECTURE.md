@@ -225,6 +225,12 @@ multi-agent is additive, not a rewrite:
   (`{"kind": "user"|"agent"|"usage"|"notice"|"status", …}`, mirroring the `Output`
   methods) and typed lines on the inbox; both drained non-blocking. Echo-free: input
   never appears on the outbox. A precursor to the WS event protocol below.
+- **Network bus (v1.1, `server/bus.py`):** the same shape over the network — `ServerChannel`
+  (drains an inbox `queue.Queue`, the `Channel` seam) + `ServerOutput` (the `Output` seam → a
+  `BroadcastHub` that fans each event to **every** attached client). Echo-free (`user()` no-op);
+  the event `kind`s are identical to the `Bridge`, so a client renders the same whether local
+  (in-process `Bridge`) or remote (WS). `BroadcastHub.broadcast` is best-effort — a sink that raises
+  is dropped, never blocking the engine thread.
 - **Event protocol (planned, 1.1/1.2):** server↔client events (`user.message`,
   `agnika.message`, `status`, `usage`, `tick`, `command`) mirror the FSM.
 
