@@ -53,7 +53,10 @@ self-trigger.
 - **Server / agent host** (planned, v1.1) — wraps the core as a WS/HTTP server;
   hosts many agents keyed by `agent_id`, each with a permission scope.
 - **Clients** (`tui/`: Textual app, planned web) — thin front-ends over the bridge/
-  server. None hold agent logic; the engine never imports a client.
+  server. None hold agent logic; the engine never imports a client. The Textual app
+  runs two ways over the **same** `_render`: a local in-process `Bridge` (engine on a
+  thread) or, with `--remote ws://…/agent/{id}`, a `WsBridge` (`tui/ws_bridge.py`) to a
+  running server — identical wire `kind`s, so rendering is unchanged (v1.1, KILN-054).
 
 ## The tick loop (the central abstraction)
 

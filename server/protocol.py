@@ -58,3 +58,10 @@ def parse_client(data: dict) -> tuple[str, str]:
         if not isinstance(text, str):
             raise ValueError("`text` must be a string")
     return mtype, text
+
+
+def build_client(mtype: str, text: str = "") -> str:
+    """Serialise a client→server message (inverse of `parse_client`) — used by remote clients."""
+    if mtype not in CLIENT_MESSAGE_TYPES:
+        raise ValueError(f"unknown client message type: {mtype!r}")
+    return json.dumps({"type": mtype, "text": text}, ensure_ascii=False)

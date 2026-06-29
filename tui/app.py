@@ -155,17 +155,26 @@ class KilnApp(App):
     def __init__(
         self,
         *,
-        bridge: Bridge | None = None,
+        bridge=None,
         live: bool = True,
         brain=None,
         start_engine: bool = True,
+        remote: str | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.bridge = bridge or Bridge()
+        self._remote = remote
+        if remote:
+            # Remote mode (KILN-054): a WS bridge to a running server, no local engine thread.
+            from .ws_bridge import WsBridge
+
+            self.bridge = bridge or WsBridge(remote)
+            self._start_engine = False
+        else:
+            self.bridge = bridge or Bridge()
+            self._start_engine = start_engine
         self._live = live
         self._brain = brain
-        self._start_engine = start_engine
         self._engine_thread: threading.Thread | None = None
         self._last_reply = ""  # for Ctrl+Y (copy last reply)
         self._transcript: list[str] = []  # plain-text mirror of the log (for Ctrl+O)
@@ -188,7 +197,9 @@ class KilnApp(App):
     def on_mount(self) -> None:
         self.console.push_theme(MARKDOWN_THEME)  # colour the Markdown in replies (markdown.* keys)
         self.query_one("#prompt", ChatInput).focus()
-        if self._start_engine:
+        if self._remote:
+            self.bridge.start()  # connect to the server on a background thread
+        elif self._start_engine:
             self._engine_thread = threading.Thread(target=self._run_engine, daemon=True)
             self._engine_thread.start()
         self.set_interval(0.1, self._drain)  # drain outbox in step with the UI
@@ -283,6 +294,11 @@ class KilnApp(App):
         self._last_reply = ""
 
     def action_quit(self) -> None:
+        if self._remote:
+            # Remote mode: just detach — the server agent keeps living (don't send it /quit).
+            self.bridge.close()
+            self.exit()
+            return
         # Ask the engine to end its loop; its `finally` saves the session AND summarizes it
         # (Opus + extended thinking, ~10-20s). Don't block the UI on that — joining with a
         # short timeout used to kill the summary. Show "saving…" and poll until the engine
@@ -305,5 +321,19 @@ class KilnApp(App):
 
 
 def main() -> None:
-    """Launch the TUI live (LiveBrain) — needs keys/CLI as in normal live mode."""
-    KilnApp(live=True).run()
+    """Launch the TUI. `--remote ws://…/agent/{id}` attaches to a running server (the agent lives
+    server-side); otherwise run a local engine live (LiveBrain — needs keys/CLI as in live mode)."""
+    import sys
+
+    argv = sys.argv[1:]
+    remote = None
+    if "--remote" in argv:
+        idx = argv.index("--remote")
+        remote = argv[idx + 1] if idx + 1 < len(argv) else None
+        if not remote:
+            print("usage: kiln --tui --remote ws://HOST:PORT/agent/AGENT_ID")
+            return
+    if remote:
+        KilnApp(remote=remote).run()
+    else:
+        KilnApp(live=True).run()
