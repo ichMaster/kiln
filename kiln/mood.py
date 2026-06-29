@@ -32,8 +32,8 @@ DEFAULT_MOOD = {
         "rest": {"label": "втома", "cues": {}},
         "intensity": {"label": "напруга", "cues": {}},
         "reflection": {"label": "незібраність", "cues": {}},
-        # v0.11 curiosity: nudge-only — labeled (for the TUI panel) but NOT a ## Настрій line.
-        "curiosity": {"label": "цікавість", "mood_line": False, "cues": {}},
+        # v0.11 curiosity: a normal mood need (cues live in state/mood.json; empty here = fallback).
+        "curiosity": {"label": "цікавість", "cues": {}},
     },
     "biorhythm": {
         "periods": {"physical": 23, "emotional": 28, "intellectual": 33},
@@ -55,19 +55,6 @@ DEFAULT_MOOD = {
         },
     },
 }
-
-
-# v0.11 curiosity: the `## Цікавість` block is ALWAYS in the prompt (when CURIOSITY is on); the
-# message is GRADED by the curiosity level (need band) — low keeps her calm, high pushes her to ask
-# and dig. Persona-layer (Ukrainian); the real text lives in state/mood.json (needs.curiosity.cues,
-# per band), with these terse defaults as the fallback for a fresh clone / a broken edit.
-DEFAULT_CURIOSITY_CUES = {
-    "низька": "Спокійно, без потягу копати — можна просто слухати, не розпитуй.",
-    "помірна": "Інтерес прокидається — спитай, якщо щось чіпляє, без натиску.",
-    "висока": "Тобі цікаво — постав живе, конкретне питання й копай глибше, не дзеркаль.",
-    "дуже висока": "Цікавість пече — веди питаннями, копай у суть, доганяй кожне «незрозуміло».",
-}
-_CURIOSITY_FALLBACK = "Тобі цікаво — постав живе, конкретне питання й копай глибше, не дзеркаль."
 
 
 def load_mood(path: Path = MOOD_FILE) -> dict:
@@ -107,9 +94,6 @@ def _resolve():
 
 _cfg, _built = _resolve()
 NEED_LABELS, NEED_CUES, NEED_BANDS, _PERIODS, _BIO_BANDS, _BIO_LABELS, BIO_CUES = _built
-# Needs flagged `"mood_line": false` (v0.11 curiosity) are nudge-only: they carry a label so the
-# TUI panel can name them, but they are NOT rendered as a `## Настрій` status line.
-NEED_NOMOOD = {k for k, v in _cfg["needs"].items() if v.get("mood_line") is False}
 
 
 def biorhythm(now: _dt.datetime, birth: _dt.datetime) -> dict[str, float]:
@@ -162,8 +146,6 @@ def mood_block(needs: dict[str, float], bio: dict[str, float] | None = None) -> 
     tone."""
     lines = ["## Настрій"]
     for key, label in NEED_LABELS.items():
-        if key in NEED_NOMOOD:  # v0.11: nudge-only needs (curiosity) aren't a mood status line
-            continue
         level = needs.get(key, 0.0)
         band = need_band(level)
         cue = NEED_CUES.get(key, {}).get(band, "")
@@ -172,15 +154,3 @@ def mood_block(needs: dict[str, float], bio: dict[str, float] | None = None) -> 
     if bio is not None:
         lines.append(biorhythm_block(bio))
     return "\n".join(lines)
-
-
-def curiosity_nudge(curiosity: float) -> str:
-    """The v0.11 `## Цікавість` block — ALWAYS present, with the message GRADED by the curiosity
-    level (need band): low bands keep her calm (no urge to probe), high bands push her to ask and
-    dig. Text from `state/mood.json` (needs.curiosity.cues, per band), `DEFAULT_CURIOSITY_CUES`
-    fallback. Pure — no I/O. (The CURIOSITY master gate lives in the caller; the discharge
-    threshold is separate — engine._turn.)"""
-    band = need_band(curiosity)
-    cues = NEED_CUES.get("curiosity") or {}
-    msg = cues.get(band) or DEFAULT_CURIOSITY_CUES.get(band) or _CURIOSITY_FALLBACK
-    return "## Цікавість\n" + msg

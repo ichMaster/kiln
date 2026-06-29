@@ -138,20 +138,6 @@ def test_thoughts_block_off_and_empty():
     assert mem.thoughts_block([], 5) == ""  # empty -> ""
 
 
-def test_build_system_appends_curiosity_block_last():
-    system = mem.build_system(
-        "CANON", "M", "F", "## Зараз\nх", "## Настрій\nх", "## Думки\n- ідея", "## Цікавість\nпитай"
-    )
-    assert "## Цікавість\nпитай" in system
-    assert system.index("## Думки") < system.index("## Цікавість")  # curiosity comes after thoughts
-
-
-def test_build_system_empty_curiosity_is_v010_backcompat():
-    # curiosity="" must be byte-for-byte the v0.10 output (with thoughts)
-    args = ("CANON", "M", "F", "## Зараз\nх", "## Настрій\nх", "## Думки\n- ідея")
-    assert mem.build_system(*args, "") == mem.build_system(*args)
-
-
 # --- MEMORY_SUMMARIES cap (how many summaries enter the prompt) ---
 
 

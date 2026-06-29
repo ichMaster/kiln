@@ -47,6 +47,13 @@ def test_satiation_chat_closes_connection():
     assert st.needs["connection"] == pytest.approx(0.80 + SATIATION["chat"]["connection"])
 
 
+def test_satiation_asked_discharges_curiosity():
+    """v0.11: the question monitor's 'asked' event lowers curiosity (curious -> asks -> sated)."""
+    st = State(needs={"curiosity": 0.6})
+    apply_satiation(st, "asked")
+    assert st.needs["curiosity"] == pytest.approx(0.6 + SATIATION["asked"]["curiosity"])
+
+
 def test_satiation_clamps_at_zero():
     st = State(needs={"connection": 0.10})  # -0.50 -> clamp at 0
     apply_satiation(st, "chat")

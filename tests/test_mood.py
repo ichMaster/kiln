@@ -97,51 +97,19 @@ def test_mood_block_renders_reflection_with_a_cue_per_band():
         assert f"незібраність {level:.2f}" in block and cue in block
 
 
-def test_mood_block_excludes_nudge_only_curiosity():
-    """v0.11: curiosity is nudge-only (mood_line:false) — it's labeled (so the TUI panel can name
-    it «цікавість») but it is NOT rendered as a `## Настрій` status line."""
+def test_mood_block_includes_curiosity_with_a_band_cue():
+    """v0.11: curiosity is a NORMAL mood need now — it renders in `## Настрій` with its band cue
+    (the ask-don't-mirror nudge lives here, graded by level — no separate block)."""
     from kiln.mood import NEED_LABELS
 
-    assert NEED_LABELS["curiosity"] == "цікавість"  # labeled for the panel
+    assert NEED_LABELS["curiosity"] == "цікавість"
     bio = {"physical": 0.0, "emotional": 0.0, "intellectual": 0.0}
-    block = mood_block({"curiosity": 0.9, "connection": 0.70}, bio)
-    assert "цікавість" not in block  # no curiosity status line
-    assert "самотність 0.70" in block  # the cued needs still render unchanged
-
-
-# --- v0.11 curiosity_nudge (the ## Цікавість block — always present, graded by level) ---
-
-
-def test_curiosity_nudge_always_present_and_graded_by_level():
-    from kiln.mood import curiosity_nudge
-
-    low = curiosity_nudge(0.10)  # низька band
-    mid = curiosity_nudge(0.50)  # помірна band
-    high = curiosity_nudge(0.95)  # дуже висока band
-    # ALWAYS present, at every level
-    assert low.startswith("## Цікавість") and high.startswith("## Цікавість")
-    # the message is graded — different bands give different text
-    assert low != mid and mid != high and low != high
-    # low keeps her calm; a high band pushes asking / digging
-    assert "не розпитуй" in low or "слухати" in low
-    assert "питанн" in high.lower() or "копай" in high.lower()
-
-
-def test_curiosity_nudge_message_from_mood_json_cues(monkeypatch):
-    import kiln.mood as mood
-
-    # the per-band text is sourced from NEED_CUES["curiosity"] — changing it changes the output
-    monkeypatch.setitem(mood.NEED_CUES, "curiosity", {"низька": "ТИХО"})
-    assert mood.curiosity_nudge(0.10) == "## Цікавість\nТИХО"  # низька band -> the cue
-
-
-def test_curiosity_nudge_falls_back_when_band_cue_missing(monkeypatch):
-    import kiln.mood as mood
-
-    # a band with no configured cue falls back to the code default (still always a block)
-    monkeypatch.setitem(mood.NEED_CUES, "curiosity", {})  # no cues at all
-    out = mood.curiosity_nudge(0.95)
-    assert out.startswith("## Цікавість") and out.split("\n", 1)[1]  # non-empty fallback line
+    low = mood_block({"curiosity": 0.10, "connection": 0.70}, bio)
+    high = mood_block({"curiosity": 0.95}, bio)
+    assert "цікавість 0.10 — низька" in low and "самотність 0.70" in low  # rendered like any need
+    # the cue is graded by band (calm at low, push-to-ask at high)
+    assert "цікавість 0.95 — дуже висока" in high
+    assert low.split("цікавість", 1)[1] != high.split("цікавість", 1)[1]
 
 
 # --- mood config loaded from state/mood.json ---

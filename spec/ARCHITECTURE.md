@@ -125,6 +125,12 @@ is shaped by her other needs at that moment (`reach_out_branch`): `intensity` ov
 via `turn_weight`. `rest` crossing drives the **rest gate** (sleep), not a message. Full
 algorithm in [`docs/how-it-works.md`](../docs/how-it-works.md).
 
+Two needs are **not** `NEED_TRIGGERS` self-triggers but close through dedicated events instead:
+**reflection** (v0.10) fires an internal thought that `apply_satiation("thought")` discharges, and
+**curiosity** (v0.11) is shaped purely by its `## Настрій` band cue (ask-don't-mirror at higher
+levels) and discharged by a post-reply **monitor** — when `engine.is_curiosity_reply` sees a
+question, `apply_satiation("asked")` sates it (curious → asks → sated → curious).
+
 ## Memory and transcripts (+ RAG)
 
 All cross-session state lives in **one `.kiln/store.json`** (`store.py`, v0.5) — written
@@ -170,18 +176,18 @@ multi-agent is additive, not a rewrite:
   (cache tracked separately, Lumi-style); `cost_usd` = the CLI's actual cost, or `None` for the
   SDK path (estimated from the v0.7 price table).
 - **Needs:** `state/needs.json` = `{need: level(0..1)}`.
-- **Canon / system prompt:** `build_system(canon, memory, facts, world, mood, thoughts, curiosity)`
-  composes the system prompt of every branch — `canon` (`state/canon.md`, fallback `DEFAULT_CANON`) +
-  the v0.5 memory summaries + the v0.6 `## Facts about the user` digest + the v0.8 `world` block
-  (`## Зараз` + `## Повідомлення з минулої сесії`, `world.world_block`) + the v0.9 `mood` block
-  (`## Настрій` — every need's level + a Ukrainian band, then the day's biorhythm; `mood.mood_block`)
-  + the v0.10 `thoughts` block (`## Думки` — the last N cross-session inner thoughts, deduped vs the
-  live turns; `memory.thoughts_block`) + the v0.11 `curiosity` nudge (`## Цікавість` — present only
-  while `curiosity >= CURIOSITY_THRESHOLD`; `mood.curiosity_nudge`). Each layer optional;
-  `curiosity=""` is v0.10-equivalent. The world + mood + thoughts + curiosity blocks are composed
-  **per turn** so the clock, needs, latest thoughts, and the curiosity nudge stay live; the world
-  timeline is the **previous session's** tail (current-session turns already ride in the messages
-  array / transcript) and the biorhythm is computed **once at session start** (static).
+- **Canon / system prompt:** `build_system(canon, memory, facts, world, mood, thoughts)` composes the
+  system prompt of every branch — `canon` (`state/canon.md`, fallback `DEFAULT_CANON`) + the v0.5
+  memory summaries + the v0.6 `## Facts about the user` digest + the v0.8 `world` block (`## Зараз` +
+  `## Повідомлення з минулої сесії`, `world.world_block`) + the v0.9 `mood` block (`## Настрій` —
+  every need's level + a Ukrainian band + a behavioural cue, then the day's biorhythm; `mood.mood_block`.
+  This includes the v0.11 **curiosity** need: its band cue is the ask-don't-mirror nudge — there is no
+  separate block) + the v0.10 `thoughts` block (`## Думки` — the last N cross-session inner thoughts,
+  deduped vs the live turns; `memory.thoughts_block`). Each layer optional; `thoughts=""` is
+  v0.9-equivalent. The world + mood + thoughts blocks are composed **per turn** so the clock, needs,
+  and latest thoughts stay live; the world timeline is the **previous session's** tail (current-session
+  turns already ride in the messages array / transcript) and the biorhythm is computed **once at
+  session start** (static).
 - **Store (v0.5–0.10):** `.kiln/store.json` = `{sessions: [{id, started_at, ended_at, mode, turns}],
   messages: {session_id: [{role, text, at}]}, summaries: [{session_id, stamp, text}],
   facts: [{id, text, first_seen, last_seen, source_session}],
@@ -204,8 +210,8 @@ multi-agent is additive, not a rewrite:
   `agent(text, is_self, lead, model, is_thought, is_curiosity)` / `usage(dict, latency?)` /
   `notice(text)` / `status(snapshot)`; the core emits through it, `ConsoleOutput` is the default
   sink (`status` a no-op). `is_thought` (v0.10) marks a surfaced inner thought (rendered dim /
-  «думка:»); `is_curiosity` (v0.11) marks a curiosity-driven reply — she acted on the nudge and
-  asked, shown with a subtle ` (?)`. The TUI bridge `agent` event carries both. The method set
+  «думка:»); `is_curiosity` (v0.11) marks a reply the curiosity monitor flagged as a question (she
+  asked), shown with a subtle ` (?)`. The TUI bridge `agent` event carries both. The method set
   foreshadows the event protocol below.
 - **Status event (v0.4):** `run()` emits a `status(snapshot)` **every tick** —
   `{status, model, branch, tick, needs, thresholds, actions, hottest, cooldowns, stats}` where

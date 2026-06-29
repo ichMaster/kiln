@@ -37,9 +37,6 @@ from .commands import handle_command
 from .config import (
     BIORHYTHM,
     CHAT_MODEL,
-    CURIOSITY,
-    CURIOSITY_SATIATION,
-    CURIOSITY_THRESHOLD,
     DEEP_MODEL,
     DRIFT,
     MOOD_AWARENESS,
@@ -83,7 +80,7 @@ from .memory import (
     summarize,
     thoughts_block,
 )
-from .mood import biorhythm, curiosity_nudge, mood_block
+from .mood import biorhythm, mood_block
 from .output import ConsoleOutput, Output
 from .report import write_report
 from .stats import SessionStats
@@ -399,11 +396,6 @@ def _status_snapshot(
     thresholds = {name: cfg["threshold"] for name, cfg in NEED_TRIGGERS.items()}
     # what addresses each need (the self-trigger branch)
     actions = {name: cfg["action"] for name, cfg in NEED_TRIGGERS.items()}
-    # v0.11: curiosity is NOT a trigger (no self-message), but surface its nudge threshold so the
-    # panel shows it as a full need (`0.62/0.50 → nudge` + the colour gradient), not a bare bar.
-    if CURIOSITY and "curiosity" in state.needs:
-        thresholds["curiosity"] = CURIOSITY_THRESHOLD
-        actions["curiosity"] = "nudge"
     cooldowns = {name: c for name, c in tg.cooldown.items() if c > 0}
     # headline model for the status bar follows the last branch (deep/Opus is the default;
     # a "tool" branch runs a sub-agent whose own model is shown on the reply label instead)
@@ -496,9 +488,9 @@ def run(
     )  # the day's biorhythm — computed ONCE, static all session
 
     def _system() -> str:
-        # v0.8 world + v0.9 mood + v0.10 thoughts + v0.11 curiosity, composed PER TURN — the clock,
-        # needs, latest thoughts, and the curiosity nudge stay live; the prior-session timeline and
-        # the day's biorhythm are static. All off -> the static base.
+        # v0.8 world + v0.9 mood + v0.10 thoughts, composed PER TURN — the clock, needs (incl. the
+        # v0.11 curiosity cue in ## Настрій), and latest thoughts stay live; the prior-session
+        # timeline and the day's biorhythm are static. All off -> the static base.
         world = (
             world_block(_now(), USER_LOCATION, prev_turns, RECENT_MESSAGES)
             if WORLD_AWARENESS
@@ -510,25 +502,20 @@ def run(
             if THOUGHTS_ENABLED
             else ""
         )
-        # Always present when CURIOSITY is on — the message is graded by level (curiosity_nudge);
-        # CURIOSITY_THRESHOLD still gates the discharge in _turn, not the block.
-        curiosity = curiosity_nudge(state.needs.get("curiosity", 0.0)) if CURIOSITY else ""
-        if not world and not mood and not thoughts and not curiosity:
+        if not world and not mood and not thoughts:
             return base_system
-        return build_system(canon, memory, facts, world, mood, thoughts, curiosity)
+        return build_system(canon, memory, facts, world, mood, thoughts)
 
     def _turn(prompt: str, force: str | None = None, agent: str | None = None) -> dict:
         # One model turn, timed; folds tokens + latency into the session stats.
         t0 = time.monotonic()
-        # v0.11: was the curiosity nudge active this turn? (read before the reply may sate it)
-        curiosity_active = CURIOSITY and state.needs.get("curiosity", 0.0) >= CURIOSITY_THRESHOLD
         out = respond(prompt, state, history, _system(), brain, force=force, agent=agent)
-        # Acting on the nudge — a real question while it was active — discharges curiosity (which
-        # then drifts back up): curious -> asks -> sated -> curious. A statement leaves it high.
-        out["curiosity"] = curiosity_active and is_curiosity_reply(out["reply"])
+        # v0.11 curiosity monitor: post-process the reply — if she actually ASKED, the SATIATION
+        # "asked" event discharges curiosity (curious -> asks -> sated -> curious); a statement
+        # leaves it high. `curiosity` flags the reply for the display marker.
+        out["curiosity"] = is_curiosity_reply(out["reply"])
         if out["curiosity"]:
-            cur = state.needs.get("curiosity", 0.0)
-            state.needs["curiosity"] = max(0.0, cur - CURIOSITY_SATIATION)
+            apply_satiation(state, "asked")
         stats.record(out["class"], out.get("usage"), time.monotonic() - t0)
         return out
 

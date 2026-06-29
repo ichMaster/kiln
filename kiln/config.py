@@ -133,6 +133,9 @@ SATIATION = {
     "idle": {"connection": 0, "rest": -0.01, "novelty": 0.0001, "intensity": +0.0005},
     # a thought (Haiku inner monologue) gathers the scattered thoughts -> drops reflection (v0.10)
     "thought": {"reflection": -0.7},
+    # v0.11: the curiosity monitor — when a reply actually ASKS (engine.is_curiosity_reply), this
+    # discharges curiosity (asking sates it), so it ebbs and flows like any other need.
+    "asked": {"curiosity": -0.4},
 }
 
 # --- Classification / routing -----------------------------------------------
@@ -202,13 +205,10 @@ AGENT_BIRTH = os.environ.get("AGENT_BIRTH", "")
 MOOD_AWARENESS = os.environ.get("MOOD_AWARENESS", "1") == "1"
 BIORHYTHM = os.environ.get("BIORHYTHM", "1") == "1"
 
-# v0.11 curiosity: a low-threshold need that does NOT self-trigger (not in NEED_TRIGGERS). While it
-# is over CURIOSITY_THRESHOLD, every turn's prompt carries a `## Цікавість` nudge to ASK real
-# questions and dig deeper rather than mirror; it is discharged by CURIOSITY_SATIATION when she
-# actually asks (engine.is_curiosity_reply), so it ebbs and flows. CURIOSITY = master on/off.
-CURIOSITY = os.environ.get("CURIOSITY", "1") == "1"
-CURIOSITY_THRESHOLD = float(os.environ.get("CURIOSITY_THRESHOLD", "0.5"))
-CURIOSITY_SATIATION = float(os.environ.get("CURIOSITY_SATIATION", "0.4"))  # discharge per ask
+# v0.11 curiosity is a NORMAL need: it drifts (DRIFT["curiosity"]), shows in `## Настрій` with a
+# behavioural cue per band (state/mood.json), and is discharged by the SATIATION["asked"] event —
+# fired by the question monitor (engine.is_curiosity_reply) when a reply actually asks. It does NOT
+# self-trigger (not in NEED_TRIGGERS); the band cues, not a threshold, shape when she asks.
 
 # Tools/skills allowed on the reasoning branch (example).
 DEEP_TOOLS = ["Read", "Write", "Bash"]

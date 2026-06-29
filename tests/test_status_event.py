@@ -448,10 +448,8 @@ def test_run_mood_awareness_off_no_section(monkeypatch, tmp_path):
 
     _mood_scenario(monkeypatch, eng, tmp_path)
     monkeypatch.setattr(eng, "MOOD_AWARENESS", False)
-    monkeypatch.setattr(eng, "CURIOSITY", False)  # v0.11: curiosity is otherwise always-on
     seen = _capture_systems(eng, 2, {1: "привіт"})
-    # mood off + world off + curiosity off -> bare canon
-    assert "## Настрій" not in seen[0] and seen[0] == "CANON"
+    assert "## Настрій" not in seen[0] and seen[0] == "CANON"  # mood off + world off -> bare canon
 
 
 def test_run_biorhythm_off_omits_sub_block(monkeypatch, tmp_path):
@@ -887,19 +885,19 @@ def _curiosity_run(monkeypatch, eng, tmp_path, *, curiosity, brain):
 
 
 def test_run_curiosity_discharges_on_a_question(monkeypatch, tmp_path):
-    """With the nudge active (>= threshold), a question reply discharges curiosity by
-    CURIOSITY_SATIATION and the reply is marked curiosity-driven."""
+    """v0.11 monitor: a question reply discharges curiosity via SATIATION['asked'] (and marks the
+    reply); curious -> asks -> sated."""
     import kiln.engine as eng
-    from kiln.config import CURIOSITY_SATIATION, DRIFT
+    from kiln.config import DRIFT, SATIATION
 
     st, rec = _curiosity_run(monkeypatch, eng, tmp_path, curiosity=0.6, brain=_AskBrain())
-    # one drift step up, then the question discharges by CURIOSITY_SATIATION
-    assert st.needs["curiosity"] == pytest.approx(0.6 + DRIFT["curiosity"] - CURIOSITY_SATIATION)
+    drop = SATIATION["asked"]["curiosity"]  # negative
+    assert st.needs["curiosity"] == pytest.approx(0.6 + DRIFT["curiosity"] + drop)
     assert rec.curiosity_replies  # the reply carried is_curiosity=True
 
 
 def test_run_curiosity_unchanged_without_a_question(monkeypatch, tmp_path):
-    """A no-question reply leaves curiosity high (only drift) — the nudge persists till she asks."""
+    """A no-question reply leaves curiosity high (only drift) — it stays high till she asks."""
     import kiln.engine as eng
     from kiln.config import DRIFT
 
@@ -908,90 +906,20 @@ def test_run_curiosity_unchanged_without_a_question(monkeypatch, tmp_path):
     assert not rec.curiosity_replies
 
 
-def test_run_curiosity_no_discharge_below_threshold(monkeypatch, tmp_path):
-    """Below the threshold the nudge is inactive — even a question reply does not discharge."""
+def test_run_curiosity_discharges_regardless_of_level(monkeypatch, tmp_path):
+    """No threshold gate: the monitor sates curiosity whenever she ASKS — even from a low level
+    (clamped at 0). The band cue is what makes her ask more when she's actually curious."""
     import kiln.engine as eng
-    from kiln.config import DRIFT
 
     st, rec = _curiosity_run(monkeypatch, eng, tmp_path, curiosity=0.30, brain=_AskBrain())
-    assert st.needs["curiosity"] == pytest.approx(0.30 + DRIFT["curiosity"])  # only drift
-    assert not rec.curiosity_replies
+    assert st.needs["curiosity"] == 0.0  # 0.30 + drift - 0.4 -> clamped at 0
+    assert rec.curiosity_replies
 
 
-# --- v0.11 curiosity -> system prompt (KILN-048): the ## Цікавість nudge, per turn ---
-
-
-class _SysCaptureBrain(MockBrain):
-    """Captures the system prompt passed to chat() — to assert _system() wiring."""
-
-    def __init__(self):
-        self.systems: list[str] = []
-
-    def chat(self, history, system):
-        self.systems.append(system)
-        return super().chat(history, system)
-
-
-def _captured_system(monkeypatch, eng, tmp_path, *, curiosity, curiosity_on=True):
-    _isolate(monkeypatch, eng, tmp_path)
-    st = eng.State(
-        needs={
-            "connection": 0.0,
-            "rest": 0.0,
-            "novelty": 0.0,
-            "intensity": 0.0,
-            "reflection": 0.0,
-            "curiosity": curiosity,
-        }
-    )
-    monkeypatch.setattr(eng, "load_state", lambda *a, **k: st)
-    monkeypatch.setattr(eng, "CURIOSITY", curiosity_on)
-    brain = _SysCaptureBrain()
-    eng.run(
-        ticks=1,
-        live=False,
-        channel=eng.ScriptedChannel({0: "привіт"}),
-        brain=brain,
-        output=StatusRecorder(),
-    )
-    return brain.systems[0]
-
-
-def test_system_always_includes_curiosity_block_when_on(monkeypatch, tmp_path):
-    """v0.11: the ## Цікавість block is ALWAYS present when CURIOSITY is on — at any level."""
-    import kiln.engine as eng
-
-    assert "## Цікавість" in _captured_system(monkeypatch, eng, tmp_path, curiosity=0.6)  # high
-    assert "## Цікавість" in _captured_system(monkeypatch, eng, tmp_path, curiosity=0.10)  # low
-
-
-def test_system_omits_curiosity_when_master_off(monkeypatch, tmp_path):
-    import kiln.engine as eng
-
-    system = _captured_system(monkeypatch, eng, tmp_path, curiosity=0.9, curiosity_on=False)
-    assert "## Цікавість" not in system  # CURIOSITY off -> no block even when high
-
-
-def test_status_snapshot_surfaces_curiosity_as_a_full_need():
-    """v0.11: curiosity isn't a trigger, but the panel snapshot carries its nudge threshold + a
-    `nudge` action, so it renders as a full need (level/threshold + flag), not a bare bar."""
-    from kiln.config import CURIOSITY_THRESHOLD
-    from tui.render import needs_panel_lines
-
+def test_status_snapshot_curiosity_is_a_need_not_a_trigger():
+    """v0.11: curiosity shows as a need (its level), but it is NOT a NEED_TRIGGERS entry — no
+    threshold/action in the snapshot (it's discharged by the question monitor, not a crossing)."""
     state = State(needs={"connection": 0.1, "curiosity": 0.62})
     snap = _status_snapshot("idle", state, TriggerBook(), SessionStats(), None, 1)
-    assert snap["thresholds"]["curiosity"] == CURIOSITY_THRESHOLD
-    assert snap["actions"]["curiosity"] == "nudge"
-    row = next(r for r in needs_panel_lines(snap) if "цікавість" in r)
-    assert "0.62/0.50" in row and "→ nudge" in row  # full need row, over-threshold
-
-
-def test_status_snapshot_omits_curiosity_threshold_when_master_off(monkeypatch):
-    import kiln.engine as eng
-
-    monkeypatch.setattr(eng, "CURIOSITY", False)
-    snap = eng._status_snapshot(
-        "idle", State(needs={"curiosity": 0.62}), TriggerBook(), SessionStats(), None, 1
-    )
-    assert "curiosity" not in snap["thresholds"]  # CURIOSITY off -> no panel threshold
-    assert snap["needs"]["curiosity"] == 0.62  # the level still shows
+    assert snap["needs"]["curiosity"] == 0.62  # the level shows in the panel
+    assert "curiosity" not in snap["thresholds"] and "curiosity" not in snap["actions"]

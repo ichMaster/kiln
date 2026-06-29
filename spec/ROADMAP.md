@@ -380,45 +380,32 @@ so it shows in the `## Настрій` section and the TUI needs panel; the thou
 real conversation turn**; `/thoughts` shows them; `THOUGHTS_ENABLED` / N / M / cooldown configurable;
 deterministic under a seeded RNG + injected clock; cheap (Haiku) and cooldown-capped; no paid calls in tests.
 
-### 0.11 Curiosity — ask, don't mirror — ⬜
-**Goal:** a `curiosity` need (Ukrainian «цікавість») with a **low threshold (~0.5)** and a **very small
-drift**, so after a short warm-up she settles into a curious disposition. While curiosity is **over the
-threshold**, the system prompt of **every message** carries a short **provocation** that pushes Agnika to
-**ask real, specific questions and dig deeper instead of mirroring / paraphrasing** the user. Per-turn,
-Ukrainian, deterministic, local — like 0.9's mood, but a **behavioral nudge** rather than a status line.
-Curiosity does **not** self-trigger a separate message; it only colors how she answers.
-**Tasks:**
-- **Curiosity need.** Add `curiosity` to `DRIFT` with a **very small** upward step; a `CURIOSITY_THRESHOLD`
-  config constant (default **0.5**, `.env`-overridable). It does **not** go in `NEED_TRIGGERS` / the
-  `TriggerBook` (no self-message) — it only conditions the prompt and is **discharged when she actually
-  asks** (next bullet).
-- **Discharge on asking (mark the curiosity reply).** A pure `is_curiosity_reply(text) -> bool` — true when
-  a reply actually **asks a question** (heuristic: it contains a question mark / a question pattern; the model
-  may later judge it). After a turn, when the nudge was active and the reply **is** a curiosity message,
-  **reduce `curiosity` by `CURIOSITY_SATIATION`** and **mark** that turn as curiosity-driven (a flag on the
-  stored turn / a subtle Output marker). So acting on the nudge **lowers** curiosity, which then slowly drifts
-  back up — curious → asks → sated → curious again (an ebb-and-flow, not pegged high). A reply with **no**
-  question leaves curiosity high, so the nudge persists until she asks.
-- **Curiosity provocation (prompt).** A pure `curiosity_nudge(curiosity, threshold) -> str` (in
-  `kiln/mood.py`): when `curiosity >= threshold`, a short Ukrainian `## Цікавість` line — e.g. *«Тобі зараз
-  цікаво. Постав живе, конкретне питання й копай глибше — не дзеркаль і не переказуй співрозмовника, веди
-  розмову вперед.»*; below threshold → "". Persona-layer text (config / `state/prompts.md`).
-- **Curiosity → system prompt.** `_system()` appends the nudge **per turn** when over threshold (curiosity
-  drifts each tick), separate from canon / memory / facts / world / mood; empty below threshold →
-  back-compatible. `CURIOSITY` master on/off.
-- **Config.** `CURIOSITY` (on/off), `CURIOSITY_THRESHOLD` (0.5), `CURIOSITY_SATIATION` (discharge per ask),
-  the Ukrainian nudge text (persona) — scalars `.env`-overridable; curiosity's drift lives in the structured
-  `DRIFT` dict in code.
-- **Tests.** Curiosity drift; `is_curiosity_reply` is true on a question (`?`) and false otherwise; a curious
-  (question) reply **discharges** `curiosity` by `CURIOSITY_SATIATION` while a non-question reply leaves it
-  unchanged; `curiosity_nudge` is "" below the threshold and present at / above it; `_system()` includes the
-  `## Цікавість` line only when over threshold and `CURIOSITY` is on; toggling off / a sub-threshold level →
-  no line; deterministic — fixed needs, **mock brain, zero paid calls**.
-**DoD:** a `curiosity` («цікавість») need with a low threshold (~0.5) and a very small drift; while over the
-threshold, every message's system prompt carries a provocation to **ask questions and dig deeper rather than
-mirror** the user; when she **actually asks** (a detected, marked curiosity reply) curiosity is **discharged**
-by `CURIOSITY_SATIATION`, so it ebbs and flows; it's a per-turn prompt nudge (no separate self-message);
-`CURIOSITY` / `CURIOSITY_THRESHOLD` / `CURIOSITY_SATIATION` configurable; deterministic; local — no external calls.
+### 0.11 Curiosity — ask, don't mirror — ✅
+**Goal:** a `curiosity` need (Ukrainian «цікавість») that drifts up at a **very small** rate and, as a
+**normal mood need**, shows in `## Настрій` with a **behavioural cue per band** — calm at low levels, and at
+higher levels a **provocation** to **ask real, specific questions and dig deeper instead of mirroring** the
+user. Per-turn, Ukrainian, deterministic, local. Curiosity does **not** self-trigger a message; the band cue
+only colours how she answers, and **asking** discharges it.
+**Shipped design (refactored from the original separate-block plan):**
+- **Curiosity need.** `curiosity` in `DRIFT` (very small step). It is **not** in `NEED_TRIGGERS` / the
+  `TriggerBook` (no self-message). Reuses the v0.10 `load_state` heal, so it appears without a re-seed.
+- **Behaviour via the mood cue.** Registered in `state/mood.json` like any need — a **cue per band**
+  (низька «спокійно, не розпитуй» → дуже висока «веди питаннями, копай у суть»). `mood_block` renders it in
+  `## Настрій`; there is **no** separate `## Цікавість` block. The ask-don't-mirror nudge **is** the high-band
+  cue, graded by level.
+- **Discharge via a question monitor + SATIATION.** A pure `is_curiosity_reply(text) -> bool` (a `?` or a
+  leading Ukrainian interrogative). After every reply, `engine._turn` runs the **monitor**: if she asked,
+  `apply_satiation(state, "asked")` (`SATIATION["asked"] = {"curiosity": -0.4}`) sates it — curious → asks →
+  sated → curious. A statement leaves it high. The question reply is marked with a subtle `Output.is_curiosity`
+  (« Agnika (?) »). No threshold gate — the band cue regulates *when* she asks.
+- **Tests.** Curiosity drift; `is_curiosity_reply` true on a question / false on a statement; `mood_block`
+  renders curiosity with its band cue; `apply_satiation("asked")` lowers curiosity; an integration turn where
+  a question discharges it (and a statement doesn't); the snapshot exposes curiosity as a need (not a trigger).
+  Deterministic — fixed needs, **mock brain, zero paid calls**.
+**DoD:** a `curiosity` («цікавість») need with a very small drift that lives in `## Настрій` with a graded
+band cue (ask-don't-mirror at higher levels); when she **actually asks** (the question monitor) curiosity is
+**discharged** via `SATIATION["asked"]`, so it ebbs and flows; no separate prompt block, no self-message;
+deterministic; local — no external calls.
 
 ## v1 — Engine (the tick-server & hub foundation)
 
