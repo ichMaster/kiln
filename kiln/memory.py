@@ -30,6 +30,7 @@ from .config import (
     MEMORY_SUMMARIES,
     PROMPTS_FILE,
     REST_MESSAGE,
+    STORE_FILE,
     SUMMARY_SENTENCES,
     claude_env,
 )
@@ -38,7 +39,7 @@ from .store import load_store, save_store
 from .usage import _cli_error_detail
 
 
-def load_prompts() -> dict[str, list[str]]:
+def load_prompts(path: Path = PROMPTS_FILE) -> dict[str, list[str]]:
     """
     Reads state/prompts.md: [need] sections with a list of self-trigger prompts.
     Format:
@@ -49,10 +50,10 @@ def load_prompts() -> dict[str, list[str]]:
         ...
     """
     out: dict[str, list[str]] = {}
-    if not PROMPTS_FILE.exists():
+    if not path.exists():
         return out
     cur = None
-    for line in PROMPTS_FILE.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         s = line.strip()
         if not s or s.startswith("#"):
             continue
@@ -73,7 +74,7 @@ def pick_prompt(prompts: dict[str, list[str]], need: str) -> str:
     return f"(внутрішній імпульс: '{need}') Озвися першим, коротко."
 
 
-def load_memory() -> str:
+def load_memory(store_path: Path = STORE_FILE) -> str:
     """
     All stored session summaries as one text blob (oldest→newest) for the system prompt.
 
@@ -81,7 +82,7 @@ def load_memory() -> str:
     — the same layout the old `memory.md` used, so `build_system` is unchanged. Empty store → "".
     `MEMORY_SUMMARIES` (0 = all, N = the last N) bounds how many enter the prompt.
     """
-    summaries = load_store().get("summaries", [])
+    summaries = load_store(store_path).get("summaries", [])
     if MEMORY_SUMMARIES > 0:
         summaries = summaries[-MEMORY_SUMMARIES:]  # keep only the most recent N
     blocks = [
@@ -92,10 +93,10 @@ def load_memory() -> str:
     return "\n\n".join(blocks)
 
 
-def load_canon() -> str:
+def load_canon(path: Path = CANON_FILE) -> str:
     """Canon (persona/voice of both branches) from state/canon.md; falls back to DEFAULT_CANON."""
-    if CANON_FILE.exists():
-        text = CANON_FILE.read_text(encoding="utf-8").strip()
+    if path.exists():
+        text = path.read_text(encoding="utf-8").strip()
         if text:
             return text
     return DEFAULT_CANON
@@ -217,7 +218,7 @@ def extract_facts(history: list[dict], existing_facts: list[str], live: bool) ->
     return _parse_facts(result.stdout)
 
 
-def digest_facts(live: bool) -> str:
+def digest_facts(live: bool, store_path: Path = STORE_FILE) -> str:
     """Condense ALL stored user facts to a compact view of who the user is — at most
     FACTS_DIGEST_LINES lines (Lumi's `facts_digests`) — via `claude -p` on DEEP_MODEL (Opus +
     extended thinking; API key stripped → subscription). Read-only (no store writes). No facts
@@ -226,7 +227,9 @@ def digest_facts(live: bool) -> str:
     if not FACTS_ENABLED:
         return ""
     facts = [
-        f.get("text", "") for f in load_store().get("facts", []) if (f.get("text") or "").strip()
+        f.get("text", "")
+        for f in load_store(store_path).get("facts", [])
+        if (f.get("text") or "").strip()
     ]
     if not facts:
         return ""

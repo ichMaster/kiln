@@ -64,9 +64,10 @@ from .config import (
     USAGE_REPORT,
     USER_LOCATION,
     WORLD_AWARENESS,
+    AgentPaths,
 )
 from .history import ROLE_BOT, ROLE_USER, strip_leading_name, turn
-from .ledger import append_session
+from .ledger import append_session, read_ledger
 from .memory import (
     build_system,
     digest_facts,
@@ -440,11 +441,11 @@ def _self_prompt(prompts: dict, need: str, reached_out: bool) -> str:
     return f"{prompt} {SELF_SILENCE_NOTE}" if reached_out else prompt
 
 
-def _previous_session_turns() -> list[dict]:
+def _previous_session_turns(store_path: Path = STORE_FILE) -> list[dict]:
     """The most recent CLOSED session's turn list, for the v0.8 world timeline. The current
     session's own turns already ride in the messages array / transcript, so the timeline carries
     the prior conversation's tail instead. Empty store / no prior session -> []."""
-    store = load_store()
+    store = load_store(store_path)
     sessions = store.get("sessions", [])
     if not sessions:
         return []
@@ -458,6 +459,7 @@ def run(
     channel=None,
     brain: Brain | None = None,
     output: Output | None = None,
+    paths: AgentPaths | None = None,
 ) -> None:
     """
     The tick loop. `channel.poll()` yields the next user message or None.
@@ -472,19 +474,22 @@ def run(
         brain = LiveBrain() if live else MockBrain()
     if output is None:
         output = ConsoleOutput()
-    STATE_DIR.mkdir(parents=True, exist_ok=True)  # state dir must exist for writing
-    state = load_state()
+    if paths is None:
+        paths = AgentPaths.for_agent()  # v1.1: default agent -> today's flat global paths
+    paths.state_dir.mkdir(parents=True, exist_ok=True)  # state dir must exist for writing
+    paths.store_file.parent.mkdir(parents=True, exist_ok=True)  # .kiln[/{agent}] for the store
+    state = load_state(paths.state_dir)
     history: list[dict] = []  # shared conversation transcript for the session
     started = _dt.datetime.now().isoformat(timespec="seconds")  # session start (for transcript)
-    canon = load_canon()  # persona/voice from state/canon.md
-    memory = load_memory()  # long-term memory: summaries of past sessions
-    facts = digest_facts(live)  # v0.6 long memory: N-line digest of durable user facts
+    canon = load_canon(paths.canon_file)  # persona/voice from state/canon.md
+    memory = load_memory(paths.store_file)  # long-term memory: summaries of past sessions
+    facts = digest_facts(live, paths.store_file)  # v0.6: N-line digest of durable user facts
     base_system = build_system(canon, memory, facts)  # static: canon + memory summaries + facts
-    prev_turns = _previous_session_turns()  # v0.8: the PRIOR session's tail for the timeline (the
-    # current session's own turns already ride in the messages array / transcript, so they aren't
-    # repeated here — this carries continuity from the last conversation instead)
-    prompts = load_prompts()  # self-trigger prompts from state/prompts.md
-    store = load_store()  # v0.10: held for the session so thoughts persist as they form
+    prev_turns = _previous_session_turns(paths.store_file)  # v0.8: the PRIOR session's tail for the
+    # timeline (the current session's own turns already ride in the messages array / transcript, so
+    # they aren't repeated here — this carries continuity from the last conversation instead)
+    prompts = load_prompts(paths.prompts_file)  # self-trigger prompts from state/prompts.md
+    store = load_store(paths.store_file)  # v0.10: held for the session so thoughts persist
     tg = TriggerBook()  # trigger hysteresis + cooldown
     stats = SessionStats()  # session token/turn/latency totals (for the status bar)
 
@@ -559,7 +564,7 @@ def run(
         if shown:
             output.agent(text, is_thought=True)  # dim / «думка:»
             history.append(turn(ROLE_BOT, text))  # a REAL turn — she remembers voicing it
-        save_store(store)
+        save_store(store, paths.store_file)
         return thought
 
     t = 0
@@ -679,7 +684,7 @@ def run(
             time.sleep(TICK_SECONDS if live else 0)
             t += 1
     finally:
-        save_state(state)
+        save_state(state, paths.state_dir)
         # Review & prune to real conversation; an all-noise session is skipped entirely.
         cleaned = prune_history(history)
         if cleaned:
@@ -688,7 +693,7 @@ def run(
             # so a summary failure can't lose the transcript. The session id is the start time.
             ended = _dt.datetime.now().isoformat(timespec="seconds")
             stamp = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
-            store = load_store()
+            store = load_store(paths.store_file)
             store["sessions"].append(
                 {
                     "id": started,
@@ -699,18 +704,18 @@ def run(
                 }
             )
             store["messages"][started] = list(cleaned)
-            save_store(store)  # transcript safe before summarizing
+            save_store(store, paths.store_file)  # transcript safe before summarizing
             summary = summarize(cleaned, live)
             if summary:
                 store["summaries"].append({"session_id": started, "stamp": stamp, "text": summary})
-                save_store(store)
+                save_store(store, paths.store_file)
             # KILN-023: extract durable user facts (Opus + thinking) and fold them in (deduped).
             existing_facts = [f.get("text", "") for f in store.get("facts", [])]
             added_facts = add_facts(
                 store, extract_facts(cleaned, existing_facts, live), started, stamp
             )
             if added_facts:
-                save_store(store)
+                save_store(store, paths.store_file)
             # KILN-028/029/030: append one usage-ledger line + regenerate the report, unless
             # usage reporting is disabled (USAGE_REPORT=0).
             if USAGE_REPORT:
@@ -732,11 +737,13 @@ def run(
                             m: {**v, "cost_usd": round(v["cost_usd"], 6)}
                             for m, v in stats.by_model.items()
                         },
-                    }
+                    },
+                    paths.usage_ledger,
                 )
-                write_report()  # regenerate .kiln/usage-report.md from the full ledger
+                # regenerate the agent's usage-report.md from ITS ledger
+                write_report(read_ledger(paths.usage_ledger), paths.usage_report)
             output.notice(
                 f"[exit] stored session {started} ({len(cleaned)} turns)"
                 f"{' + summary' if summary else ''}"
-                f"{f' + {added_facts} facts' if added_facts else ''} -> {STORE_FILE.name}"
+                f"{f' + {added_facts} facts' if added_facts else ''} -> {paths.store_file.name}"
             )

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import queue
 import threading
-from typing import Callable
+from collections.abc import Callable
 
 # A render-event sink — one per attached client (e.g. the WS layer's per-connection put_nowait).
 Sink = Callable[[dict], None]
@@ -74,7 +74,7 @@ class ServerChannel:
 
 class ServerOutput:
     """The `Output` seam over the network bus: each reply/usage/notice/status becomes a render event
-    broadcast to every attached client. `user()` is a **no-op** (echo-free). Mirror of `TuiOutput`."""
+    broadcast to every client. `user()` is a **no-op** (echo-free). Mirror of `TuiOutput`."""
 
     def __init__(self, hub: BroadcastHub) -> None:
         self._hub = hub

@@ -213,8 +213,8 @@ def test_run_session_close_writes_to_store(monkeypatch, tmp_path):
 
     _isolate(monkeypatch, eng, tmp_path)  # isolates state; store + summarize overridden below
     store_path = tmp_path / "store.json"
-    monkeypatch.setattr(eng, "load_store", lambda: kstore.load_store(store_path))
-    monkeypatch.setattr(eng, "save_store", lambda s: kstore.save_store(s, store_path))
+    monkeypatch.setattr(eng, "load_store", lambda *a, **k: kstore.load_store(store_path))
+    monkeypatch.setattr(eng, "save_store", lambda s, *a, **k: kstore.save_store(s, store_path))
     monkeypatch.setattr(eng, "summarize", lambda *a, **k: "ПІДСУМОК")
 
     rec = StatusRecorder()
@@ -243,8 +243,8 @@ def test_run_session_close_extracts_facts(monkeypatch, tmp_path):
     seeded = kstore.empty_store()
     kstore.add_facts(seeded, ["Віталік пише агентів"], "old", "2026-06-01")
     kstore.save_store(seeded, store_path)
-    monkeypatch.setattr(eng, "load_store", lambda: kstore.load_store(store_path))
-    monkeypatch.setattr(eng, "save_store", lambda s: kstore.save_store(s, store_path))
+    monkeypatch.setattr(eng, "load_store", lambda *a, **k: kstore.load_store(store_path))
+    monkeypatch.setattr(eng, "save_store", lambda s, *a, **k: kstore.save_store(s, store_path))
     # the model "extracts" one repeat (deduped) + one new fact
     monkeypatch.setattr(
         eng, "extract_facts", lambda *a, **k: ["Віталік пише агентів", "Любить шахи"]
@@ -296,7 +296,7 @@ def test_run_session_close_appends_usage_ledger(monkeypatch, tmp_path):
 
     _isolate(monkeypatch, eng, tmp_path)
     captured = []
-    monkeypatch.setattr(eng, "append_session", lambda entry: captured.append(entry))
+    monkeypatch.setattr(eng, "append_session", lambda entry, *a, **k: captured.append(entry))
 
     eng.run(
         ticks=2,
@@ -324,8 +324,8 @@ def test_run_turn_timestamps_history_and_store(monkeypatch, tmp_path):
 
     _isolate(monkeypatch, eng, tmp_path)
     store_path = tmp_path / "store.json"
-    monkeypatch.setattr(eng, "load_store", lambda: kstore.load_store(store_path))
-    monkeypatch.setattr(eng, "save_store", lambda s: kstore.save_store(s, store_path))
+    monkeypatch.setattr(eng, "load_store", lambda *a, **k: kstore.load_store(store_path))
+    monkeypatch.setattr(eng, "save_store", lambda s, *a, **k: kstore.save_store(s, store_path))
 
     eng.run(
         ticks=2,
@@ -362,8 +362,8 @@ def test_run_injects_world_block_per_turn(monkeypatch, tmp_path):
     ]
     store_path = tmp_path / "store.json"
     kstore.save_store(seeded, store_path)
-    monkeypatch.setattr(eng, "load_store", lambda: kstore.load_store(store_path))
-    monkeypatch.setattr(eng, "save_store", lambda s: kstore.save_store(s, store_path))
+    monkeypatch.setattr(eng, "load_store", lambda *a, **k: kstore.load_store(store_path))
+    monkeypatch.setattr(eng, "save_store", lambda s, *a, **k: kstore.save_store(s, store_path))
     monkeypatch.setattr(eng, "load_canon", lambda *a, **k: "CANON")
     monkeypatch.setattr(eng, "load_memory", lambda *a, **k: "")
     monkeypatch.setattr(eng, "digest_facts", lambda *a, **k: "")
@@ -468,9 +468,9 @@ def _thought_scenario(monkeypatch, eng, tmp_path, reflection=0.9):
 
     _isolate(monkeypatch, eng, tmp_path)
     store_path = tmp_path / "store.json"
-    monkeypatch.setattr(eng, "load_store", lambda: kstore.load_store(store_path))
-    monkeypatch.setattr(eng, "save_store", lambda s: kstore.save_store(s, store_path))
-    monkeypatch.setattr(eng, "load_prompts", lambda: {"thought": ["поміркуй наодинці"]})
+    monkeypatch.setattr(eng, "load_store", lambda *a, **k: kstore.load_store(store_path))
+    monkeypatch.setattr(eng, "save_store", lambda s, *a, **k: kstore.save_store(s, store_path))
+    monkeypatch.setattr(eng, "load_prompts", lambda *a, **k: {"thought": ["поміркуй наодинці"]})
     monkeypatch.setattr(
         eng,
         "load_state",
@@ -640,8 +640,8 @@ def test_run_noise_only_session_not_stored(monkeypatch, tmp_path):
 
     _isolate(monkeypatch, eng, tmp_path)
     store_path = tmp_path / "store.json"
-    monkeypatch.setattr(eng, "load_store", lambda: kstore.load_store(store_path))
-    monkeypatch.setattr(eng, "save_store", lambda s: kstore.save_store(s, store_path))
+    monkeypatch.setattr(eng, "load_store", lambda *a, **k: kstore.load_store(store_path))
+    monkeypatch.setattr(eng, "save_store", lambda s, *a, **k: kstore.save_store(s, store_path))
     monkeypatch.setattr(eng, "prune_history", lambda h: [])  # everything was noise
     monkeypatch.setattr(eng, "summarize", lambda *a, **k: "SHOULD-NOT-RUN")
 

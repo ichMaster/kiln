@@ -140,6 +140,13 @@ All cross-session state lives in **one `.kiln/store.json`** (`store.py`, v0.5) �
 **atomically** (temp + `os.replace`) with a `.bak`, recovered on corruption — in four
 Lumi-style sections:
 
+> **Agent-scoped roots (v1.1, `config.AgentPaths`).** `engine.run(paths=…)` takes a per-agent
+> `AgentPaths` (state dir + store/ledger/report/canon/prompts files); all persistence threads
+> through it. `AgentPaths.for_agent(agent_id)` maps the **default agent** (`agnika` / unset) to
+> today's flat global paths — no migration — and any other id under `state/{id}/` + `.kiln/{id}/`, so
+> two agents never share a store. The mood / needs-model *config* is still module-level in v1.1
+> (per-agent config is v1.2).
+
 - **`summaries`** — `{session_id, stamp, text}`, one per session: at exit the (pruned) session
   is summarized via the Anthropic Messages API (Haiku — cheap/fast) and appended; at start all summaries
   load into the system prompt of every branch (`build_system`). What the agent *remembers*.

@@ -8,6 +8,7 @@ constants without circular dependencies (engine runs as __main__).
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 # --- Paths ------------------------------------------------------------------
@@ -31,6 +32,46 @@ KILN_DIR = PROJECT_ROOT / ".kiln"  # unified store dir (Lumi-style; shared with 
 STORE_FILE = KILN_DIR / "store.json"  # the single persistence store (sessions/messages/summaries)
 USAGE_LEDGER = KILN_DIR / "usage-ledger.jsonl"  # v0.7: one append-only line per closed session
 USAGE_REPORT_FILE = KILN_DIR / "usage-report.md"  # v0.7: the generated Markdown cost report
+
+# v1.1: per-agent persistence. The DEFAULT agent (agnika / unset) keeps today's flat global paths
+# (no migration); any other agent_id nests its mutable data under state/{id}/ and .kiln/{id}/.
+DEFAULT_AGENT = "agnika"
+
+
+@dataclass(frozen=True)
+class AgentPaths:
+    """The per-agent persistence roots threaded through `engine.run()` (KILN-051). For the default
+    agent these are the module-level globals, so Agnika + all v0 data/tests are byte-for-byte. (The
+    mood / needs-model CONFIG is still module-level/global in v1.1 — per-agent config is v1.2.)"""
+
+    state_dir: Path
+    store_file: Path
+    usage_ledger: Path
+    usage_report: Path
+    canon_file: Path
+    prompts_file: Path
+
+    @classmethod
+    def for_agent(cls, agent_id: str | None = None) -> AgentPaths:
+        if not agent_id or agent_id == DEFAULT_AGENT:
+            return cls(
+                state_dir=STATE_DIR,
+                store_file=STORE_FILE,
+                usage_ledger=USAGE_LEDGER,
+                usage_report=USAGE_REPORT_FILE,
+                canon_file=CANON_FILE,
+                prompts_file=PROMPTS_FILE,
+            )
+        sdir = STATE_DIR / agent_id
+        kdir = KILN_DIR / agent_id
+        return cls(
+            state_dir=sdir,
+            store_file=kdir / "store.json",
+            usage_ledger=kdir / "usage-ledger.jsonl",
+            usage_report=kdir / "usage-report.md",
+            canon_file=sdir / "canon.md",
+            prompts_file=sdir / "prompts.md",
+        )
 
 
 def load_dotenv(path: Path = ENV_FILE) -> None:
