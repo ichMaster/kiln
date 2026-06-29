@@ -272,7 +272,7 @@ Agnika's **canon birthday** (`12.08.2001, 17:10`, Львів) and **static for t
 gives the day its **fluctuation** — a baseline that colors her tone (an emotional high reads warmer,
 a physical low more tired). Like 0.8's world block: short **Ukrainian** text, **deterministic**
 (injected clock + birth), **local-only** (no model/external calls). Brings Lumi's mood/biorhythm
-forward (cf. v2.1). *(No emotion palette or "emotion per reply" — Agnika **reads her own per-need
+forward (cf. v3.1). *(No emotion palette or "emotion per reply" — Agnika **reads her own per-need
 levels + biorhythm and decides her own mood**; the model picks its tone from the raw felt state, no
 computed label. A discrete-emotion layer is deferred to a real consumer, e.g. a TUI badge where the
 model self-tags.)*
@@ -315,7 +315,7 @@ session, shifting her daily baseline); the section is composed **per turn** (nee
 fixed); `MOOD_AWARENESS` / `BIORHYTHM` toggle it; it's **deterministic** given an injected clock +
 birth; **local-only**, no external calls.
 
-### 0.10 Inner thoughts — internal monologue (moved up from v2.4) — ⬜
+### 0.10 Inner thoughts — internal monologue (moved up from v3.4) — ⬜
 **Goal:** give Agnika an **inner monologue** — a new **`незібраність`** (reflection) need that, on
 crossing its threshold, makes her **think a private thought** (cheap **Haiku**, like chat). The need
 names the felt **pressure** (like 0.9's самотність/нудьга): high = thoughts scattered, she's pulled to
@@ -325,7 +325,7 @@ in a `## Думки` system-prompt section so her inner life carries forward. **
 **surfaces in the chat** (marked «думка:») and **enters the conversation as a real turn** (she remembers
 voicing it). A `/thoughts` command shows them; generating a thought **satiates** the need. Builds on 0.9 — the
 thought prompt sees her `## Настрій` mood, so thoughts reflect her felt state. Cheap-first (Haiku + cooldown),
-local. *(A deeper always-on inner-voice loop coupled to plans stays a later v2 extension — cf. 2.2 Plans.)*
+local. *(A deeper always-on inner-voice loop coupled to plans stays a later v3 extension — cf. 3.2 Plans.)*
 **Tasks:**
 - **Reflection need + trigger.** Add a `reflection` need (Ukrainian label «незібраність» — the felt
   pressure; high = scattered, low = collected, so it matches the no-inversion mood labels) to `DRIFT` (slow
@@ -465,45 +465,15 @@ brain returns an action); first concrete game — **checkers**
 **DoD:** Agnika plays a full checkers game in the TUI; the same brain drives one
 world-body.
 
-## v2 — Personality (autonomous inner life)
+## v2 — Web & multi-agent hub
 
-### 2.1 Needs review — ⬜
-**Goal:** a coherent, calibrated needs model.
-**Tasks:** fix `rest` semantics (deep should tire, not rest — open); recalibrate
-drift/satiation/thresholds on real dialogue; maybe more needs (boredom, attachment)
-+ a mood state. cf. Lumi `mood/emotion/biorhythm`. (The `## Настрій` mood section +
-biorhythm shipped early in **0.9**; this phase deepens the needs model under it.)
-**DoD:** needs behave intuitively over a long session; the `rest` inconsistency resolved.
-
-### 2.2 Plans — ⬜
-**Goal:** the agent forms and holds goals.
-**Tasks:** plan structure (intent/steps/status) in state/memory; FSM events
-create/advance/complete; a self-trigger can push action on a plan.
-**DoD:** Agnika sets a goal, references it across turns/sessions, and acts on it.
-
-### 2.3 Memories — ⬜
-**Goal:** structured, durable memory beyond summaries.
-**Tasks:** episodic (what happened) + semantic (facts/preferences), written during
-conversation, recalled via RAG. Adopt Lumi's three-layer, **agent/user-scoped**
-memory now so the hub is additive.
-**DoD:** the agent recalls durable facts and impressions, scoped per agent/user.
-
-### 2.4 Inner monologue — moved to 0.10 ⤴
-The internal-monologue **baseline** shipped early as **0.10** (a `незібраність` need →
-Haiku thoughts, `## Думки` in the prompt, `thoughts` in the store, `/thoughts`, random
-surfacing-as-a-turn). What stays for v2: a deeper **always-on inner-voice loop** that
-reflects between turns, **updates plans/mood**, and decides whether to speak (Lumi
-`core/inner_voice*` + `nudge.py`, on the FSM) — built on **2.2 Plans** once it lands.
-
-## v3 — Web & multi-agent hub
-
-### 3.1 Web UI — ⬜
+### 2.1 Web UI — ⬜
 **Goal:** a browser client to the same server.
 **Tasks:** web client over the WS/HTTP API (chat + status/stats), same API as the
 TUI; silt's web canvas is a reference.
 **DoD:** chat with an agent in the browser, with the status panel.
 
-### 3.2 Admin panel & multi-agent — ⬜
+### 2.2 Admin panel & multi-agent — ⬜
 **Goal:** manage the hosted agents.
 **Tasks:** add/configure/start/stop agents, each with its own
 canon/memory/tools/**permission scope**; live knob tuning; inspect/edit memory;
@@ -511,3 +481,33 @@ browse transcripts/RAG; per-agent stats + cost. Agnika (home, elevated) and
 companion agents coexist.
 **DoD:** run two agents at once (Agnika + a companion) on one hub; manage each from
 the panel.
+
+## v3 — Personality (autonomous inner life)
+
+### 3.1 Needs review — ⬜
+**Goal:** a coherent, calibrated needs model.
+**Tasks:** fix `rest` semantics (deep should tire, not rest — open); recalibrate
+drift/satiation/thresholds on real dialogue; maybe more needs (boredom, attachment)
++ a mood state. cf. Lumi `mood/emotion/biorhythm`. (The `## Настрій` mood section +
+biorhythm shipped early in **0.9**; this phase deepens the needs model under it.)
+**DoD:** needs behave intuitively over a long session; the `rest` inconsistency resolved.
+
+### 3.2 Plans — ⬜
+**Goal:** the agent forms and holds goals.
+**Tasks:** plan structure (intent/steps/status) in state/memory; FSM events
+create/advance/complete; a self-trigger can push action on a plan.
+**DoD:** Agnika sets a goal, references it across turns/sessions, and acts on it.
+
+### 3.3 Memories — ⬜
+**Goal:** structured, durable memory beyond summaries.
+**Tasks:** episodic (what happened) + semantic (facts/preferences), written during
+conversation, recalled via RAG. Adopt Lumi's three-layer, **agent/user-scoped**
+memory now so the hub is additive.
+**DoD:** the agent recalls durable facts and impressions, scoped per agent/user.
+
+### 3.4 Inner monologue — moved to 0.10 ⤴
+The internal-monologue **baseline** shipped early as **0.10** (a `незібраність` need →
+Haiku thoughts, `## Думки` in the prompt, `thoughts` in the store, `/thoughts`, random
+surfacing-as-a-turn). What stays for v3: a deeper **always-on inner-voice loop** that
+reflects between turns, **updates plans/mood**, and decides whether to speak (Lumi
+`core/inner_voice*` + `nudge.py`, on the FSM) — built on **3.2 Plans** once it lands.
