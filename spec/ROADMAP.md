@@ -414,10 +414,10 @@ deterministic; local — no external calls.
 ## v1 — Engine (the tick-server & hub foundation)
 
 ### 1.1 Tick-server: engine = WS/HTTP server, clients attach — ⬜
-**Goal:** the engine is an always-on server; TUI and (later) web are clients; the
-foundation of the agent **hub** — and v1.1 already runs **two** agents (Agnika + the
-companion **Pashu**) to prove the hub is real, not single-tenant. Full design + the
-client/server split: [`spec/features/server-architecture.en.md`](features/server-architecture.en.md)
+**Goal:** the engine is an always-on server; the TUI (and later web) attaches over WS;
+the foundation of the agent **hub**. **One agent** for now (**Agnika**) — the second
+agent (Pashu) lands next in **1.2**. Full design + the client/server split:
+[`spec/features/server-architecture.en.md`](features/server-architecture.en.md)
 ([UK](features/server-architecture.uk.md)).
 
 **Scope review (after v0):** v0 already drew every seam this needs — `Channel`
@@ -442,32 +442,41 @@ async/FSM rewrite is 1.2.
 5. **Non-blocking under load** — a blocking `deep` on one agent's thread must not stall the async layer
    (`/health` + a second agent stay responsive).
 6. **HTTP helpers** — `GET /agents`, `GET /agent/{id}/history?limit=N` (scrollback on attach).
-7. **Second agent — Pashu** — author a minimal `state/pashu/` (own canon/needs/mood/prompts) + register
-   `AgentRuntime("pashu")` at boot beside Agnika; both tick concurrently with isolated `.kiln/{id}/` +
-   `state/{id}/`; Pashu gets a narrower permission-scope field (enforced in 1.3). **Developing + connecting
-   Pashu is in this phase.**
-8. **Remote TUI client** — a `--remote ws://…/agent/{id}` mode (pick Agnika or Pashu) reusing
-   `tui/render.py`; the in-process `Bridge` stays for local/dev.
-9. **Docs + contracts** — promote ARCHITECTURE's planned server/event-protocol bullets to current.
+7. **Remote TUI client** — a `--remote ws://…/agent/{id}` mode reusing `tui/render.py`; the in-process
+   `Bridge` stays for local/dev.
+8. **Docs + contracts** — promote ARCHITECTURE's planned server/event-protocol bullets to current.
 
-Stack: FastAPI/Starlette + websockets (silt is a working server example). **Out of scope:** the
-event-queue FSM (1.2), tools + permission enforcement (1.3), RAG (1.4), the web client + the operator
-multi-agent **management UI** — add/start/stop/inspect agents from a panel; v1.1 registers Agnika +
-Pashu in config (v2). Everything `agent_id`-scoped (incl. a not-yet-enforced permission-scope field).
+Stack: FastAPI/Starlette + websockets (silt is a working server example). The host is `agent_id`-keyed
+and **N-capable from the start** (incl. a not-yet-enforced permission-scope field) so **1.2** is purely
+additive. **Out of scope:** the **second agent / multi-agent concurrency → 1.2**; the event-queue FSM
+(1.3), tools + permission enforcement (1.4), RAG (1.5), the web client + operator management UI (v2).
 
 **DoD:** the server ticks with **no client connected**; a TUI client attaches over WS and holds a
-turn; a **second client sees the same session**; the host runs **Agnika and Pashu concurrently with
-isolated state** (a turn on one doesn't touch the other); the API is `agent_id`-scoped; model calls
-don't freeze the server; all tests on `MockBrain` (zero paid calls).
+turn; a **second client sees the same session**; the API is `agent_id`-scoped; model calls don't
+freeze the server; all tests on `MockBrain` (zero paid calls).
 
-### 1.2 State machine (FSM, events, queue) — ⬜
+### 1.2 Companion agent — Pashu (multi-agent host) — ⬜
+**Goal:** prove the hub is real — host a **second** agent, **Pashu**, alongside Agnika: concurrently
+and with **fully isolated state**. Builds directly on 1.1's `agent_id`-scoped, N-capable host (design:
+[`server-architecture.en.md` §12](features/server-architecture.en.md) / [UK](features/server-architecture.uk.md)).
+**Tasks:** author a minimal `state/pashu/` — its own `canon.md` (Pashu's persona) + `needs.json` /
+`needs_model.yaml` / `mood.json` / `prompts.md` — and `.kiln/pashu/`; register a second
+`AgentRuntime("pashu")` at boot; both agents tick concurrently on separate threads; `GET /agents`
+lists both; a client attaches to `ws://…/agent/pashu` independently; Pashu carries a **narrower
+permission-scope** field (only *enforced* once tools land in 1.4). **Out of scope:** the operator panel
+to add/start/stop/inspect agents (v2) — here Pashu is registered in config, started at server boot.
+**DoD:** the host runs **Agnika and Pashu concurrently with isolated state** — a turn or self-trigger
+on one **never** touches the other's needs/store; a TUI attaches over WS to Pashu and holds a turn;
+`agent_id` isolation is contract-tested; all tests on `MockBrain` (zero paid calls).
+
+### 1.3 State machine (FSM, events, queue) — ⬜
 **Goal:** an event-driven core behind the server.
 **Tasks:** states (idle/thinking/responding/cooling); one event queue (input,
 ticks, self-triggers) consumed one at a time; makes "input > self-trigger > idle"
 explicit; events = WS messages. cf. `lumi/core/cycle.py`.
 **DoD:** the loop is an FSM driven by a queue; the server emits the same events.
 
-### 1.3 Tools — ⬜
+### 1.4 Tools — ⬜
 **Goal:** Agnika's own permission-scoped tools.
 **Tasks:** a typed-argument tool registry, separate from Claude Code's; **per-agent
 permission scope** (Agnika = broad system/home; companions narrow); e.g.
@@ -475,7 +484,7 @@ time/notes/RAG-search/start-a-game. cf. Lumi's file/imagetool/news.
 **DoD:** Agnika calls a registered tool within her scope; a companion agent is
 denied an out-of-scope tool.
 
-### 1.4 RAG — ⬜
+### 1.5 RAG — ⬜
 **Goal:** exact recall over past conversations.
 **Tasks:** embed `history/*.json` → vector store; recall top-K relevant fragments
 into the turn, deduped against the window, capped. Port from Lumi
@@ -483,7 +492,7 @@ into the turn, deduped against the window, capped. Port from Lumi
 (sqlite-vss/chroma), chunking, when to inject.
 **DoD:** `/recall` returns relevant past lines; automatic RAG injects them per turn.
 
-### 1.5 Games — ⬜
+### 1.6 Games — ⬜
 **Goal:** kiln's core as a swappable brain driving world-bodies / games.
 **Tasks:** a brain↔body interface (clay's pattern: body sends needs + surroundings,
 brain returns an action); first concrete game — **checkers**
