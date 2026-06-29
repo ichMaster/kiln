@@ -510,11 +510,14 @@ def run(
         # One model turn, timed; folds tokens + latency into the session stats.
         t0 = time.monotonic()
         out = respond(prompt, state, history, _system(), brain, force=force, agent=agent)
-        # v0.11 curiosity monitor: post-process the reply — if she actually ASKED, the SATIATION
-        # "asked" event discharges curiosity (curious -> asks -> sated -> curious); a statement
-        # leaves it high. `curiosity` flags the reply for the display marker.
-        out["curiosity"] = is_curiosity_reply(out["reply"])
-        if out["curiosity"]:
+        # v0.11 curiosity monitor: post-process the reply — if she ASKED while curious enough (over
+        # the NEED_TRIGGERS threshold), the SATIATION "asked" event discharges curiosity (curious ->
+        # asks -> sated -> curious). A statement, or asking when uncurious, leaves it. `curiosity`
+        # flags the reply for the display marker.
+        cur_thr = NEED_TRIGGERS.get("curiosity", {}).get("threshold", 1.1)
+        asked = is_curiosity_reply(out["reply"]) and state.needs.get("curiosity", 0.0) >= cur_thr
+        out["curiosity"] = asked
+        if asked:
             apply_satiation(state, "asked")
         stats.record(out["class"], out.get("usage"), time.monotonic() - t0)
         return out

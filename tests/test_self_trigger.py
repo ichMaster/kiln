@@ -29,13 +29,14 @@ def test_only_connection_self_triggers():
 
 
 def test_curiosity_never_self_triggers():
-    """v0.11: curiosity is NOT in NEED_TRIGGERS — even pinned high it produces no self-message
-    and no thought; it only conditions the prompt (KILN-048) and discharges on asking (KILN-047)."""
+    """v0.11: curiosity HAS a NEED_TRIGGERS entry (panel threshold + display), but it is discharged
+    by the question monitor, not a crossing — so even pinned high it produces no self-message and no
+    thought (the trigger selectors only look at connection / reflection)."""
     from kiln.config import NEED_TRIGGERS
 
-    assert "curiosity" not in NEED_TRIGGERS
+    assert "curiosity" in NEED_TRIGGERS  # has a threshold/action for the panel...
     st = State(needs={"curiosity": 1.0})
-    assert select_self_trigger(st, TriggerBook()) is None
+    assert select_self_trigger(st, TriggerBook()) is None  # ...but never self-fires
     assert select_thought_trigger(st, TriggerBook()) is None
 
 

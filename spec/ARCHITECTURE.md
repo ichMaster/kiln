@@ -125,11 +125,12 @@ is shaped by her other needs at that moment (`reach_out_branch`): `intensity` ov
 via `turn_weight`. `rest` crossing drives the **rest gate** (sleep), not a message. Full
 algorithm in [`docs/how-it-works.md`](../docs/how-it-works.md).
 
-Two needs are **not** `NEED_TRIGGERS` self-triggers but close through dedicated events instead:
-**reflection** (v0.10) fires an internal thought that `apply_satiation("thought")` discharges, and
-**curiosity** (v0.11) is shaped purely by its `## Настрій` band cue (ask-don't-mirror at higher
-levels) and discharged by a post-reply **monitor** — when `engine.is_curiosity_reply` sees a
-question, `apply_satiation("asked")` sates it (curious → asks → sated → curious).
+Two needs have a `NEED_TRIGGERS` entry (so the panel shows their threshold + colour) but do **not**
+self-trigger — the selectors only check `connection` / `reflection`. **reflection** (v0.10) fires an
+internal thought that `apply_satiation("thought")` discharges; **curiosity** (v0.11) is shaped by its
+`## Настрій` band cue (ask-don't-mirror at higher levels) and discharged by a post-reply **monitor** —
+when `engine.is_curiosity_reply` sees a question **and** curiosity is over its threshold,
+`apply_satiation("asked")` sates it (curious → asks → sated → curious). Its `action` is `"ask"`.
 
 ## Memory and transcripts (+ RAG)
 

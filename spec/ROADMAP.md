@@ -387,8 +387,10 @@ higher levels a **provocation** to **ask real, specific questions and dig deeper
 user. Per-turn, Ukrainian, deterministic, local. Curiosity does **not** self-trigger a message; the band cue
 only colours how she answers, and **asking** discharges it.
 **Shipped design (refactored from the original separate-block plan):**
-- **Curiosity need.** `curiosity` in `DRIFT` (very small step). It is **not** in `NEED_TRIGGERS` / the
-  `TriggerBook` (no self-message). Reuses the v0.10 `load_state` heal, so it appears without a re-seed.
+- **Curiosity need.** `curiosity` in `DRIFT` (very small step) + a `NEED_TRIGGERS` entry
+  (`threshold 0.50`, `action "ask"`) **for the panel threshold/colour only** — it does **not**
+  self-trigger (the selectors check only `connection` / `reflection`). Reuses the v0.10 `load_state`
+  heal, so it appears without a re-seed.
 - **Behaviour via the mood cue.** Registered in `state/mood.json` like any need — a **cue per band**
   (низька «спокійно, не розпитуй» → дуже висока «веди питаннями, копай у суть»). `mood_block` renders it in
   `## Настрій`; there is **no** separate `## Цікавість` block. The ask-don't-mirror nudge **is** the high-band
@@ -396,12 +398,12 @@ only colours how she answers, and **asking** discharges it.
 - **Discharge via a question monitor + SATIATION.** A pure `is_curiosity_reply(text) -> bool` (a `?` or a
   leading Ukrainian interrogative). After every reply, `engine._turn` runs the **monitor**: if she asked,
   `apply_satiation(state, "asked")` (`SATIATION["asked"] = {"curiosity": -0.4}`) sates it — curious → asks →
-  sated → curious. A statement leaves it high. The question reply is marked with a subtle `Output.is_curiosity`
-  (« Agnika (?) »). No threshold gate — the band cue regulates *when* she asks.
+  sated → curious. A statement, or asking below the threshold, leaves it. The question reply is marked with a
+  subtle `Output.is_curiosity` (« Agnika (?) »).
 - **Tests.** Curiosity drift; `is_curiosity_reply` true on a question / false on a statement; `mood_block`
   renders curiosity with its band cue; `apply_satiation("asked")` lowers curiosity; an integration turn where
-  a question discharges it (and a statement doesn't); the snapshot exposes curiosity as a need (not a trigger).
-  Deterministic — fixed needs, **mock brain, zero paid calls**.
+  an over-threshold question discharges it (and a statement / a sub-threshold question don't); the snapshot
+  exposes curiosity's threshold + `ask` action but it never self-fires. Deterministic — **mock brain, zero paid calls**.
 **DoD:** a `curiosity` («цікавість») need with a very small drift that lives in `## Настрій` with a graded
 band cue (ask-don't-mirror at higher levels); when she **actually asks** (the question monitor) curiosity is
 **discharged** via `SATIATION["asked"]`, so it ebbs and flows; no separate prompt block, no self-message;

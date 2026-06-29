@@ -52,19 +52,23 @@ load_dotenv()  # read .env BEFORE the settings are defined below
 # --- Ticks ------------------------------------------------------------------
 TICK_SECONDS = float(os.environ.get("TICK_SECONDS", "0.5"))
 
-# Need thresholds + the branch each maps to.
-#   action: "chat" -> Haiku; "deep" -> Opus; "idle" -> rest gate; "tool" -> named sub-agent.
+# Need thresholds + the branch/mode each maps to (also the TUI panel threshold + colour source).
+#   action: "chat" -> Haiku; "deep" -> Opus; "idle" -> rest gate; "tool" -> named sub-agent;
+#           "ask" -> v0.11 curiosity (a monitor-discharged disposition, NOT a self-trigger).
 # Only REACH_OUT_NEED (connection) actually SELF-TRIGGERS a proactive message (loneliness ->
 # she writes first). WHICH brain answers it is shaped by her OTHER needs at that moment
 # (engine.reach_out_branch): intensity over its threshold -> deep (opus); else novelty over its
 # -> session-wiki; else connection's baseline (chat). So opus/session-wiki never self-INITIATE;
 # intensity also routes USER turns to opus via turn_weight. rest -> the sleep gate, not a message.
+# reflection/curiosity have an entry (threshold + panel display) but do NOT self-trigger: reflection
+# fires an inner thought (v0.10), curiosity is discharged by the question monitor (v0.11).
 NEED_TRIGGERS = {
     "connection": {"threshold": 0.80, "action": "chat"},
     "rest": {"threshold": 0.90, "action": "idle"},
     "novelty": {"threshold": 0.85, "action": "tool", "agent": "session-wiki"},
     "intensity": {"threshold": 0.75, "action": "deep"},
     "reflection": {"threshold": 0.60, "action": "thought"},  # v0.10 inner monologue (no self-msg)
+    "curiosity": {"threshold": 0.50, "action": "ask"},  # v0.11: monitor-discharged (no self-msg)
 }
 # The proactive self-message fires only on this need; intensity/novelty pick the brain that
 # answers it (see the comment above and engine.reach_out_branch). REACH_OUT_MODELS = priority.

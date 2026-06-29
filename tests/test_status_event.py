@@ -906,20 +906,26 @@ def test_run_curiosity_unchanged_without_a_question(monkeypatch, tmp_path):
     assert not rec.curiosity_replies
 
 
-def test_run_curiosity_discharges_regardless_of_level(monkeypatch, tmp_path):
-    """No threshold gate: the monitor sates curiosity whenever she ASKS — even from a low level
-    (clamped at 0). The band cue is what makes her ask more when she's actually curious."""
+def test_run_curiosity_no_discharge_below_threshold(monkeypatch, tmp_path):
+    """Below the curiosity threshold the monitor doesn't discharge — even a question reply (she
+    wasn't curious enough). The band cue keeps her calm there anyway."""
     import kiln.engine as eng
+    from kiln.config import DRIFT
 
     st, rec = _curiosity_run(monkeypatch, eng, tmp_path, curiosity=0.30, brain=_AskBrain())
-    assert st.needs["curiosity"] == 0.0  # 0.30 + drift - 0.4 -> clamped at 0
-    assert rec.curiosity_replies
+    assert st.needs["curiosity"] == pytest.approx(0.30 + DRIFT["curiosity"])  # only drift
+    assert not rec.curiosity_replies
 
 
-def test_status_snapshot_curiosity_is_a_need_not_a_trigger():
-    """v0.11: curiosity shows as a need (its level), but it is NOT a NEED_TRIGGERS entry — no
-    threshold/action in the snapshot (it's discharged by the question monitor, not a crossing)."""
-    state = State(needs={"connection": 0.1, "curiosity": 0.62})
+def test_status_snapshot_curiosity_has_threshold_but_no_self_trigger():
+    """v0.11: curiosity is in the snapshot thresholds/actions (panel parity — threshold + colour +
+    `→ ask`, like the other needs), yet it's discharged by the question monitor, not a crossing."""
+    from kiln.config import NEED_TRIGGERS
+    from tui.render import needs_panel_lines
+
+    state = State(needs={"connection": 0.1, "curiosity": 0.70})
     snap = _status_snapshot("idle", state, TriggerBook(), SessionStats(), None, 1)
-    assert snap["needs"]["curiosity"] == 0.62  # the level shows in the panel
-    assert "curiosity" not in snap["thresholds"] and "curiosity" not in snap["actions"]
+    assert snap["thresholds"]["curiosity"] == NEED_TRIGGERS["curiosity"]["threshold"]
+    assert snap["actions"]["curiosity"] == "ask"
+    row = next(r for r in needs_panel_lines(snap) if "цікавість" in r)
+    assert "0.70/0.50" in row and "→ ask" in row  # coloured, over-threshold, like the rest
