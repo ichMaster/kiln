@@ -20,6 +20,7 @@ import threading
 
 from rich.markdown import Markdown
 from rich.markup import escape
+from rich.theme import Theme
 from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -41,6 +42,29 @@ _BOT_STYLE = "bold green"  # "Agnika" name
 _SELF_STYLE = "bold green"  # "Agnika (self)" name — same weight, marked by the (self) suffix
 _MODEL_STYLE = "dark_green"  # the (model) tag next to the name
 _NOTICE_STYLE = "grey50"  # notices / system lines + command output — grey
+
+# Colours for the Markdown in Agnika's replies — the rich.markdown `markdown.*` style keys, pushed
+# onto the app console at mount so the RichLog renders **bold** / `code` / headers / lists in colour
+# (not the monochrome default). `inherit=True` keeps Rich's defaults for any key not listed here.
+MARKDOWN_THEME = Theme(
+    {
+        "markdown.strong": "bold yellow",  # **bold**
+        "markdown.em": "italic cyan",  # *italic*
+        "markdown.s": "strike grey50",  # ~~strikethrough~~
+        "markdown.code": "bold bright_yellow",  # `inline code`
+        "markdown.code_block": "bright_green",  # ``` fenced block (when not syntax-highlighted)
+        "markdown.h1": "bold magenta",
+        "markdown.h2": "bold bright_magenta",
+        "markdown.h3": "bold cyan",
+        "markdown.h4": "bold bright_cyan",
+        "markdown.item.bullet": "bold green",  # - bullet
+        "markdown.item.number": "bold green",  # 1. number
+        "markdown.link": "underline cyan",
+        "markdown.link_url": "underline blue",
+        "markdown.block_quote": "italic grey62",
+        "markdown.hr": "grey50",
+    }
+)
 
 
 def _clipboard_argv() -> list[str] | None:
@@ -162,6 +186,7 @@ class KilnApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.console.push_theme(MARKDOWN_THEME)  # colour the Markdown in replies (markdown.* keys)
         self.query_one("#prompt", ChatInput).focus()
         if self._start_engine:
             self._engine_thread = threading.Thread(target=self._run_engine, daemon=True)

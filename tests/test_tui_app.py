@@ -239,3 +239,24 @@ def test_agent_reply_body_rendered_as_markdown(tmp_path):
 
     assert any(isinstance(w, Markdown) for w in log.writes)  # body rendered as Markdown
     assert app._last_reply == "**жирний** і список:\n- раз"  # raw source kept (for copy)
+
+
+def test_markdown_markers_rendered_in_colour(tmp_path):
+    """The app pushes a Markdown colour theme onto its console, so reply Markdown renders
+    **bold** / `code` / headers in colour (not Rich's monochrome default)."""
+    pytest.importorskip("textual")
+    import asyncio
+
+    from tui.app import MARKDOWN_THEME, KilnApp
+
+    # the theme recolours the key markers
+    assert "yellow" in str(MARKDOWN_THEME.styles["markdown.strong"])  # bold -> yellow
+
+    async def scenario():
+        app = KilnApp(bridge=Bridge(), live=False, start_engine=False)
+        async with app.run_test():
+            strong = app.console.get_style("markdown.strong")
+            assert strong.bold and strong.color is not None  # bold AND coloured (theme applied)
+            assert app.console.get_style("markdown.code").color is not None  # inline code coloured
+
+    asyncio.run(scenario())
