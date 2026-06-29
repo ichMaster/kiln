@@ -510,11 +510,9 @@ def run(
             if THOUGHTS_ENABLED
             else ""
         )
-        curiosity = (
-            curiosity_nudge(state.needs.get("curiosity", 0.0), CURIOSITY_THRESHOLD)
-            if CURIOSITY
-            else ""
-        )
+        # Always present when CURIOSITY is on — the message is graded by level (curiosity_nudge);
+        # CURIOSITY_THRESHOLD still gates the discharge in _turn, not the block.
+        curiosity = curiosity_nudge(state.needs.get("curiosity", 0.0)) if CURIOSITY else ""
         if not world and not mood and not thoughts and not curiosity:
             return base_system
         return build_system(canon, memory, facts, world, mood, thoughts, curiosity)

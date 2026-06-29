@@ -57,13 +57,17 @@ DEFAULT_MOOD = {
 }
 
 
-# v0.11 curiosity provocation: while curiosity is over the threshold, every turn's prompt carries
-# this nudge to ASK real questions and dig deeper rather than mirror. Persona-layer (Ukrainian,
-# intentional); overridable via an optional top-level `curiosity_nudge` field in state/mood.json.
-DEFAULT_CURIOSITY_NUDGE = (
-    "Тобі зараз цікаво. Постав живе, конкретне питання й копай глибше — "
-    "не дзеркаль і не переказуй співрозмовника, веди розмову вперед."
-)
+# v0.11 curiosity: the `## Цікавість` block is ALWAYS in the prompt (when CURIOSITY is on); the
+# message is GRADED by the curiosity level (need band) — low keeps her calm, high pushes her to ask
+# and dig. Persona-layer (Ukrainian); the real text lives in state/mood.json (needs.curiosity.cues,
+# per band), with these terse defaults as the fallback for a fresh clone / a broken edit.
+DEFAULT_CURIOSITY_CUES = {
+    "низька": "Спокійно, без потягу копати — можна просто слухати, не розпитуй.",
+    "помірна": "Інтерес прокидається — спитай, якщо щось чіпляє, без натиску.",
+    "висока": "Тобі цікаво — постав живе, конкретне питання й копай глибше, не дзеркаль.",
+    "дуже висока": "Цікавість пече — веди питаннями, копай у суть, доганяй кожне «незрозуміло».",
+}
+_CURIOSITY_FALLBACK = "Тобі цікаво — постав живе, конкретне питання й копай глибше, не дзеркаль."
 
 
 def load_mood(path: Path = MOOD_FILE) -> dict:
@@ -106,9 +110,6 @@ NEED_LABELS, NEED_CUES, NEED_BANDS, _PERIODS, _BIO_BANDS, _BIO_LABELS, BIO_CUES 
 # Needs flagged `"mood_line": false` (v0.11 curiosity) are nudge-only: they carry a label so the
 # TUI panel can name them, but they are NOT rendered as a `## Настрій` status line.
 NEED_NOMOOD = {k for k, v in _cfg["needs"].items() if v.get("mood_line") is False}
-# The curiosity nudge text — from the optional `curiosity_nudge` field in state/mood.json, else the
-# default. Module-level so it tracks the same config source the rest of the mood layer uses.
-CURIOSITY_NUDGE_TEXT = _cfg.get("curiosity_nudge") or DEFAULT_CURIOSITY_NUDGE
 
 
 def biorhythm(now: _dt.datetime, birth: _dt.datetime) -> dict[str, float]:
@@ -173,10 +174,13 @@ def mood_block(needs: dict[str, float], bio: dict[str, float] | None = None) -> 
     return "\n".join(lines)
 
 
-def curiosity_nudge(curiosity: float, threshold: float) -> str:
-    """The v0.11 `## Цікавість` provocation: when `curiosity >= threshold`, a short Ukrainian nudge
-    to ask real, specific questions and dig deeper rather than mirror the user; below the threshold
-    → "". Pure — the text comes from `CURIOSITY_NUDGE_TEXT` (config/default), no I/O."""
-    if curiosity < threshold:
-        return ""
-    return "## Цікавість\n" + CURIOSITY_NUDGE_TEXT
+def curiosity_nudge(curiosity: float) -> str:
+    """The v0.11 `## Цікавість` block — ALWAYS present, with the message GRADED by the curiosity
+    level (need band): low bands keep her calm (no urge to probe), high bands push her to ask and
+    dig. Text from `state/mood.json` (needs.curiosity.cues, per band), `DEFAULT_CURIOSITY_CUES`
+    fallback. Pure — no I/O. (The CURIOSITY master gate lives in the caller; the discharge
+    threshold is separate — engine._turn.)"""
+    band = need_band(curiosity)
+    cues = NEED_CUES.get("curiosity") or {}
+    msg = cues.get(band) or DEFAULT_CURIOSITY_CUES.get(band) or _CURIOSITY_FALLBACK
+    return "## Цікавість\n" + msg

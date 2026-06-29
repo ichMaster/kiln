@@ -448,8 +448,10 @@ def test_run_mood_awareness_off_no_section(monkeypatch, tmp_path):
 
     _mood_scenario(monkeypatch, eng, tmp_path)
     monkeypatch.setattr(eng, "MOOD_AWARENESS", False)
+    monkeypatch.setattr(eng, "CURIOSITY", False)  # v0.11: curiosity is otherwise always-on
     seen = _capture_systems(eng, 2, {1: "привіт"})
-    assert "## Настрій" not in seen[0] and seen[0] == "CANON"  # mood off + world off -> bare canon
+    # mood off + world off + curiosity off -> bare canon
+    assert "## Настрій" not in seen[0] and seen[0] == "CANON"
 
 
 def test_run_biorhythm_off_omits_sub_block(monkeypatch, tmp_path):
@@ -955,23 +957,19 @@ def _captured_system(monkeypatch, eng, tmp_path, *, curiosity, curiosity_on=True
     return brain.systems[0]
 
 
-def test_system_includes_curiosity_nudge_over_threshold(monkeypatch, tmp_path):
+def test_system_always_includes_curiosity_block_when_on(monkeypatch, tmp_path):
+    """v0.11: the ## Цікавість block is ALWAYS present when CURIOSITY is on — at any level."""
     import kiln.engine as eng
 
-    assert "## Цікавість" in _captured_system(monkeypatch, eng, tmp_path, curiosity=0.6)
-
-
-def test_system_omits_curiosity_nudge_below_threshold(monkeypatch, tmp_path):
-    import kiln.engine as eng
-
-    assert "## Цікавість" not in _captured_system(monkeypatch, eng, tmp_path, curiosity=0.30)
+    assert "## Цікавість" in _captured_system(monkeypatch, eng, tmp_path, curiosity=0.6)  # high
+    assert "## Цікавість" in _captured_system(monkeypatch, eng, tmp_path, curiosity=0.10)  # low
 
 
 def test_system_omits_curiosity_when_master_off(monkeypatch, tmp_path):
     import kiln.engine as eng
 
     system = _captured_system(monkeypatch, eng, tmp_path, curiosity=0.9, curiosity_on=False)
-    assert "## Цікавість" not in system  # CURIOSITY off -> no nudge even when high
+    assert "## Цікавість" not in system  # CURIOSITY off -> no block even when high
 
 
 def test_status_snapshot_surfaces_curiosity_as_a_full_need():
