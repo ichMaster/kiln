@@ -202,3 +202,17 @@ def test_http_reload_endpoint(monkeypatch, tmp_path):
         r = client.post("/agent/agnika/reload")
         assert r.status_code == 200 and r.json()["reload"] == "queued"
         assert client.post("/agent/ghost/reload").status_code == 404
+
+
+def test_http_rotate_endpoint(monkeypatch, tmp_path):
+    from starlette.testclient import TestClient
+
+    _stub_model(monkeypatch)
+    host = AgentHost()
+    monkeypatch.setattr(appmod, "host", host)
+    host.start("agnika", brain=MockBrain(), ticks=1, live=False, paths=_tmp_paths(tmp_path))
+
+    with TestClient(appmod.app) as client:
+        r = client.post("/agent/agnika/rotate")
+        assert r.status_code == 200 and r.json()["rotate"] == "queued"
+        assert client.post("/agent/ghost/rotate").status_code == 404

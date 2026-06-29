@@ -7,6 +7,7 @@ client (console today, TUI/web later) receives the result. handle_command() retu
   "handled"        — command executed, continue the loop;
   "quit"           — user asks to exit;
   "reload"         — re-read canon/prompts/memory (the run loop does it; no session drop);
+  "rotate"         — close+summarize this session and start a fresh one (non-blocking; run loop);
   ("ask", text)    — forced deep turn (the run loop makes the call itself);
   None             — not a command, fall through to normal handling.
 """
@@ -32,6 +33,7 @@ COMMANDS = (
     "report",
     "ask",
     "reload",
+    "rotate",
     "clear",
     "help",
     "quit",
@@ -62,6 +64,9 @@ def handle_command(
 
     elif cmd == "reload":
         return "reload"  # the run loop re-reads canon/prompts/memory + rebuilds the system prompt
+
+    elif cmd == "rotate":
+        return "rotate"  # the run loop closes+summarizes this session and starts a fresh one
 
     elif cmd in ("help", "h", "?"):
         output.notice("Commands: " + command_hints())

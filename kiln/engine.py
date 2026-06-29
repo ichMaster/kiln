@@ -491,7 +491,7 @@ def run(
     paths.store_file.parent.mkdir(parents=True, exist_ok=True)  # .kiln[/{agent}] for store + needs
     state = load_state(paths.needs_file)
     history: list[dict] = []  # shared conversation transcript for the session
-    started = _dt.datetime.now().isoformat(timespec="seconds")  # session start (for transcript)
+    started = _dt.datetime.now().isoformat(timespec="microseconds")  # session id (unique/rotation)
     session_mode = "live" if live else "dry"  # stored with the session (real-time persist + close)
     canon = load_canon(paths.canon_file)  # persona/voice from state/canon.md (re-read on /reload)
     memory = load_memory(paths.store_file)  # long-term memory: summaries of past sessions
@@ -590,6 +590,44 @@ def run(
         upsert_session(store, started, started, session_mode, history, ended_at=ended_at)
         save_store(store, paths.store_file)
 
+    rotate_results: queue.Queue = queue.Queue()  # finished rotations -> applied on the agent thread
+
+    def _ledger_entry(session_id: str, started_at: str, ended: str, turns_count: int, sstats):
+        return {
+            "session_id": session_id,
+            "model": "+".join(sstats.models),
+            "started_at": started_at,
+            "ended_at": ended,
+            "turns": turns_count,
+            "input": sstats.input_total,
+            "output": sstats.output_total,
+            "cache_read": sstats.cache_read_total,
+            "cache_write": sstats.cache_write_total,
+            "cache_ttl": "5m",
+            "cost_usd": round(sstats.cost_usd, 6),
+            "cli_calls": sstats.cli_calls,
+            "by_model": {
+                m: {**v, "cost_usd": round(v["cost_usd"], 6)} for m, v in sstats.by_model.items()
+            },
+        }
+
+    def _finalize_async(oid, cleaned, existing_facts, ostats, ostart, oended, ostamp):
+        # Worker thread: the SLOW close work (summary + facts) computed OFF the agent loop, handed
+        # back via rotate_results for the agent thread to write — so all store writes stay on one
+        # thread (no race with real-time persistence) and rotation never pauses the agent.
+        rotate_results.put(
+            {
+                "id": oid,
+                "summary": summarize(cleaned, live),
+                "facts": extract_facts(cleaned, existing_facts, live),
+                "stats": ostats,
+                "started_at": ostart,
+                "ended": oended,
+                "stamp": ostamp,
+                "turns": len(cleaned),
+            }
+        )
+
     t = 0
     total_ticks = 0  # real ticks since session start (catch-up included — counts blocked time)
     branch: str | None = None  # last turn's class (chat/think/tools) for the status snapshot
@@ -609,6 +647,28 @@ def run(
             drift(state, steps)  # catch-up drift over real time (silent)
             total_ticks += steps  # the tick counter tracks real elapsed ticks, not loop iterations
             update_curiosity_monitor(state, tg)  # v0.11: arm/disarm the curiosity monitor by level
+            # Apply finished rotations (summary/facts computed off-thread) HERE on the agent thread,
+            # so the store is only written here, never racing the worker. Refresh memory so the new
+            # session's prompt includes the just-summarized one, and notify completion.
+            while not rotate_results.empty():
+                r = rotate_results.get()
+                if r["summary"]:
+                    store["summaries"].append(
+                        {"session_id": r["id"], "stamp": r["stamp"], "text": r["summary"]}
+                    )
+                added = add_facts(store, r["facts"], r["id"], r["stamp"])
+                if USAGE_REPORT:
+                    append_session(
+                        _ledger_entry(r["id"], r["started_at"], r["ended"], r["turns"], r["stats"]),
+                        paths.usage_ledger,
+                    )
+                    write_report(read_ledger(paths.usage_ledger), paths.usage_report)
+                save_store(store, paths.store_file)
+                memory = load_memory(paths.store_file)
+                base_system = build_system(canon, memory, facts)
+                output.notice(
+                    f"[rotate] previous session summarized{f' + {added} facts' if added else ''}"
+                )
             # Rest gate (hysteresis): when fatigue (rest) reaches its threshold Agnika stops
             # answering and only recovers (idle) until rest falls back to REST_WAKE. The band
             # (sleep >= threshold, wake <= REST_WAKE) makes her actually rest instead of
@@ -651,6 +711,31 @@ def run(
                     base_system = build_system(canon, memory, facts)
                     prev_turns = _previous_session_turns(paths.store_file, started)
                     output.notice("[reload] canon, prompts, and memory reloaded")
+                elif action == "rotate":
+                    # Non-blocking rotation: cut over to a FRESH session now; the slow summary/facts
+                    # for the old one run on a worker and fold in later (the agent never pauses).
+                    old_id, old_turns, old_stats = started, list(history), stats
+                    cleaned_old = prune_history(old_turns)
+                    if not cleaned_old:
+                        remove_session(store, old_id)  # all-noise: nothing worth summarizing
+                        save_store(store, paths.store_file)
+                    else:
+                        oended = _dt.datetime.now().isoformat(timespec="seconds")
+                        ostamp = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+                        upsert_session(store, old_id, old_id, session_mode, cleaned_old, oended)
+                        save_store(store, paths.store_file)
+                        existing = [f.get("text", "") for f in store.get("facts", [])]
+                        threading.Thread(
+                            target=_finalize_async,
+                            args=(old_id, cleaned_old, existing, old_stats, old_id, oended, ostamp),
+                            daemon=True,
+                        ).start()
+                    started = _dt.datetime.now().isoformat(timespec="microseconds")
+                    history.clear()
+                    stats = SessionStats()
+                    branch = None
+                    prev_turns = _previous_session_turns(paths.store_file, started)
+                    output.notice("[rotate] session rotated; summarizing the previous one…")
                 elif action == "handled":
                     pass  # command handled (commands work even while resting)
                 elif resting:
@@ -750,25 +835,7 @@ def run(
             # usage reporting is disabled (USAGE_REPORT=0).
             if USAGE_REPORT:
                 append_session(
-                    {
-                        "session_id": started,
-                        "model": "+".join(stats.models),
-                        "started_at": started,
-                        "ended_at": ended,
-                        "turns": len(cleaned),
-                        "input": stats.input_total,
-                        "output": stats.output_total,
-                        "cache_read": stats.cache_read_total,
-                        "cache_write": stats.cache_write_total,
-                        "cache_ttl": "5m",
-                        "cost_usd": round(stats.cost_usd, 6),
-                        "cli_calls": stats.cli_calls,  # how many `claude -p` executions
-                        "by_model": {
-                            m: {**v, "cost_usd": round(v["cost_usd"], 6)}
-                            for m, v in stats.by_model.items()
-                        },
-                    },
-                    paths.usage_ledger,
+                    _ledger_entry(started, started, ended, len(cleaned), stats), paths.usage_ledger
                 )
                 # regenerate the agent's usage-report.md from ITS ledger
                 write_report(read_ledger(paths.usage_ledger), paths.usage_report)

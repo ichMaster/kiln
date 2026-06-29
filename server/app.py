@@ -75,6 +75,17 @@ def agent_reload(agent_id: str) -> dict:
     return {"agent_id": agent_id, "reload": "queued"}
 
 
+@app.post("/agent/{agent_id}/rotate")
+def agent_rotate(agent_id: str) -> dict:
+    """Queue a `/rotate` for an agent — close+summarize the current session and start a fresh one,
+    non-blocking (the summary runs off the agent thread). 404 if it isn't hosted."""
+    runtime = host.get(agent_id)
+    if runtime is None:
+        raise HTTPException(status_code=404, detail=f"no such agent: {agent_id}")
+    runtime.submit("/rotate")
+    return {"agent_id": agent_id, "rotate": "queued"}
+
+
 @app.websocket("/agent/{agent_id}")
 async def agent_ws(ws: WebSocket, agent_id: str) -> None:
     """Attach a client to an agent: snapshot, then stream its events; relay input to its inbox.

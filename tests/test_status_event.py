@@ -497,6 +497,41 @@ def test_reload_command_rereads_canon(tmp_path, monkeypatch):
     assert systems[-1].startswith("CANON-V2")  # turn after /reload picked up the new canon
 
 
+def test_rotate_finalizes_session_and_starts_fresh(monkeypatch, tmp_path):
+    """/rotate finalizes the current session (summary folds in via a worker) and starts a fresh
+    session_id — non-blocking. Two sessions get stored; both rotation notices fire."""
+    import kiln.engine as eng
+    from kiln import store as kstore
+
+    _isolate(monkeypatch, eng, tmp_path)
+    store_path = tmp_path / "store.json"
+    monkeypatch.setattr(eng, "load_store", lambda *a, **k: kstore.load_store(store_path))
+    monkeypatch.setattr(eng, "save_store", lambda s, *a, **k: kstore.save_store(s, store_path))
+    monkeypatch.setattr(eng, "summarize", lambda *a, **k: "SUM")
+
+    class NoticeRec(StatusRecorder):
+        def __init__(self):
+            super().__init__()
+            self.notices = []
+
+        def notice(self, text):
+            self.notices.append(text)
+
+    out = NoticeRec()
+    eng.run(
+        ticks=8,
+        live=False,
+        brain=MockBrain(),
+        output=out,
+        channel=eng.ScriptedChannel({1: "A", 2: "/rotate", 3: "B"}),
+    )
+    st = kstore.load_store(store_path)
+    assert len(st["sessions"]) == 2  # the rotated session + the fresh one
+    assert any("rotated" in n for n in out.notices)  # synchronous cutover notice
+    assert any("summarized" in n for n in out.notices)  # async completion notice
+    assert any("SUM" in (x.get("text") or "") for x in st["summaries"])  # old session summarized
+
+
 def _mood_scenario(monkeypatch, eng, tmp_path):
     """Common setup: isolate, mute world, fixed needs — so only the ## Настрій block varies."""
     _isolate(monkeypatch, eng, tmp_path)
