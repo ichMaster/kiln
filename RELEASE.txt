@@ -1,6 +1,18 @@
 kiln — Release Notes
 ====================
 
+Version 0.10.0 (2026-06-29)
+---------------------------
+- Inner monologue (v0.10): a new «незібраність» (reflection) need drifts and, on crossing, makes Agnika think via Haiku — a private thought, hidden by default, that discharges the need (KILN-039…044)
+- Thoughts persist in .kiln/store.json; the last N (cross-session) feed a ## Думки section in the system prompt (deduped against the live turns)
+- ~1 in 5 thoughts surfaces in the chat (marked «думка:») and becomes a real turn she remembers; the rest stay internal
+- /thoughts command lists recent thoughts (internal/surfaced markers); «незібраність» registered in state/mood.json so it shows in ## Настрій + the TUI needs panel
+- Output seam gains is_thought (Console/TUI/bridge/render); build_system gains the thoughts layer
+- Fix: load_state heals any configured need missing from state/needs.json — a new need now appears in the TUI/commands and drifts without re-seeding the file
+- Tuned reflection drift to 0.008 so the inner monologue fires on a usable cadence (~37s, not ~6min)
+- New .env knobs: THOUGHTS_ENABLED, THOUGHT_COOLDOWN, THOUGHT_VISIBLE_EVERY, THOUGHTS_IN_PROMPT, THOUGHT_MODEL
+- ROADMAP: swapped v2 ⇄ v3 — Web & multi-agent hub is now v2, Personality is now v3
+
 Version 0.9.0 (2026-06-28)
 ---------------------------
 - Mood & biorhythm (v0.9): every message's system prompt carries a per-turn ## Настрій section
