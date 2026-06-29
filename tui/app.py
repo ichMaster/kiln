@@ -37,7 +37,7 @@ from .output import TuiOutput
 from .render import agent_label, needs_panel_lines, status_line1, status_line2, user_label
 
 # Line colors (Rich markup). Names are bold; reply/message bodies stay default (white).
-_USER_STYLE = "bold magenta"  # the user's own name (USER_NAME) — distinct from the green «Agnika»
+_USER_STYLE = "bold orange1"  # the user's own name (USER_NAME) — distinct from the green «Agnika»
 _BOT_STYLE = "bold green"  # "Agnika" name
 _SELF_STYLE = "bold green"  # "Agnika (self)" name — same weight, marked by the (self) suffix
 _MODEL_STYLE = "dark_green"  # the (model) tag next to the name
