@@ -32,9 +32,11 @@ class Output(Protocol):
         lead: bool = False,
         model: str | None = None,
         is_thought: bool = False,
+        is_curiosity: bool = False,
     ) -> None:
         """Agent reply (is_self — self-initiated; lead — blank line before; model — the brain;
-        is_thought — a surfaced inner thought, v0.10, rendered dim / «думка:»)."""
+        is_thought — a surfaced inner thought, v0.10, rendered dim / «думка:»; is_curiosity — a
+        curiosity-driven reply, v0.11, she acted on the nudge and asked, marked subtly)."""
         ...
 
     def usage(self, usage: dict | None, latency: float | None = None) -> None:
@@ -64,6 +66,7 @@ class ConsoleOutput:
         lead: bool = False,
         model: str | None = None,
         is_thought: bool = False,
+        is_curiosity: bool = False,
     ) -> None:
         # The console keeps the per-turn tech line (print_tech) for the model/tokens, so the
         # label stays plain here; `model` is honoured by the TUI label instead.
@@ -71,6 +74,8 @@ class ConsoleOutput:
             print("\n" + _c(f"думка: {text}", NOTICE_COLOR))
             return
         label = f"{BOT_NAME} (self)" if is_self else BOT_NAME
+        if is_curiosity:  # v0.11: subtle marker — she acted on the curiosity nudge (asked)
+            label += " (?)"
         nl = "\n" if (is_self or lead) else ""  # self-initiated/"fresh" reply — with an indent
         print(nl + _c(f"{label}: {text}", BOT_COLOR))
 

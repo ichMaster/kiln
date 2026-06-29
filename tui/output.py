@@ -29,6 +29,7 @@ class TuiOutput:
         lead: bool = False,
         model: str | None = None,
         is_thought: bool = False,
+        is_curiosity: bool = False,
     ) -> None:
         self._bridge.emit(
             {
@@ -38,6 +39,7 @@ class TuiOutput:
                 "lead": lead,
                 "model": model,
                 "is_thought": is_thought,
+                "is_curiosity": is_curiosity,
             }
         )
 

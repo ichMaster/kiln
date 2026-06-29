@@ -8,6 +8,8 @@ emits it to the bus. All against a mock brain — zero paid calls.
 
 from __future__ import annotations
 
+import pytest
+
 from kiln.brain import MockBrain
 from kiln.config import CHAT_MODEL, DEEP_MODEL, REST_MESSAGE
 from kiln.engine import State, TriggerBook, _status_snapshot
@@ -118,12 +120,17 @@ class StatusRecorder:
         self.statuses: list[dict] = []
         self.replies: list[str] = []
         self.thoughts_shown: list[str] = []  # surfaced inner thoughts (is_thought=True)
+        self.curiosity_replies: list[str] = []  # curiosity-driven replies (is_curiosity=True)
 
     def user(self, text): ...
-    def agent(self, text, *, is_self=False, lead=False, model=None, is_thought=False):
+    def agent(
+        self, text, *, is_self=False, lead=False, model=None, is_thought=False, is_curiosity=False
+    ):
         self.replies.append(text)
         if is_thought:
             self.thoughts_shown.append(text)
+        if is_curiosity:
+            self.curiosity_replies.append(text)
 
     def usage(self, usage, latency=None): ...
     def notice(self, text): ...
@@ -833,3 +840,77 @@ def test_run_rest_hysteresis_sleeps_then_wakes(monkeypatch, tmp_path):
     eng.run(ticks=3, live=False, channel=eng.ScriptedChannel({}), brain=MockBrain(), output=rec)
     # rest: 0.95 ->0.85 ->0.75; resting until rest <= 0.80, so it wakes on tick 3
     assert [s["status"] for s in rec.statuses] == ["resting", "resting", "idle"]
+
+
+# --- v0.11 curiosity: discharge on asking + the reply marker (KILN-047) ---
+
+
+def test_is_curiosity_reply_detects_questions():
+    from kiln.engine import is_curiosity_reply
+
+    assert is_curiosity_reply("а чому саме так?") is True  # question mark
+    assert is_curiosity_reply("Що ти зараз читаєш") is True  # leading interrogative, no '?'
+    assert is_curiosity_reply("зрозуміло, дякую.") is False  # a statement
+    assert is_curiosity_reply("якось дивно це звучить") is False  # 'якось' is not the word 'як'
+
+
+class _AskBrain(MockBrain):
+    """A brain whose chat reply asks a question (so is_curiosity_reply is true)."""
+
+    def chat(self, history, system):
+        return "а що саме ти маєш на увазі?", usage_record(
+            CHAT_MODEL, {"input_tokens": 8, "output_tokens": 12}
+        )
+
+
+def _curiosity_run(monkeypatch, eng, tmp_path, *, curiosity, brain):
+    """Isolate with a fixed curiosity level, run one user turn, and return the (mutated) State."""
+    _isolate(monkeypatch, eng, tmp_path)
+    st = eng.State(
+        needs={
+            "connection": 0.0,
+            "rest": 0.0,
+            "novelty": 0.0,
+            "intensity": 0.0,
+            "reflection": 0.0,
+            "curiosity": curiosity,
+        }
+    )
+    monkeypatch.setattr(eng, "load_state", lambda *a, **k: st)
+    rec = StatusRecorder()
+    eng.run(
+        ticks=1, live=False, channel=eng.ScriptedChannel({0: "привіт"}), brain=brain, output=rec
+    )
+    return st, rec
+
+
+def test_run_curiosity_discharges_on_a_question(monkeypatch, tmp_path):
+    """With the nudge active (>= threshold), a question reply discharges curiosity by
+    CURIOSITY_SATIATION and the reply is marked curiosity-driven."""
+    import kiln.engine as eng
+    from kiln.config import CURIOSITY_SATIATION, DRIFT
+
+    st, rec = _curiosity_run(monkeypatch, eng, tmp_path, curiosity=0.6, brain=_AskBrain())
+    # one drift step up, then the question discharges by CURIOSITY_SATIATION
+    assert st.needs["curiosity"] == pytest.approx(0.6 + DRIFT["curiosity"] - CURIOSITY_SATIATION)
+    assert rec.curiosity_replies  # the reply carried is_curiosity=True
+
+
+def test_run_curiosity_unchanged_without_a_question(monkeypatch, tmp_path):
+    """A no-question reply leaves curiosity high (only drift) — the nudge persists till she asks."""
+    import kiln.engine as eng
+    from kiln.config import DRIFT
+
+    st, rec = _curiosity_run(monkeypatch, eng, tmp_path, curiosity=0.6, brain=MockBrain())
+    assert st.needs["curiosity"] == pytest.approx(0.6 + DRIFT["curiosity"])  # not discharged
+    assert not rec.curiosity_replies
+
+
+def test_run_curiosity_no_discharge_below_threshold(monkeypatch, tmp_path):
+    """Below the threshold the nudge is inactive — even a question reply does not discharge."""
+    import kiln.engine as eng
+    from kiln.config import DRIFT
+
+    st, rec = _curiosity_run(monkeypatch, eng, tmp_path, curiosity=0.30, brain=_AskBrain())
+    assert st.needs["curiosity"] == pytest.approx(0.30 + DRIFT["curiosity"])  # only drift
+    assert not rec.curiosity_replies

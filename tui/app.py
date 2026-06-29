@@ -207,6 +207,8 @@ class KilnApp(App):
             is_self = event.get("is_self", False)
             name_style = _SELF_STYLE if is_self else _BOT_STYLE
             name = agent_label(is_self)
+            if event.get("is_curiosity"):  # v0.11: subtle marker — she acted on the curiosity nudge
+                name += " (?)"
             model = event.get("model")
             # Each span is its own markup (and escaped) so a model like "opus" can't be
             # mistaken for a tag: bold colored name + dark-green (model); body stays default white.

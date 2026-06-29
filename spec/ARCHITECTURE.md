@@ -198,10 +198,12 @@ multi-agent is additive, not a rewrite:
   `LiveBrain` (SDK + CLI + named sub-agents) and `MockBrain` implement it; model ids are
   config. `respond()` calls the model only through this seam (classes
   `chat | think | tools | tool`, the last delegating to a named `.claude/agents/<agent>`).
-- **Output seam:** `Output` with `user(text)` / `agent(text, is_self, lead, model, is_thought)` /
-  `usage(dict, latency?)` / `notice(text)` / `status(snapshot)`; the core emits through it,
-  `ConsoleOutput` is the default sink (`status` a no-op). `is_thought` (v0.10) marks a surfaced
-  inner thought (rendered dim / «думка:»); the TUI bridge `agent` event carries it. The method set
+- **Output seam:** `Output` with `user(text)` /
+  `agent(text, is_self, lead, model, is_thought, is_curiosity)` / `usage(dict, latency?)` /
+  `notice(text)` / `status(snapshot)`; the core emits through it, `ConsoleOutput` is the default
+  sink (`status` a no-op). `is_thought` (v0.10) marks a surfaced inner thought (rendered dim /
+  «думка:»); `is_curiosity` (v0.11) marks a curiosity-driven reply — she acted on the nudge and
+  asked, shown with a subtle ` (?)`. The TUI bridge `agent` event carries both. The method set
   foreshadows the event protocol below.
 - **Status event (v0.4):** `run()` emits a `status(snapshot)` **every tick** —
   `{status, model, branch, tick, needs, thresholds, actions, hottest, cooldowns, stats}` where

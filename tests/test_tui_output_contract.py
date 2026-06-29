@@ -40,6 +40,13 @@ def test_tuioutput_agent_carries_is_thought():
     assert ev["kind"] == "agent" and ev["is_thought"] is True and ev["text"] == "внутрішня думка"
 
 
+def test_tuioutput_agent_carries_is_curiosity():
+    b = Bridge()
+    TuiOutput(b).agent("а чому саме так?", is_curiosity=True)  # v0.11
+    ev = b.drain_output()[0]
+    assert ev["kind"] == "agent" and ev["is_curiosity"] is True and ev["text"] == "а чому саме так?"
+
+
 def test_tuioutput_user_is_echo_free_noop():
     b = Bridge()
     TuiOutput(b).user("моє повідомлення")

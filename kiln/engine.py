@@ -37,6 +37,9 @@ from .commands import handle_command
 from .config import (
     BIORHYTHM,
     CHAT_MODEL,
+    CURIOSITY,
+    CURIOSITY_SATIATION,
+    CURIOSITY_THRESHOLD,
     DEEP_MODEL,
     DRIFT,
     MOOD_AWARENESS,
@@ -294,6 +297,43 @@ class StdinChannel:
 # === Engine (loop) ==========================================================
 
 
+# v0.11 curiosity: she "asks" when the reply carries a question — a `?` or a leading Ukrainian
+# interrogative as its first word. Pure heuristic (a model judge may refine it later); it gates the
+# curiosity discharge (she acted on the nudge -> sated).
+_QUESTION_WORDS = frozenset(
+    {
+        "чому",
+        "що",
+        "як",
+        "коли",
+        "де",
+        "хто",
+        "навіщо",
+        "чи",
+        "чим",
+        "кого",
+        "кому",
+        "який",
+        "яка",
+        "яке",
+        "які",
+        "скільки",
+        "куди",
+        "звідки",
+    }
+)
+
+
+def is_curiosity_reply(text: str) -> bool:
+    """True when a reply actually ASKS — it contains a question mark, or its first word is a
+    Ukrainian interrogative. Pure; used to discharge curiosity (KILN-047)."""
+    if "?" in text:
+        return True
+    words = text.lstrip().lower().split(maxsplit=1)
+    first = words[0].strip(".,!?;:—-«»\"'") if words else ""
+    return first in _QUESTION_WORDS
+
+
 def respond(
     prompt: str,
     state: State,
@@ -472,7 +512,15 @@ def run(
     def _turn(prompt: str, force: str | None = None, agent: str | None = None) -> dict:
         # One model turn, timed; folds tokens + latency into the session stats.
         t0 = time.monotonic()
+        # v0.11: was the curiosity nudge active for THIS turn? (capture before the reply may sate it)
+        curiosity_active = CURIOSITY and state.needs.get("curiosity", 0.0) >= CURIOSITY_THRESHOLD
         out = respond(prompt, state, history, _system(), brain, force=force, agent=agent)
+        # Acting on the nudge — a real question while it was active — discharges curiosity (which
+        # then drifts back up): curious -> asks -> sated -> curious. A statement leaves it high.
+        out["curiosity"] = curiosity_active and is_curiosity_reply(out["reply"])
+        if out["curiosity"]:
+            cur = state.needs.get("curiosity", 0.0)
+            state.needs["curiosity"] = max(0.0, cur - CURIOSITY_SATIATION)
         stats.record(out["class"], out.get("usage"), time.monotonic() - t0)
         return out
 
@@ -562,14 +610,23 @@ def run(
                     reached_out = False  # the user replied (even while she rests)
                 elif isinstance(action, tuple):  # ("ask", text) -> forced deep
                     out = _turn(action[1], force="deep")
-                    output.agent(out["reply"], lead=True, model=out["route"].split("/")[-1])
+                    output.agent(
+                        out["reply"],
+                        lead=True,
+                        model=out["route"].split("/")[-1],
+                        is_curiosity=out["curiosity"],
+                    )
                     output.usage(out.get("usage"), stats.last_latency)
                     status_label, branch = "responding", out["class"]
                     reached_out = False  # the user engaged
                 else:  # None -> normal turn
                     out = _turn(user_msg)
                     output.user(user_msg)
-                    output.agent(out["reply"], model=out["route"].split("/")[-1])
+                    output.agent(
+                        out["reply"],
+                        model=out["route"].split("/")[-1],
+                        is_curiosity=out["curiosity"],
+                    )
                     output.usage(out.get("usage"), stats.last_latency)
                     status_label, branch = "responding", out["class"]
                     reached_out = False  # the user replied
@@ -585,7 +642,12 @@ def run(
                 prompt = _self_prompt(prompts, fired, reached_out)
                 faction, agent = reach_out_branch(state)
                 out = _turn(prompt, force=faction, agent=agent)
-                output.agent(out["reply"], is_self=True, model=out["route"].split("/")[-1])
+                output.agent(
+                    out["reply"],
+                    is_self=True,
+                    model=out["route"].split("/")[-1],
+                    is_curiosity=out["curiosity"],
+                )
                 output.usage(out.get("usage"), stats.last_latency)
                 status_label, branch = "responding", out["class"]
                 reached_out = True  # awaiting a reply; next reach-out acknowledges the silence
