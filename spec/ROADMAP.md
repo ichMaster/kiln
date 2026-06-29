@@ -415,14 +415,43 @@ deterministic; local — no external calls.
 
 ### 1.1 Tick-server: engine = WS/HTTP server, clients attach — ⬜
 **Goal:** the engine is an always-on server; TUI and (later) web are clients; the
-foundation of the agent **hub**.
-**Tasks:** async server (WS/SSE); the tick loop runs server-side with no client
-attached; offload blocking model calls to tasks so the loop never freezes; design
-around an **`agent_id` + per-agent permission scope** from the start (multi-agent
-additive); event protocol mirrors the FSM (1.2). Stack: FastAPI/Starlette +
-websockets (silt is a working server example).
-**DoD:** the server ticks with no client connected; a TUI client attaches over WS
-and holds a turn; a second client sees the same session; the API is `agent_id`-scoped.
+foundation of the agent **hub**. Full design + the client/server split:
+[`spec/features/server-architecture.en.md`](features/server-architecture.en.md)
+([UK](features/server-architecture.uk.md)).
+
+**Scope review (after v0):** v0 already drew every seam this needs — `Channel`
+(input), `Output` (reply/usage/notice/**status** every tick), the echo-free `Bridge`
+bus, and the `agent`-event flags (`is_self`/`model`/`is_thought`/`is_curiosity`). So
+v1.1 is **not** a mind rewrite: it is a **network implementation of the bus that
+already exists**, and `engine.run()` changes by **zero lines**. New code = the host +
+the transport. Keep `run()` on a **thread per agent** (the proven TUI shape); the
+async/FSM rewrite is 1.2.
+
+**Tasks (implementation plan):**
+1. **Server scaffold** — `server/` (FastAPI/Starlette), `GET /health`, a WS endpoint stub; deps as an
+   optional `[server]` extra.
+2. **Network bus** — `ServerChannel(inbox)` + `ServerOutput(hub)` (the v0 `Channel`/`Output`
+   protocols) + a thread-safe `BroadcastHub`; `user()` stays a no-op (echo-free). Contract-tested.
+3. **AgentRuntime + AgentHost** — one `AgentRuntime(agent_id)` runs `engine.run(channel=ServerChannel,
+   output=ServerOutput, brain=LiveBrain)` on a thread; `AgentHost` is the `agent_id → runtime`
+   registry; **per-agent** paths `.kiln/{agent_id}/…` + a per-agent `state/`.
+4. **WS event protocol + lifecycle** — attach → one-shot `snapshot` → stream hub events; pump
+   `user.message`/`command` → inbox; disconnect leaves the agent ticking. Typed (de)serialisers; pin
+   the protocol as a contract test.
+5. **Non-blocking under load** — a blocking `deep` on one agent's thread must not stall the async layer
+   (`/health` + a second agent stay responsive).
+6. **HTTP helpers** — `GET /agents`, `GET /agent/{id}/history?limit=N` (scrollback on attach).
+7. **Remote TUI client** — a `--remote ws://…` mode reusing `tui/render.py`; the in-process `Bridge`
+   stays for local/dev.
+8. **Docs + contracts** — promote ARCHITECTURE's planned server/event-protocol bullets to current.
+
+Stack: FastAPI/Starlette + websockets (silt is a working server example). **Out of scope:** the
+event-queue FSM (1.2), tools + permission enforcement (1.3), RAG (1.4), web client + multi-agent UI
+(v2). Everything `agent_id`-scoped (incl. a not-yet-enforced permission-scope field) so v2 is additive.
+
+**DoD:** the server ticks with **no client connected**; a TUI client attaches over WS and holds a
+turn; a **second client sees the same session**; the API is `agent_id`-scoped; model calls don't
+freeze the server; all tests on `MockBrain` (zero paid calls).
 
 ### 1.2 State machine (FSM, events, queue) — ⬜
 **Goal:** an event-driven core behind the server.
