@@ -23,6 +23,7 @@ MEMORY_FILE = STATE_DIR / "memory.md"  # long-term memory: summaries of past ses
 CANON_FILE = STATE_DIR / "canon.md"  # canon: persona/voice (system prompt)
 PROMPTS_FILE = STATE_DIR / "prompts.md"  # self-trigger prompts per need
 MOOD_FILE = STATE_DIR / "mood.json"  # v0.9: need/biorhythm bands, labels, behavioural cues
+NEEDS_FILE = STATE_DIR / "needs.yaml"  # the need MODEL: drift/satiation/triggers + scalars (config)
 HISTORY_DIR = PROJECT_ROOT / "history"  # raw session transcripts (JSON, for RAG)
 ENV_FILE = PROJECT_ROOT / ".env"  # local configuration (models + calibration)
 
@@ -52,95 +53,101 @@ load_dotenv()  # read .env BEFORE the settings are defined below
 # --- Ticks ------------------------------------------------------------------
 TICK_SECONDS = float(os.environ.get("TICK_SECONDS", "0.5"))
 
-# Need thresholds + the branch/mode each maps to (also the TUI panel threshold + colour source).
-#   action: "chat" -> Haiku; "deep" -> Opus; "idle" -> rest gate; "tool" -> named sub-agent;
-#           "ask" -> v0.11 curiosity (a monitor-discharged disposition, NOT a self-trigger).
-# Only REACH_OUT_NEED (connection) actually SELF-TRIGGERS a proactive message (loneliness ->
-# she writes first). WHICH brain answers it is shaped by her OTHER needs at that moment
-# (engine.reach_out_branch): intensity over its threshold -> deep (opus); else novelty over its
-# -> session-wiki; else connection's baseline (chat). So opus/session-wiki never self-INITIATE;
-# intensity also routes USER turns to opus via turn_weight. rest -> the sleep gate, not a message.
-# reflection/curiosity have an entry (threshold + panel display) but do NOT self-trigger: reflection
-# fires an inner thought (v0.10), curiosity is discharged by the question monitor (v0.11).
-NEED_TRIGGERS = {
-    "connection": {"threshold": 0.80, "action": "chat"},
-    "rest": {"threshold": 0.90, "action": "idle"},
-    "novelty": {"threshold": 0.85, "action": "tool", "agent": "session-wiki"},
-    "intensity": {"threshold": 0.75, "action": "deep"},
-    "reflection": {"threshold": 0.60, "action": "thought"},  # v0.10 inner monologue (no self-msg)
-    "curiosity": {"threshold": 0.65, "action": "ask"},  # v0.11: monitor-discharged (no self-msg)
+# --- Needs (the motivational substrate) -------------------------------------
+# The need MODEL — per-need drift, satiation (closing) events, trigger thresholds + the trigger
+# wiring + cooldowns — lives in state/needs.yaml; edit THAT to tune Agnika. It's loaded here;
+# DEFAULT_NEEDS is the fallback for a fresh clone / a broken edit / no PyYAML. (The runtime need
+# LEVELS are separate — state/needs.json, save_state/load_state.) `need_triggers` action: chat ->
+# Haiku, deep -> Opus, idle -> rest gate, tool -> sub-agent, thought -> v0.10 monologue, ask ->
+# v0.11 curiosity. Only reach_out_need (connection) self-triggers a message; reflection/curiosity
+# have an entry (threshold + panel display) but don't self-trigger.
+DEFAULT_NEEDS = {
+    "need_triggers": {
+        "connection": {"threshold": 0.80, "action": "chat"},
+        "rest": {"threshold": 0.90, "action": "idle"},
+        "novelty": {"threshold": 0.85, "action": "tool", "agent": "session-wiki"},
+        "intensity": {"threshold": 0.75, "action": "deep"},
+        "reflection": {"threshold": 0.60, "action": "thought"},
+        "curiosity": {"threshold": 0.65, "action": "ask"},
+    },
+    "drift": {
+        "connection": 0.0010,
+        "rest": -0.005,
+        "novelty": 0.0001,
+        "intensity": 0.0005,
+        "reflection": 0.001,
+        "curiosity": 0.002,
+    },
+    "satiation": {
+        "chat": {"connection": -0.3, "rest": 0.2, "novelty": 0, "intensity": -0.001},
+        "deep": {"connection": -0.6, "rest": 0.4, "novelty": -0.0015, "intensity": -0.80},
+        "session-wiki": {"connection": -0.6, "rest": 0.4, "novelty": -0.90, "intensity": -0.15},
+        "idle": {"connection": 0, "rest": -0.01, "novelty": 0.0001, "intensity": 0.0005},
+        "thought": {"reflection": -0.7},
+        "asked": {"curiosity": -0.4},
+    },
+    "reach_out_need": "connection",
+    "reach_out_models": ["intensity", "novelty"],
+    "reflect_need": "reflection",
+    "self_cooldown": 5,
+    "thought_cooldown": 5,
+    "rest_wake": 0.85,
 }
-# The proactive self-message fires only on this need; intensity/novelty pick the brain that
-# answers it (see the comment above and engine.reach_out_branch). REACH_OUT_MODELS = priority.
-REACH_OUT_NEED = "connection"
-REACH_OUT_MODELS = ("intensity", "novelty")  # first over its threshold shapes the reach-out
-REFLECT_NEED = (
-    "reflection"  # v0.10: the need whose crossing fires an internal thought (not a message)
-)
-SELF_COOLDOWN = int(
-    os.environ.get("SELF_COOLDOWN", "5")
-)  # silent ticks after a self-trigger (per need)
-THOUGHT_COOLDOWN = int(
-    os.environ.get("THOUGHT_COOLDOWN", "10")
-)  # v0.10: silent ticks after an internal thought
 
-# Rest gate: when fatigue (rest) reaches NEED_TRIGGERS["rest"]["threshold"] (0.90) Agnika stops
-# answering (user turns AND self-triggers) and recovers on idle until rest drops to REST_WAKE,
-# then she's available again. REST_WAKE sits just BELOW the sleep threshold — a thin band keeps
-# her from oscillating exactly at the boundary, but she wakes as soon as she's meaningfully below
-# it (not after a long nap; lower it for longer naps). She says REST_MESSAGE ONCE on entering
-# rest (not to every message); slash commands keep working.
-REST_WAKE = float(os.environ.get("REST_WAKE", "0.85"))
-REST_MESSAGE = "мені треба відпочити"  # persona line (Ukrainian, intentional)
 
-# Appended to the self-trigger prompt when she ALREADY reached out and got no reply, so she
-# doesn't robotically repeat herself (persona-layer Ukrainian, intentional).
+def load_needs(path: Path = NEEDS_FILE) -> dict:
+    """The needs config from state/needs.yaml; DEFAULT_NEEDS if the file is missing/invalid or
+    PyYAML isn't installed (a fresh clone / broken edit still starts)."""
+    try:
+        import yaml
+    except ImportError:
+        return DEFAULT_NEEDS
+    try:
+        data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return DEFAULT_NEEDS
+    return data if isinstance(data, dict) else DEFAULT_NEEDS
+
+
+def _build_needs(cfg: dict) -> dict:
+    """Flatten + validate the needs config into the runtime constants; raises on a bad shape so the
+    caller can fall back to DEFAULT_NEEDS."""
+    return {
+        "NEED_TRIGGERS": cfg["need_triggers"],
+        "DRIFT": cfg["drift"],
+        "SATIATION": cfg["satiation"],
+        "REACH_OUT_NEED": cfg["reach_out_need"],
+        "REACH_OUT_MODELS": tuple(cfg["reach_out_models"]),
+        "REFLECT_NEED": cfg["reflect_need"],
+        "SELF_COOLDOWN": int(cfg["self_cooldown"]),
+        "THOUGHT_COOLDOWN": int(cfg["thought_cooldown"]),
+        "REST_WAKE": float(cfg["rest_wake"]),
+    }
+
+
+try:
+    _NEEDS = _build_needs(load_needs())
+except (KeyError, TypeError, ValueError):
+    _NEEDS = _build_needs(DEFAULT_NEEDS)  # a structurally malformed file falls back to the defaults
+
+NEED_TRIGGERS = _NEEDS["NEED_TRIGGERS"]  # threshold + branch/mode per need (also the TUI panel)
+DRIFT = _NEEDS["DRIFT"]  # per-tick growth per need
+SATIATION = _NEEDS["SATIATION"]  # per-event need deltas (which branch closed what)
+REACH_OUT_NEED = _NEEDS["REACH_OUT_NEED"]  # the ONLY need that self-triggers a proactive message
+REACH_OUT_MODELS = _NEEDS["REACH_OUT_MODELS"]  # first over its threshold shapes the reach-out brain
+REFLECT_NEED = _NEEDS["REFLECT_NEED"]  # v0.10: the need whose crossing fires an internal thought
+SELF_COOLDOWN = _NEEDS["SELF_COOLDOWN"]  # silent ticks after a self-trigger (per need)
+THOUGHT_COOLDOWN = _NEEDS["THOUGHT_COOLDOWN"]  # v0.10: silent ticks after an internal thought
+REST_WAKE = _NEEDS["REST_WAKE"]  # rest falls below this -> she answers again (rest-gate hysteresis)
+
+# Persona text tied to the rest gate / reach-out (stays in code — Ukrainian, intentional). On
+# entering rest she says REST_MESSAGE once; SELF_SILENCE_NOTE is appended to a reach-out prompt
+# when she already reached out and got no reply, so she doesn't robotically repeat herself.
+REST_MESSAGE = "мені треба відпочити"
 SELF_SILENCE_NOTE = (
     "(Ти вже озивалася першою, а відповіді ще нема. Не повторюйся: визнай тишу, "
     "зміни тон або просто побудь поруч одним коротким рядком.)"
 )
-
-# Per-tick drift for EACH need separately (added every tick). Stated in TICKS (the
-# needs-panel counter) so it's independent of TICK_SECONDS. connection drives the cheap
-# chat; novelty drives the expensive deep (kept slow so Opus stays rare); intensity is
-# discharged by every deep turn, so it hovers below its threshold rather than leading;
-# rest barely time-drifts (fatigue is activity-driven). Pure-idle cadence: chat and deep
-# each fire ~every 400 ticks (interactions make the exact gap differ from naive math).
-DRIFT = {
-    "connection": 0.0010,  # chat driver — 0->0.80 in ~400 ticks (6 mins)
-    "rest": -0.005,  # minimal time drift — fatigue mostly comes from activity (deep/chat)
-    "novelty": 0.0001,  # deep driver (leads) — bar swings the full 0..0.85
-    "intensity": 0.0005,  # discharged by every deep turn — hovers ~0.7, rarely the lead
-    "reflection": 0.001,  # v0.10: slow build of «незібраність» -> fires an internal thought
-    "curiosity": 0.002,  # v0.11: tiny step — short warm-up, then ebbs/flows as asking discharges it
-}
-
-# Closing needs by events. Negative = lowering the level. The reset is LARGE relative
-# to drift, so one event clearly satisfies the need (a calm, minute-scale cadence)
-# instead of leaving it hovering just under threshold and re-firing every few seconds.
-#
-# Key idea: WHICH branch answered DETERMINES which needs were closed.
-#   - chat (Haiku) gives contact: closes connection hard, barely touches the rest;
-#   - reasoning/tools (Claude CLI) is the "filling meal": closes novelty + intensity
-#     hard (and TIRES — rest rises, not falls);
-#   - a "tool" reach-out is keyed by AGENT NAME (else falls back to deep), so each
-#     sub-agent closes what it addresses — session-wiki brings a fact -> drops novelty.
-SATIATION = {
-    # answered via chat (Haiku) — contact
-    "chat": {"connection": -0.3, "rest": +0.2, "novelty": 0, "intensity": -0.001},
-    # answered via reasoning/tools (Claude/Opus) — the "filling meal" (and tiring)
-    "deep": {"connection": -0.6, "rest": +0.4, "novelty": -0.0015, "intensity": -0.80},
-    # the session-wiki tool reach-out (keyed by agent name): a fresh external fact, so it
-    # drops NOVELTY hard — light contact, barely tires (far less than an opus deep turn)
-    "session-wiki": {"connection": -0.6, "rest": +0.4, "novelty": -0.90, "intensity": -0.15},
-    # silence (a tick with no reply): rest recovers; from 0.9 to 0 in 180 ticks (3 mins)
-    "idle": {"connection": 0, "rest": -0.01, "novelty": 0.0001, "intensity": +0.0005},
-    # a thought (Haiku inner monologue) gathers the scattered thoughts -> drops reflection (v0.10)
-    "thought": {"reflection": -0.7},
-    # v0.11: the curiosity monitor — when a reply actually ASKS (engine.is_curiosity_reply), this
-    # discharges curiosity (asking sates it), so it ebbs and flows like any other need.
-    "asked": {"curiosity": -0.4},
-}
 
 # --- Classification / routing -----------------------------------------------
 # Turn "weight" threshold: above -> the turn counts as reasoning, goes to Claude CLI.

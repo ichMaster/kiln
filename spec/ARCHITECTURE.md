@@ -230,9 +230,13 @@ multi-agent is additive, not a rewrite:
 
 ## Data model
 
-- `state/needs.json` — `{connection, rest, novelty, intensity, reflection, curiosity}` in `0..1`
-  (seed; rewritten each run). `load_state` heals any configured need (a `DRIFT` key) missing from
-  the file in at `0.0`, so a new need appears without re-seeding.
+- `state/needs.json` — the need **levels** `{connection, rest, novelty, intensity, reflection, curiosity}`
+  in `0..1` (seed; rewritten each run). `load_state` heals any configured need (a `DRIFT` key) missing
+  from the file in at `0.0`, so a new need appears without re-seeding.
+- `state/needs.yaml` — the need **model** (config): `need_triggers` / `drift` / `satiation` + the
+  trigger-wiring scalars (`reach_out_need`, `reach_out_models`, `reflect_need`, `self_cooldown`,
+  `thought_cooldown`, `rest_wake`). `config.load_needs` → `DEFAULT_NEEDS` fallback; PyYAML. Edit this
+  to tune the substrate (the `.json` is auto-written levels; the `.yaml` is hand-edited calibration).
 - `state/canon.md` — authored persona (system prompt).
 - `state/prompts.md` — self-trigger prompts per need.
 - `state/memory.md` — datestamped cross-session summaries (generated; gitignored).

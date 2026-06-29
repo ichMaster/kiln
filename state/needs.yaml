@@ -1,0 +1,54 @@
+# kiln — needs configuration (the motivational substrate).
+#
+# This is the CALIBRATION of the need model — edit it to tune Agnika. Loaded once at import by
+# kiln/config.py (DEFAULT_NEEDS fallback if the file is missing or broken). NOTE: the runtime need
+# LEVELS live in the separate state/needs.json (seed, rewritten each run) — this file is the model.
+#
+# Each need is 0..1. Two forces: a slow drift UP each tick (`drift`) and CLOSING by events
+# (`satiation`). Which branch answered determines which needs closed. `need_triggers` gives each
+# need a threshold + the branch/mode it maps to (also the TUI panel threshold + colour).
+
+# Threshold each need fires/acts at + the branch/mode (action) it maps to.
+#   action: chat -> Haiku · deep -> Opus · idle -> rest gate · tool -> named sub-agent ·
+#           thought -> v0.10 inner monologue · ask -> v0.11 curiosity (monitor-discharged).
+# Only reach_out_need (connection) self-triggers a proactive message. reflection/curiosity have an
+# entry (threshold + panel) but do NOT self-trigger.
+need_triggers:
+  connection: { threshold: 0.80, action: chat }
+  rest:       { threshold: 0.90, action: idle }
+  novelty:    { threshold: 0.85, action: tool, agent: session-wiki }
+  intensity:  { threshold: 0.75, action: deep }
+  reflection: { threshold: 0.60, action: thought }   # v0.10 inner monologue (no self-msg)
+  curiosity:  { threshold: 0.65, action: ask }        # v0.11 monitor-discharged (no self-msg)
+
+# Per-tick drift for EACH need (added every tick; stated in TICKS, independent of TICK_SECONDS).
+# connection drives cheap chat; novelty drives expensive deep (slow, so Opus stays rare); intensity
+# is discharged by every deep turn; rest barely time-drifts (fatigue is activity-driven).
+drift:
+  connection:  0.0010   # chat driver — 0->0.80 in ~400 ticks (6 mins)
+  rest:       -0.005    # minimal time drift — fatigue mostly from activity (deep/chat)
+  novelty:     0.0001   # deep driver (leads) — bar swings the full 0..0.85
+  intensity:   0.0005   # discharged by every deep turn — hovers ~0.7, rarely the lead
+  reflection:  0.001    # v0.10: slow build of «незібраність» -> fires an internal thought
+  curiosity:   0.002    # v0.11: tiny step — short warm-up, then ebbs/flows as asking discharges it
+
+# Closing needs by events (negative = lowering). The reset is LARGE vs drift, so one event clearly
+# satisfies the need. WHICH branch answered DETERMINES which needs closed:
+#   chat (Haiku) = contact (closes connection); deep (Opus) = the "filling meal" (novelty+intensity,
+#   and TIRES — rest rises); session-wiki = a fresh fact (drops novelty); idle = silence (rest
+#   recovers); thought = inner monologue (drops reflection); asked = the curiosity monitor (a "?").
+satiation:
+  chat:         { connection: -0.3, rest:  0.2,  novelty:  0,       intensity: -0.001 }
+  deep:         { connection: -0.6, rest:  0.4,  novelty: -0.0015,  intensity: -0.80 }
+  session-wiki: { connection: -0.6, rest:  0.4,  novelty: -0.90,    intensity: -0.15 }
+  idle:         { connection:  0,   rest: -0.01, novelty:  0.0001,  intensity:  0.0005 }
+  thought:      { reflection: -0.7 }                  # v0.10 inner monologue gathers the thoughts
+  asked:        { curiosity: -0.4 }                   # v0.11 a question sates curiosity
+
+# Trigger wiring + cooldowns.
+reach_out_need: connection            # the ONLY need that self-triggers a proactive message
+reach_out_models: [intensity, novelty]  # which (over its threshold) shapes the reach-out brain
+reflect_need: reflection              # v0.10: the need whose crossing fires an internal thought
+self_cooldown: 5                      # silent ticks after a self-trigger (per need)
+thought_cooldown: 5                   # v0.10: silent ticks after an internal thought
+rest_wake: 0.85                       # rest falls below this -> she answers again (rest-gate hysteresis)

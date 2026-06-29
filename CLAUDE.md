@@ -4,8 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`kiln` is a small multi-module Python prototype for a needs-driven chat engine (stdlib-only for
-dry-run; `anthropic` SDK only for the live chat branch). It runs a loop of cheap local "ticks"; an
+`kiln` is a small multi-module Python prototype for a needs-driven chat engine (deps: **PyYAML** for
+the needs-config loader; `anthropic` SDK only for the live chat branch — everything else, incl. the
+dry-run and the `claude -p` deep branch, is stdlib). It runs a loop of cheap local "ticks"; an
 LLM ("the brain") is invoked only on a condition (user input, or a need crossing its threshold), and
 each invocation is **routed** to one of two branches.
 
@@ -48,22 +49,28 @@ pytest                              # the test suite (runs against a mock brain 
 ruff check . && ruff format --check .   # lint + format gate
 ```
 
-The `anthropic` dep (in `pyproject.toml`) is needed only by the **live chat branch**. Dry-run
-and the live *deep* branch (which shells out to the `claude` CLI) are stdlib-only. Live mode also
-needs the **Claude Code CLI** installed and logged in (the deep branch calls `claude -p`). The
-test suite lives in `tests/` (pytest); the dry-run demo in `kiln/__main__.py` stays a smoke test.
+Deps (in `pyproject.toml`): **PyYAML** (always — `config.py` loads `state/needs.yaml` at import; a
+broken/missing file or no PyYAML falls back to `DEFAULT_NEEDS`) and **`anthropic`** (only the live
+chat branch — imported lazily so dry-run stays light). The live *deep* branch shells out to the
+`claude` CLI (stdlib + subprocess). Live mode also needs the **Claude Code CLI** installed and
+logged in (the deep branch calls `claude -p`). The test suite lives in `tests/` (pytest); the
+dry-run demo in `kiln/__main__.py` stays a smoke test.
 
 ### State files live in `state/`
 
 All mutable state is under `STATE_DIR` (defined in `config.py`, = repo root `/state`): `state/needs.json` (seed need
-levels, rewritten each run by `save_state`), `state/prompts.md` (self-trigger prompts),
-`state/canon.md` (the **canon** — the persona/voice that becomes the system prompt of both
+**levels**, rewritten each run by `save_state`), `state/needs.yaml` (the need **MODEL** — committed
+config: `drift`/`satiation`/`need_triggers` + the trigger-wiring scalars `reach_out_need`/`reach_out_models`/`reflect_need`/`self_cooldown`/`thought_cooldown`/`rest_wake`;
+`config.load_needs` → `DEFAULT_NEEDS` fallback, needs **PyYAML**), `state/prompts.md` (self-trigger
+prompts), `state/canon.md` (the **canon** — the persona/voice that becomes the system prompt of both
 branches), `state/mood.json` (v0.9 — the need/biorhythm **bands** (thresholds + Ukrainian names) and
 the behavioural **cues** for the `## Настрій` section; `mood.load_mood` → `DEFAULT_MOOD` fallback),
 and `state/memory.md` (cross-session summaries, generated on exit — gitignored).
 `run()` calls `STATE_DIR.mkdir(exist_ok=True)` before reading, so a fresh clone never crashes;
 each loader falls back to a default if its file is missing (`load_canon` → `DEFAULT_CANON`,
-`load_mood` → `DEFAULT_MOOD`, empty needs/prompts otherwise).
+`load_needs` → `DEFAULT_NEEDS`, `load_mood` → `DEFAULT_MOOD`, empty needs/prompts otherwise).
+**Note** the two `needs.*` files are different: `needs.json` = the live levels (state, auto-written);
+`needs.yaml` = the model you edit to tune Agnika (calibration, committed like `mood.json`).
 
 ### Config via `.env`
 
@@ -74,8 +81,9 @@ without touching code: `CHAT_MODEL`, `DEEP_MODEL`, `TICK_SECONDS`, `THINK_THRESH
 `FACTS_ENABLED`, `MEMORY_SUMMARIES`, `SUMMARY_SENTENCES`, `USAGE_REPORT`, `USER_LOCATION`,
 `TIMEZONE`, `RECENT_MESSAGES`, `WORLD_AWARENESS`, `USER_NAME`, `AGENT_NAME` (plus `KILN_LIVE`,
 `ANTHROPIC_API_KEY` for live mode). It uses `os.environ.setdefault`,
-so a real environment variable always wins over `.env`. `.env` is gitignored; the structured dict
-knobs (`DRIFT`/`SATIATION`/`NEED_TRIGGERS`) stay in code.
+so a real environment variable always wins over `.env`. `.env` is gitignored. The **need model**
+(`DRIFT`/`SATIATION`/`NEED_TRIGGERS` + `SELF_COOLDOWN`/`THOUGHT_COOLDOWN`/`REST_WAKE`/`REACH_OUT_NEED`/`REACH_OUT_MODELS`/`REFLECT_NEED`)
+is **not** in `.env` — it lives in `state/needs.yaml` (`config.load_needs`).
 
 ## Architecture (the big-picture flow)
 
@@ -136,8 +144,10 @@ intended for downstream retrieval, distinct from the `memory.md` summaries.
 
 ## Calibration
 
-All tuning lives in module-level constants in `config.py`: `TICK_SECONDS`, `DRIFT`,
-`SATIATION`, `NEED_TRIGGERS`, `SELF_COOLDOWN`, `THINK_THRESHOLD`, `CHAT_MODEL`/`DEEP_MODEL`,
-`DEEP_TOOLS`/`DEEP_SKILLS`, `THINK_HINTS`/`TOOL_HINTS`, and the weights in `turn_weight`. The
-scalar ones (models, `TICK_SECONDS`, `THINK_THRESHOLD`, `SELF_COOLDOWN`) are overridable from
-`.env` (see above); the persona/canon lives in `state/canon.md`.
+The **need model** — `DRIFT`, `SATIATION`, `NEED_TRIGGERS` + the trigger-wiring scalars
+(`SELF_COOLDOWN`, `THOUGHT_COOLDOWN`, `REST_WAKE`, `REACH_OUT_NEED`, `REACH_OUT_MODELS`,
+`REFLECT_NEED`) — lives in **`state/needs.yaml`** (`config.load_needs` → `DEFAULT_NEEDS` fallback);
+edit that to tune Agnika. The rest stays in module-level constants in `config.py`: `TICK_SECONDS`,
+`THINK_THRESHOLD`, `CHAT_MODEL`/`DEEP_MODEL`, `DEEP_TOOLS`/`DEEP_SKILLS`, `THINK_HINTS`/`TOOL_HINTS`,
+and the weights in `turn_weight`. The scalar ones (models, `TICK_SECONDS`, `THINK_THRESHOLD`) are
+overridable from `.env` (see above); the persona/canon lives in `state/canon.md`.
