@@ -7,7 +7,7 @@ TuiOutput places render events in outbox, and the app drains them on a timer and
 So the tick loop lives in parallel with the UI (self-triggers work too), and model calls
 do not freeze the interface.
 
-Echo-free: the user sees the typed text immediately (the UI writes `you: …` itself), while
+Echo-free: the user sees the typed text immediately (the UI writes `<USER_NAME>: …` itself), while
 the engine does NOT echo input — it writes only its own replies to the log.
 """
 
@@ -34,10 +34,10 @@ from kiln.engine import run
 from .bridge import Bridge
 from .channel import TuiChannel
 from .output import TuiOutput
-from .render import agent_label, needs_panel_lines, status_line1, status_line2
+from .render import agent_label, needs_panel_lines, status_line1, status_line2, user_label
 
 # Line colors (Rich markup). Names are bold; reply/message bodies stay default (white).
-_USER_STYLE = "bold cyan"  # "you" name
+_USER_STYLE = "bold magenta"  # the user's own name (USER_NAME) — distinct from the green «Agnika»
 _BOT_STYLE = "bold green"  # "Agnika" name
 _SELF_STYLE = "bold green"  # "Agnika (self)" name — same weight, marked by the (self) suffix
 _MODEL_STYLE = "dark_green"  # the (model) tag next to the name
@@ -250,16 +250,17 @@ class KilnApp(App):
             log.write(f"[{_NOTICE_STYLE}]{escape(event['text'])}[/]")
             self._transcript.append(event["text"])
         elif kind == "user":  # echo-free: not expected (TuiOutput.user is a no-op)
-            log.write(f"[{_USER_STYLE}]you:[/] {escape(event['text'])}")
-            self._transcript.append(f"you: {event['text']}")
+            log.write(f"[{_USER_STYLE}]{escape(user_label())}:[/] {escape(event['text'])}")
+            self._transcript.append(f"{user_label()}: {event['text']}")
 
     def on_chat_input_submitted(self, event: ChatInput.Submitted) -> None:
         line = event.value.strip()
         prompt = self.query_one("#prompt", ChatInput)
         if line:
             # UI shows the typed text itself (echo-free: the engine does not echo it).
-            self.query_one(RichLog).write(f"[{_USER_STYLE}]you:[/] {escape(line)}")
-            self._transcript.append(f"you: {line}")
+            name = escape(user_label())
+            self.query_one(RichLog).write(f"[{_USER_STYLE}]{name}:[/] {escape(line)}")
+            self._transcript.append(f"{user_label()}: {line}")
             self.bridge.submit(line)
         prompt.text = ""
 

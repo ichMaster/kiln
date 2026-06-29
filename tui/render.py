@@ -8,6 +8,7 @@ these strings. Input is the per-tick status snapshot (engine._status_snapshot):
 
 from __future__ import annotations
 
+from kiln.config import USER_NAME
 from kiln.mood import NEED_LABELS
 
 
@@ -30,6 +31,12 @@ def fmt_tok(n: int) -> str:
 def agent_label(is_self: bool) -> str:
     """Reply name; self-triggered replies are marked `Agnika (self)`."""
     return "Agnika (self)" if is_self else "Agnika"
+
+
+def user_label() -> str:
+    """Display name for the user's own lines in the TUI — `USER_NAME` (e.g. «Віталік»), set via
+    `.env`/config; falls back to «Користувач»."""
+    return USER_NAME
 
 
 def status_line1(snap: dict) -> str:
