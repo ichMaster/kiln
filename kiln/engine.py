@@ -460,6 +460,7 @@ def run(
     brain: Brain | None = None,
     output: Output | None = None,
     paths: AgentPaths | None = None,
+    stop_event: threading.Event | None = None,
 ) -> None:
     """
     The tick loop. `channel.poll()` yields the next user message or None.
@@ -467,6 +468,9 @@ def run(
     `brain` default: LiveBrain when live, MockBrain in dry-run (zero paid
     calls). `output` default: ConsoleOutput (prints to the terminal) — the core
     writes replies only through this port, so the interface (TUI/bus) is swappable.
+    `paths` (v1.1): the per-agent persistence root (default = the flat globals).
+    `stop_event` (v1.1): cooperative cancel — when set, the loop exits after the
+    current tick and the `finally` still persists/summarizes (clean host shutdown).
     """
     if channel is None:
         channel = ScriptedChannel()
@@ -575,7 +579,7 @@ def run(
     rest_threshold = NEED_TRIGGERS.get("rest", {}).get("threshold", 1.1)  # >1 -> never sleeps
     last_tick = time.monotonic()  # for catch-up drift over real time
     try:
-        while ticks is None or t < ticks:
+        while (ticks is None or t < ticks) and not (stop_event and stop_event.is_set()):
             # A model call blocks the loop, so one iteration can last many
             # seconds. We count how many ticks ACTUALLY elapsed and apply that
             # much drift (catch-up). In dry-run time "doesn't flow" — exactly 1 tick.
