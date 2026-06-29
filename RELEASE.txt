@@ -1,6 +1,16 @@
 kiln — Release Notes
 ====================
 
+Version 0.11.0 (2026-06-29)
+---------------------------
+- Curiosity (v0.11): a «цікавість» need that drifts up slowly and behaves like any other mood need — ask, don't mirror
+- Shows in ## Настрій with a behavioural cue per band: calm at low levels, "ask real, specific questions and dig deeper rather than mirror" at high levels (the nudge IS the high-band cue) — graded, no separate prompt block
+- Visible everywhere a need is: the TUI needs panel (threshold/colour/→ ask), /needs, /status, and ## Настрій via /mood
+- Does NOT self-trigger; its trigger arms a MONITOR (update_curiosity_monitor): crossing the threshold turns the monitor ON, falling below turns it OFF
+- While the monitor is on, a question reply (a "?" or a leading interrogative) discharges curiosity via SATIATION["asked"] — curious → asks → sated → curious; the reply is marked « Agnika (?) »
+- NEED_TRIGGERS curiosity entry (threshold 0.65 = «висока» band onset) gives it a panel threshold + colour like the other needs
+- Output seam gains is_curiosity; the v0.10 load_state heal covers the new need (no re-seed)
+
 Version 0.10.0 (2026-06-29)
 ---------------------------
 - Inner monologue (v0.10): a new «незібраність» (reflection) need drifts and, on crossing, makes Agnika think via Haiku — a private thought, hidden by default, that discharges the need (KILN-039…044)
