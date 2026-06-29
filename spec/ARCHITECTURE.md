@@ -50,8 +50,11 @@ self-trigger.
   `outbox` (engine→UI render events, written via a `TuiOutput`). Input never leaks to
   the outbox, so the UI shows the typed line once and the engine writes only its own
   replies. The shared bus for later clients (web, server).
-- **Server / agent host** (planned, v1.1) — wraps the core as a WS/HTTP server;
-  hosts many agents keyed by `agent_id`, each with a permission scope.
+- **Server / agent host** (v1.1, `server/`) — wraps the core as a FastAPI WS/HTTP
+  server (`server/app.py`); `AgentHost` hosts agents keyed by `agent_id`, each an
+  `AgentRuntime` running `engine.run()` on its own thread over a `BroadcastHub`
+  (`server/host.py`, `server/runtime.py`). v1.1 hosts one (agnika); a permission
+  scope per agent is the multi-agent step (v1.2 Pashu).
 - **Clients** (`tui/`: Textual app, planned web) — thin front-ends over the bridge/
   server. None hold agent logic; the engine never imports a client. The Textual app
   runs two ways over the **same** `_render`: a local in-process `Bridge` (engine on a
@@ -302,12 +305,16 @@ kiln/               # the package (installed via `pip install -e .`)
   engine.py         # State, ticks, two brains, channels, respond, run (no __main__)
 tui/                # Textual client (v0.3): bridge bus, TuiOutput/TuiChannel, app — no agent logic
   bridge.py         # echo-free inbox/outbox Bridge between the loop and the UI thread
+  ws_bridge.py      # remote bridge (v1.1): same surface, over a WS server (--remote)
+server/             # tick-server (v1.1): FastAPI app, AgentHost/AgentRuntime, network bus, WS protocol
+  app.py            # FastAPI app: /health, /agents, /agent/{id}[/history], WS /agent/{id}
+  host.py runtime.py bus.py protocol.py ws.py   # registry, per-agent thread, BroadcastHub, wire, lifecycle
 tests/              # pytest: unit + contract (seams) + integration on a mock brain
 state/              # needs.json, canon.md, prompts.md, memory.md (generated)
 history/            # session-*.json transcripts (generated; RAG corpus)
 docs/               # how-it-works, architecture (internals)
 spec/               # MISSION.md, ARCHITECTURE.md, ROADMAP.md, vision.md, roadmap/implementation/
-# planned: server/ (agent host), web/, tools/, rag/
+# planned: web/, tools/, rag/
 ```
 
 The console entry lives in `kiln/__main__.py` (the `kiln` command / `python -m

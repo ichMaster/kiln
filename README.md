@@ -42,6 +42,18 @@ Live mode has two requirements (per branch):
 
 `KILN_LIVE=1` can also be set in `.env`, so you don't have to type it every time.
 
+**Tick-server (v1.1)** — run the agent as an always-on WS/HTTP server; clients attach
+over WebSocket while the agent keeps living (and ticking) even with nobody connected:
+
+    pip install -e .[server]                       # fastapi / uvicorn / websockets
+    KILN_SERVE=1 uvicorn server.app:app            # boots the home agent (agnika)
+
+Then attach a TUI client to it (the agent stays alive when you quit the client):
+
+    kiln --tui --remote ws://localhost:8000/agent/agnika
+
+Reads: `GET /health`, `GET /agents`, `GET /agent/{id}/history?limit=N`.
+
 ## Configuration
 
 A local `.env` file (not committed) sets the models and behavior — without
