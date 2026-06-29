@@ -30,7 +30,7 @@ drift:
   novelty:     0.0001   # deep driver (leads) — bar swings the full 0..0.85
   intensity:   0.0005   # discharged by every deep turn — hovers ~0.7, rarely the lead
   reflection:  0.001    # v0.10: slow build of «незібраність» -> fires an internal thought
-  curiosity:   0.002    # v0.11: tiny step — short warm-up, then ebbs/flows as asking discharges it
+  curiosity:   0.0008    # v0.11: tiny step — short warm-up, then ebbs/flows as asking discharges it
 
 # Closing needs by events (negative = lowering). The reset is LARGE vs drift, so one event clearly
 # satisfies the need. WHICH branch answered DETERMINES which needs closed:
