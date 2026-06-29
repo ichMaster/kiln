@@ -1,6 +1,14 @@
 kiln — Release Notes
 ====================
 
+Version 0.11.1 (2026-06-29)
+---------------------------
+- TUI: Agnika's replies render as Markdown with coloured markers — **bold** yellow, *italic* cyan, `code` bright-yellow, headers magenta/purple/cyan, lists green, links/quotes
+- TUI: your own lines are now labelled with USER_NAME (e.g. «Vitalik») in bold orange, distinct from the green «Agnika» (was a plain «you:»)
+- Config: the need MODEL (drift / satiation / need_triggers + the trigger-wiring scalars self_cooldown / thought_cooldown / rest_wake / reach_out_need / reach_out_models / reflect_need) moved out of config.py/.env into state/needs_model.yaml — a committed, hand-edited YAML; config.load_needs reads it with a DEFAULT_NEEDS fallback (adds PyYAML as a dependency)
+- Tuned curiosity drift 0.002 -> 0.0008 (slower warm-up)
+- Fix: the v0.11.0 curiosity tests went stale after the 0.65-threshold tuning — made them threshold/value-agnostic (read from NEED_TRIGGERS, check shape not exact numbers)
+
 Version 0.11.0 (2026-06-29)
 ---------------------------
 - Curiosity (v0.11): a «цікавість» need that drifts up slowly and behaves like any other mood need — ask, don't mirror
