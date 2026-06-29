@@ -289,16 +289,24 @@ def thoughts_block(thoughts: list[dict], n: int, exclude_texts: set[str] | None 
 
 
 def build_system(
-    canon: str, memory: str, facts: str = "", world: str = "", mood: str = "", thoughts: str = ""
+    canon: str,
+    memory: str,
+    facts: str = "",
+    world: str = "",
+    mood: str = "",
+    thoughts: str = "",
+    curiosity: str = "",
 ) -> str:
     """System prompt = canon (persona) + long-term memory summaries + the user-facts digest +
-    the v0.8 world block + the v0.9 mood block + the v0.10 thoughts block.
+    the v0.8 world block + the v0.9 mood block + the v0.10 thoughts block + the v0.11 curiosity
+    nudge.
 
     Each layer is optional and appended only when non-empty: the v0.5 memory block, the v0.6
     `## Facts about the user` section, the v0.8 `world` block (`## Зараз` + `## Повідомлення з
-    минулої сесії`), the v0.9 `mood` block (`## Настрій`), then the v0.10 `thoughts` block
-    (`## Думки`); each carries its own headers. With every optional layer empty the result is
-    exactly `canon`; with empty `thoughts` it is byte-for-byte the v0.9 output."""
+    минулої сесії`), the v0.9 `mood` block (`## Настрій`), the v0.10 `thoughts` block (`## Думки`),
+    then the v0.11 `curiosity` nudge (`## Цікавість`); each carries its own headers. With every
+    optional layer empty the result is exactly `canon`; with empty `curiosity` it is byte-for-byte
+    the v0.10 output."""
     out = canon
     if memory.strip():
         out += "\n\nДовга пам'ять про попередні розмови (для контексту):\n" + memory.strip()
@@ -310,6 +318,8 @@ def build_system(
         out += "\n\n" + mood.strip()
     if thoughts.strip():
         out += "\n\n" + thoughts.strip()
+    if curiosity.strip():
+        out += "\n\n" + curiosity.strip()
     return out
 
 

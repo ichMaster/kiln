@@ -914,3 +914,61 @@ def test_run_curiosity_no_discharge_below_threshold(monkeypatch, tmp_path):
     st, rec = _curiosity_run(monkeypatch, eng, tmp_path, curiosity=0.30, brain=_AskBrain())
     assert st.needs["curiosity"] == pytest.approx(0.30 + DRIFT["curiosity"])  # only drift
     assert not rec.curiosity_replies
+
+
+# --- v0.11 curiosity -> system prompt (KILN-048): the ## Цікавість nudge, per turn ---
+
+
+class _SysCaptureBrain(MockBrain):
+    """Captures the system prompt passed to chat() — to assert _system() wiring."""
+
+    def __init__(self):
+        self.systems: list[str] = []
+
+    def chat(self, history, system):
+        self.systems.append(system)
+        return super().chat(history, system)
+
+
+def _captured_system(monkeypatch, eng, tmp_path, *, curiosity, curiosity_on=True):
+    _isolate(monkeypatch, eng, tmp_path)
+    st = eng.State(
+        needs={
+            "connection": 0.0,
+            "rest": 0.0,
+            "novelty": 0.0,
+            "intensity": 0.0,
+            "reflection": 0.0,
+            "curiosity": curiosity,
+        }
+    )
+    monkeypatch.setattr(eng, "load_state", lambda *a, **k: st)
+    monkeypatch.setattr(eng, "CURIOSITY", curiosity_on)
+    brain = _SysCaptureBrain()
+    eng.run(
+        ticks=1,
+        live=False,
+        channel=eng.ScriptedChannel({0: "привіт"}),
+        brain=brain,
+        output=StatusRecorder(),
+    )
+    return brain.systems[0]
+
+
+def test_system_includes_curiosity_nudge_over_threshold(monkeypatch, tmp_path):
+    import kiln.engine as eng
+
+    assert "## Цікавість" in _captured_system(monkeypatch, eng, tmp_path, curiosity=0.6)
+
+
+def test_system_omits_curiosity_nudge_below_threshold(monkeypatch, tmp_path):
+    import kiln.engine as eng
+
+    assert "## Цікавість" not in _captured_system(monkeypatch, eng, tmp_path, curiosity=0.30)
+
+
+def test_system_omits_curiosity_when_master_off(monkeypatch, tmp_path):
+    import kiln.engine as eng
+
+    system = _captured_system(monkeypatch, eng, tmp_path, curiosity=0.9, curiosity_on=False)
+    assert "## Цікавість" not in system  # CURIOSITY off -> no nudge even when high

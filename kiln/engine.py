@@ -83,7 +83,7 @@ from .memory import (
     summarize,
     thoughts_block,
 )
-from .mood import biorhythm, mood_block
+from .mood import biorhythm, curiosity_nudge, mood_block
 from .output import ConsoleOutput, Output
 from .report import write_report
 from .stats import SessionStats
@@ -491,9 +491,9 @@ def run(
     )  # the day's biorhythm — computed ONCE, static all session
 
     def _system() -> str:
-        # v0.8 world + v0.9 mood + v0.10 thoughts, composed PER TURN — the clock, needs, and the
-        # latest thoughts stay live; the prior-session timeline and the day's biorhythm are static.
-        # All off -> the static base.
+        # v0.8 world + v0.9 mood + v0.10 thoughts + v0.11 curiosity, composed PER TURN — the clock,
+        # needs, latest thoughts, and the curiosity nudge stay live; the prior-session timeline and
+        # the day's biorhythm are static. All off -> the static base.
         world = (
             world_block(_now(), USER_LOCATION, prev_turns, RECENT_MESSAGES)
             if WORLD_AWARENESS
@@ -505,14 +505,19 @@ def run(
             if THOUGHTS_ENABLED
             else ""
         )
-        if not world and not mood and not thoughts:
+        curiosity = (
+            curiosity_nudge(state.needs.get("curiosity", 0.0), CURIOSITY_THRESHOLD)
+            if CURIOSITY
+            else ""
+        )
+        if not world and not mood and not thoughts and not curiosity:
             return base_system
-        return build_system(canon, memory, facts, world, mood, thoughts)
+        return build_system(canon, memory, facts, world, mood, thoughts, curiosity)
 
     def _turn(prompt: str, force: str | None = None, agent: str | None = None) -> dict:
         # One model turn, timed; folds tokens + latency into the session stats.
         t0 = time.monotonic()
-        # v0.11: was the curiosity nudge active for THIS turn? (capture before the reply may sate it)
+        # v0.11: was the curiosity nudge active this turn? (read before the reply may sate it)
         curiosity_active = CURIOSITY and state.needs.get("curiosity", 0.0) >= CURIOSITY_THRESHOLD
         out = respond(prompt, state, history, _system(), brain, force=force, agent=agent)
         # Acting on the nudge — a real question while it was active — discharges curiosity (which
