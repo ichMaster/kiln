@@ -1,6 +1,24 @@
 kiln — Release Notes
 ====================
 
+Version 1.1.0 (2026-06-29)
+--------------------------
+- Tick-server (v1.1): run the agent as an always-on WS/HTTP server (new server/ package, the
+  [server] extra) — it keeps ticking with no client connected. KILN_SERVE=1 uvicorn server.app:app
+- Network bus: ServerChannel / ServerOutput / BroadcastHub — the network form of the v0 Bridge
+  (echo-free), fanning each agent event to every attached client
+- Agent-scoped persistence: config.AgentPaths threads a per-agent root through engine.run(); the
+  home agent (agnika) keeps today's flat paths, other agents nest under state/{id}/ + .kiln/{id}/
+- Agent host: AgentRuntime / AgentHost run each agent's loop on its own thread; a blocking model
+  call never freezes the server; engine.run(stop_event=…) for clean shutdown (persists on exit)
+- WS event protocol: WS /agent/{id} (attach → one-shot snapshot → live event stream) + HTTP reads
+  GET /agents and GET /agent/{id}/history?limit=N; wire events mirror the local bus kinds
+- Remote TUI client: kiln --tui --remote ws://…/agent/{id} — same UI over the network (one _render);
+  quitting the client just detaches, the agent lives on server-side
+- Tooling + docs: serve.sh / connect.sh helpers (configurable via .env: KILN_HOST/KILN_PORT/
+  KILN_AGENT) and docs/server.md (setup, connect, HTTP/WS API, troubleshooting)
+- Engine + base install stay stdlib (the server lives behind the [server] extra); tests 326 → 351
+
 Version 0.11.1 (2026-06-29)
 ---------------------------
 - TUI: Agnika's replies render as Markdown with coloured markers — **bold** yellow, *italic* cyan, `code` bright-yellow, headers magenta/purple/cyan, lists green, links/quotes
