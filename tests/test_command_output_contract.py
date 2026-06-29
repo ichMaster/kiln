@@ -174,7 +174,8 @@ def test_command_hints_match_handled_commands(monkeypatch):
     out = RecordingOutput()
     for cmd in COMMANDS:
         action = handle_command(f"/{cmd}", State(needs={}), [], "sys", False, out)
-        assert action in ("handled", "quit")  # recognized, not None / unknown
+        # recognized (not None / unknown) — the run loop acts on each control verb
+        assert action in ("handled", "quit", "reload", "rotate")
     assert not any("unknown command" in n for n in out.notices)
 
 
