@@ -18,6 +18,7 @@ import subprocess
 import sys
 import threading
 
+from rich.markdown import Markdown
 from rich.markup import escape
 from textual import events
 from textual.app import App, ComposeResult
@@ -214,10 +215,11 @@ class KilnApp(App):
             # mistaken for a tag: bold colored name + dark-green (model); body stays default white.
             model_part = f" [{_MODEL_STYLE}]({escape(model)})[/]" if model else ""
             text = event["text"]
-            self._last_reply = text
-            # Name + (model) on one line; her reply body on the next line (default white).
+            self._last_reply = text  # raw markdown source (for copy / transcript)
+            # Name + (model) on one line; her reply body on the next line, rendered as Markdown
+            # (headers / **bold** / lists / `code` / fences). Plain text renders as a plain paragraph.
             log.write(f"[{name_style}]{escape(name)}[/]{model_part}:")
-            log.write(escape(text))
+            log.write(Markdown(text) if text.strip() else escape(text))
             self._transcript.append(f"{name}{f' ({model})' if model else ''}: {text}")
         elif kind == "notice":
             log.write(f"[{_NOTICE_STYLE}]{escape(event['text'])}[/]")

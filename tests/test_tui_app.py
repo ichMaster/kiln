@@ -216,3 +216,26 @@ def test_app_copy_keys_fire_while_input_focused(tmp_path, monkeypatch):
             assert app._transcript == [] and app.query_one(RichLog).lines == []
 
     asyncio.run(scenario())
+
+
+def test_agent_reply_body_rendered_as_markdown(tmp_path):
+    """The agent reply body is written to the RichLog as a Markdown renderable (so **bold**,
+    lists, `code`, fences render), while `_last_reply` keeps the raw markdown source for copy."""
+    pytest.importorskip("textual")
+    from rich.markdown import Markdown
+
+    from tui.app import KilnApp
+
+    class _FakeLog:
+        def __init__(self):
+            self.writes: list = []
+
+        def write(self, x):
+            self.writes.append(x)
+
+    app = KilnApp(bridge=Bridge(), live=False, start_engine=False)
+    log = _FakeLog()
+    app._render(log, {"kind": "agent", "text": "**жирний** і список:\n- раз", "is_self": False})
+
+    assert any(isinstance(w, Markdown) for w in log.writes)  # body rendered as Markdown
+    assert app._last_reply == "**жирний** і список:\n- раз"  # raw source kept (for copy)
