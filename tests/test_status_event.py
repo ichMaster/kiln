@@ -418,6 +418,40 @@ def test_previous_session_turns_spans_all_sessions(tmp_path):
     assert texts == ["a1", "b1", "a2", "b2", "a3"]  # every session, chronological — not just s3
 
 
+def test_session_persisted_in_real_time(monkeypatch, tmp_path):
+    """Turns are upserted into the store DURING the session (not only on close), so a crash can't
+    lose them and a freshly attached client's snapshot sees the live conversation."""
+    import kiln.engine as eng
+    from kiln import store as kstore
+
+    _isolate(monkeypatch, eng, tmp_path)
+    store_path = tmp_path / "store.json"
+    monkeypatch.setattr(eng, "load_store", lambda *a, **k: kstore.load_store(store_path))
+    monkeypatch.setattr(eng, "save_store", lambda s, *a, **k: kstore.save_store(s, store_path))
+    monkeypatch.setattr(eng, "summarize", lambda *a, **k: "S")
+
+    mid_turns = []
+
+    class Probe:
+        def user(self, *a, **k): ...
+        def agent(self, *a, **k): ...
+        def usage(self, *a, **k): ...
+        def notice(self, *a, **k): ...
+        def status(self, snap):  # observe the store on every tick, mid-session
+            st = kstore.load_store(store_path)
+            sid = st["sessions"][0]["id"] if st["sessions"] else None
+            mid_turns.append(len(st["messages"].get(sid, [])) if sid else 0)
+
+    eng.run(
+        ticks=3,
+        live=False,
+        channel=eng.ScriptedChannel({1: "привіт"}),
+        brain=MockBrain(),
+        output=Probe(),
+    )
+    assert max(mid_turns) >= 2  # the turn hit the store mid-session, before the close finalize
+
+
 def _mood_scenario(monkeypatch, eng, tmp_path):
     """Common setup: isolate, mute world, fixed needs — so only the ## Настрій block varies."""
     _isolate(monkeypatch, eng, tmp_path)

@@ -29,6 +29,42 @@ def empty_store() -> dict:
     return {"sessions": [], "messages": {}, "summaries": [], "facts": [], "thoughts": []}
 
 
+def upsert_session(
+    store: dict,
+    session_id: str,
+    started_at: str,
+    mode: str,
+    turns: list[dict],
+    ended_at: str | None = None,
+) -> None:
+    """Insert-or-update one session entry + its messages in `store` (in place). Used both for
+    real-time persistence during a live session and for finalizing it on close, so a session is
+    never duplicated."""
+    entry = {
+        "id": session_id,
+        "started_at": started_at,
+        "ended_at": ended_at or started_at,
+        "mode": mode,
+        "turns": len(turns),
+    }
+    for i, s in enumerate(store["sessions"]):
+        if s.get("id") == session_id:
+            store["sessions"][i] = entry
+            break
+    else:
+        store["sessions"].append(entry)
+    store["messages"][session_id] = list(turns)
+
+
+def remove_session(store: dict, session_id: str) -> None:
+    """Drop a session + its messages + its summary (an all-noise session persisted live but pruned
+    to nothing on close)."""
+    store["sessions"] = [s for s in store.get("sessions", []) if s.get("id") != session_id]
+    store["messages"].pop(session_id, None)
+    sums = store.get("summaries", [])
+    store["summaries"] = [x for x in sums if x.get("session_id") != session_id]
+
+
 def _norm(text: str) -> str:
     """Normalized key for fact dedupe: lower-cased, whitespace-collapsed."""
     return " ".join((text or "").lower().split())

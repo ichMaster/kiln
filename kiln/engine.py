@@ -85,7 +85,7 @@ from .mood import biorhythm, mood_block
 from .output import ConsoleOutput, Output
 from .report import write_report
 from .stats import SessionStats
-from .store import add_facts, add_thought, load_store, save_store
+from .store import add_facts, add_thought, load_store, remove_session, save_store, upsert_session
 from .world import world_block
 
 # === State ==================================================================
@@ -442,15 +442,20 @@ def _self_prompt(prompts: dict, need: str, reached_out: bool) -> str:
     return f"{prompt} {SELF_SILENCE_NOTE}" if reached_out else prompt
 
 
-def _previous_session_turns(store_path: Path = STORE_FILE) -> list[dict]:
-    """Turns across ALL closed sessions, oldest→newest, for the v0.8 world timeline. The current
+def _previous_session_turns(
+    store_path: Path = STORE_FILE, exclude_session: str | None = None
+) -> list[dict]:
+    """Turns across ALL prior sessions, oldest→newest, for the v0.8 world timeline. The current
     session's own turns already ride in the messages array / transcript; `world_block` keeps only
     the last `RECENT_MESSAGES`, so the tail spans whatever earlier sessions it needs — a short last
-    session no longer starves the block. Empty store -> []."""
+    session no longer starves the block. `exclude_session` drops the live session (which, with
+    real-time persistence, it's already in the store) so it isn't double-counted. No store -> []."""
     store = load_store(store_path)
     ordered = sorted(store.get("sessions", []), key=lambda s: s.get("started_at") or "")
     turns: list[dict] = []
     for session in ordered:
+        if session.get("id") == exclude_session:
+            continue
         turns.extend(store.get("messages", {}).get(session.get("id"), []))
     return turns
 
@@ -487,13 +492,14 @@ def run(
     state = load_state(paths.needs_file)
     history: list[dict] = []  # shared conversation transcript for the session
     started = _dt.datetime.now().isoformat(timespec="seconds")  # session start (for transcript)
-    canon = load_canon(paths.canon_file)  # persona/voice from state/canon.md
+    session_mode = "live" if live else "dry"  # stored with the session (real-time persist + close)
+    canon = load_canon(paths.canon_file)  # persona/voice from state/canon.md (re-read on /reload)
     memory = load_memory(paths.store_file)  # long-term memory: summaries of past sessions
     facts = digest_facts(live, paths.store_file)  # v0.6: N-line digest of durable user facts
     base_system = build_system(canon, memory, facts)  # static: canon + memory summaries + facts
-    prev_turns = _previous_session_turns(paths.store_file)  # v0.8: recent turns across ALL prior
-    # sessions for the timeline (the current session's turns already ride in the messages array, so
-    # they aren't repeated here; world_block keeps the last RECENT_MESSAGES)
+    prev_turns = _previous_session_turns(paths.store_file, started)  # v0.8: recent turns across ALL
+    # prior sessions for the timeline (the live session is excluded — real-time persistence puts it
+    # already in the store; its turns ride in the messages array; world_block keeps RECENT_MESSAGES)
     prompts = load_prompts(paths.prompts_file)  # self-trigger prompts from state/prompts.md
     store = load_store(paths.store_file)  # v0.10: held for the session so thoughts persist
     tg = TriggerBook()  # trigger hysteresis + cooldown
@@ -573,6 +579,17 @@ def run(
         save_store(store, paths.store_file)
         return thought
 
+    def _save_session_live() -> None:
+        # Real-time persistence: upsert the OPEN session + its raw turns into the store every turn,
+        # so a crash can't lose them and a freshly attached client's snapshot sees the live
+        # conversation. The close replaces these with the pruned turns (+ summary); an all-noise
+        # session is dropped there. No-op until there's at least one turn.
+        if not history:
+            return
+        ended_at = _now().isoformat(timespec="seconds")
+        upsert_session(store, started, started, session_mode, history, ended_at=ended_at)
+        save_store(store, paths.store_file)
+
     t = 0
     total_ticks = 0  # real ticks since session start (catch-up included — counts blocked time)
     branch: str | None = None  # last turn's class (chat/think/tools) for the status snapshot
@@ -605,6 +622,7 @@ def run(
             elif rest >= rest_threshold:
                 resting, entered_rest = True, True
 
+            hlen = len(history)  # real-time persistence: did this tick add a turn?
             user_msg = channel.poll()
             # Priority: INPUT > reach-out > thought > idle. No reach-out/thought while resting; the
             # reach-out needs /self on; the thought (inner monologue) only when no reach-out fires.
@@ -684,6 +702,8 @@ def run(
                 apply_satiation(state, "idle")  # silence: rest + cooling down
                 # a silent tick isn't printed — check state via /status
 
+            if len(history) != hlen:
+                _save_session_live()  # real-time: a turn was added this tick -> persist it now
             # Per-tick status snapshot (needs + thresholds + stats) for live clients.
             output.status(_status_snapshot(status_label, state, tg, stats, branch, total_ticks))
 
@@ -691,25 +711,19 @@ def run(
             t += 1
     finally:
         save_state(state, paths.needs_file)
-        # Review & prune to real conversation; an all-noise session is skipped entirely.
+        # Review & prune to real conversation; an all-noise session is dropped (incl. one persisted
+        # live during the session). Otherwise upsert the pruned turns over the real-time copy.
         cleaned = prune_history(history)
-        if cleaned:
-            # Everything closes into the single .kiln/store.json. We persist the session +
-            # its raw turns (the RAG corpus) FIRST — before the (possibly failing) summary —
-            # so a summary failure can't lose the transcript. The session id is the start time.
+        store = load_store(paths.store_file)
+        if not cleaned:
+            remove_session(store, started)
+            save_store(store, paths.store_file)
+        else:
+            # The session id is the start time. Persist the pruned turns FIRST — before the
+            # (possibly failing) summary — so a summary failure can't lose the transcript.
             ended = _dt.datetime.now().isoformat(timespec="seconds")
             stamp = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
-            store = load_store(paths.store_file)
-            store["sessions"].append(
-                {
-                    "id": started,
-                    "started_at": started,
-                    "ended_at": ended,
-                    "mode": "live" if live else "dry",
-                    "turns": len(cleaned),
-                }
-            )
-            store["messages"][started] = list(cleaned)
+            upsert_session(store, started, started, session_mode, cleaned, ended)
             save_store(store, paths.store_file)  # transcript safe before summarizing
             summary = summarize(cleaned, live)
             if summary:
