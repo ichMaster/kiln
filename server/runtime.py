@@ -92,6 +92,19 @@ class AgentRuntime:
         """The most recent status snapshot (for a one-shot to a just-attached client)."""
         return self._latest_status
 
+    def recent_history(self, limit: int = 20) -> list[dict]:
+        """The last `limit` PERSISTED turns across this agent's sessions (snapshot / GET history).
+        Read-only, no model calls. The live session's turns aren't persisted until close — they
+        stream as `agent` events from attach onward."""
+        from kiln.store import load_store
+
+        store = load_store(self._paths.store_file)
+        ordered = sorted(store.get("sessions", []), key=lambda s: s.get("started_at") or "")
+        turns: list[dict] = []
+        for session in ordered:
+            turns.extend(store.get("messages", {}).get(session.get("id"), []))
+        return turns[-limit:] if limit and limit > 0 else turns
+
     def is_alive(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 

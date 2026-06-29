@@ -238,8 +238,16 @@ multi-agent is additive, not a rewrite:
   the event `kind`s are identical to the `Bridge`, so a client renders the same whether local
   (in-process `Bridge`) or remote (WS). `BroadcastHub.broadcast` is best-effort — a sink that raises
   is dropped, never blocking the engine thread.
-- **Event protocol (planned, 1.1/1.2):** server↔client events (`user.message`,
-  `agnika.message`, `status`, `usage`, `tick`, `command`) mirror the FSM.
+- **Event protocol (v1.1, `server/protocol.py` + `server/ws.py`):** `WS /agent/{agent_id}`.
+  **Client→server** messages are typed — `attach` (handshake, optional `history` limit),
+  `user.message` (a chat line), `command` (a slash line) — both lines just go onto the agent's inbox
+  (`handle_command` intercepts `/…`). **Server→client** events are the agent's render events
+  **verbatim** — the same `kind`s as the `Bridge`/`BroadcastHub` (`agent`/`usage`/`notice`/`status`)
+  plus `snapshot` (one-shot on attach: latest status + recent transcript) and `tick`. The agent reply
+  is `kind:"agent"` (the *agnika.message*) and carries `is_self`/`lead`/`model`/`is_thought`/
+  `is_curiosity`. Identical wire `kind`s mean a client renders the same local (`Bridge`) or remote
+  (WS). On attach: snapshot → subscribe → stream; on disconnect: unsubscribe (the agent keeps
+  ticking). HTTP reads: `GET /agents`, `GET /agent/{id}/history?limit=N`. JSON, `ensure_ascii=False`.
 
 ## Data model
 

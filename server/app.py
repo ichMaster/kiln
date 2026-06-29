@@ -15,13 +15,14 @@ import os
 from contextlib import asynccontextmanager
 
 try:
-    from fastapi import FastAPI, WebSocket
+    from fastapi import FastAPI, HTTPException, WebSocket
 except ImportError as exc:  # pragma: no cover - exercised only without the extra
     raise ImportError(
         "the kiln tick-server needs the [server] extra: pip install -e '.[server]'"
     ) from exc
 
 from .host import AgentHost
+from .ws import serve_agent
 
 # The server's live-agent registry. The WS endpoints attach clients to it (KILN-053).
 host = AgentHost()
@@ -48,10 +49,35 @@ def health() -> dict:
     return {"ok": True}
 
 
+@app.get("/agents")
+def list_agents() -> list[dict]:
+    """The live agents and each one's latest status snapshot."""
+    return [{"agent_id": aid, "status": host.get(aid).latest_status()} for aid in host.agents()]
+
+
+@app.get("/agent/{agent_id}/history")
+def agent_history(agent_id: str, limit: int = 20) -> dict:
+    """The last `limit` persisted turns for an agent (404 if it isn't hosted)."""
+    runtime = host.get(agent_id)
+    if runtime is None:
+        raise HTTPException(status_code=404, detail=f"no such agent: {agent_id}")
+    return {"agent_id": agent_id, "turns": runtime.recent_history(limit)}
+
+
+@app.websocket("/agent/{agent_id}")
+async def agent_ws(ws: WebSocket, agent_id: str) -> None:
+    """Attach a client to an agent: snapshot, then stream its events; relay input to its inbox.
+    Disconnecting leaves the agent ticking (KILN-053)."""
+    runtime = host.get(agent_id)
+    if runtime is None:
+        await ws.close(code=4404)  # unknown agent (private-use close code)
+        return
+    await serve_agent(ws, runtime)
+
+
 @app.websocket("/ws")
 async def ws_stub(ws: WebSocket) -> None:
-    """KILN-049 stub: accept the connection, send one `notice`, then close. The real
-    `WS /agent/{agent_id}` (attach → snapshot → stream the agent's events) is KILN-053."""
+    """KILN-049 health WS: accept, send one `notice`, close. (Real streaming is `/agent/{id}`.)"""
     await ws.accept()
-    await ws.send_json({"kind": "notice", "text": "kiln tick-server (scaffold) — connected"})
+    await ws.send_json({"kind": "notice", "text": "kiln tick-server — connected"})
     await ws.close()
