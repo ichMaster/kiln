@@ -1,50 +1,36 @@
 #!/usr/bin/env bash
 # serve.sh — start the kiln tick-server (v1.1): hosts the home agent (agnika) over WS/HTTP.
 #
-# Config lives in .env (repo root); a matching shell env var overrides it:
-#   KILN_HOST     (default 127.0.0.1)
-#   KILN_PORT     (default 8000)
-#   KILN_UVICORN  (optional: pin the uvicorn binary; auto-detected if unset)
+# Host/port come from server.yaml (via config.py); a KILN_HOST / KILN_PORT env var still overrides.
+#   ./serve.sh                       # address from server.yaml (default 127.0.0.1:8000)
+#   KILN_PORT=9000 ./serve.sh        # override for this run
+#   KILN_UVICORN=/path/to/uvicorn ./serve.sh --reload   # pin the binary; extra args pass through
 #
-# Usage:
-#   ./serve.sh                  # use .env / defaults
-#   KILN_PORT=9000 ./serve.sh   # override one value for this run
-#   ./serve.sh --reload         # extra args are passed through to uvicorn
-#
-# KILN_SERVE=1 (the guard that actually boots the agent) is set HERE, not in .env: kiln's config
-# auto-loads .env, so a value there would boot a live agent on plain imports (and in tests).
+# KILN_SERVE=1 (the guard that actually boots the agent) is set HERE, not in any committed file:
+# config auto-loads, so a value there would boot a live agent on plain imports (and in tests).
 set -euo pipefail
 
 # Run from the repo root (this script's directory), so `server.app:app` resolves.
 cd "$(dirname "$0")"
 
-# Read KEY from .env (repo root); echo its value, or $2 if absent. A real shell env var still wins.
-env_get() {
-  local key="$1" default="${2:-}" line val
-  [ -f .env ] || { printf '%s' "$default"; return; }
-  line=$(grep -E "^[[:space:]]*${key}=" .env | tail -n1 || true)
-  [ -n "$line" ] || { printf '%s' "$default"; return; }
-  val="${line#*=}"; val="${val%$'\r'}"                  # strip 'KEY=' and any CR
-  val="${val#"${val%%[![:space:]]*}"}"                  # ltrim
-  val="${val%"${val##*[![:space:]]}"}"                  # rtrim
-  case "$val" in \"*\") val="${val#\"}"; val="${val%\"}";; \'*\') val="${val#\'}"; val="${val%\'}";; esac
-  printf '%s' "$val"
-}
+# A python from the project venv (else PATH) to read server.yaml via config.py.
+if [ -x ".venv/bin/python" ]; then
+  PY=".venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+  PY="python3"
+else
+  echo "python not found" >&2
+  exit 1
+fi
 
-HOST="${KILN_HOST:-$(env_get KILN_HOST 127.0.0.1)}"
-PORT="${KILN_PORT:-$(env_get KILN_PORT 8000)}"
-UVICORN="${KILN_UVICORN:-$(env_get KILN_UVICORN)}"
+# Resolve host/port from config.py (server.yaml + env overrides + defaults).
+read -r HOST PORT < <("$PY" -c "from kiln import config as c; print(c.SERVER_HOST, c.SERVER_PORT)")
 
-# Resolve the uvicorn binary if not pinned: prefer the project venv, then PATH.
+# Resolve the uvicorn binary: KILN_UVICORN pin, else the project venv, else PATH.
+UVICORN="${KILN_UVICORN:-}"
 if [ -z "$UVICORN" ]; then
-  if [ -d ".venv" ]; then
-    if [ -x ".venv/bin/uvicorn" ]; then
-      UVICORN=".venv/bin/uvicorn"
-    else
-      echo "uvicorn isn't in .venv — install the server extra:" >&2
-      echo "  source .venv/bin/activate && pip install -e '.[server]'" >&2
-      exit 1
-    fi
+  if [ -x ".venv/bin/uvicorn" ]; then
+    UVICORN=".venv/bin/uvicorn"
   elif command -v uvicorn >/dev/null 2>&1; then
     UVICORN="uvicorn"
   else
@@ -53,5 +39,5 @@ if [ -z "$UVICORN" ]; then
   fi
 fi
 
-echo "kiln tick-server → http://${HOST}:${PORT}  (agent: agnika)  — Ctrl-C to stop"
+echo "kiln tick-server → http://${HOST}:${PORT}  (home agent: agnika)  — Ctrl-C to stop"
 exec env KILN_SERVE=1 "$UVICORN" server.app:app --host "$HOST" --port "$PORT" "$@"

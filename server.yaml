@@ -1,0 +1,7 @@
+# kiln tick-server — server config (committed). Read by serve.sh / connect.sh and exposed in
+# config.py as SERVER_HOST / SERVER_PORT / SERVER_AGENT. Environment overrides: KILN_HOST /
+# KILN_PORT / KILN_AGENT.
+
+host: 127.0.0.1   # bind address (0.0.0.0 exposes it on the LAN — there's no auth in v1.1)
+port: 8000        # HTTP / WebSocket port
+agent: agnika     # default agent: the one the server boots and connect.sh attaches to

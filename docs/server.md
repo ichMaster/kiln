@@ -32,34 +32,30 @@ before; the extra only enables `server/` and the remote client.
 
 ## 2. Configure
 
-The server reuses the same `.env` as live mode (loaded from the repo root). Relevant keys:
+Config is three layers, resolved **env var > YAML file > default**:
 
-| Key | Why | Needed for |
-|-----|-----|------------|
-| `ANTHROPIC_API_KEY` | the **chat** branch (Haiku via the Messages API) | a live agent |
-| *(Claude Code CLI logged in)* | the **deep** branch shells out to `claude -p` (Opus) | a live agent |
-| `CHAT_MODEL` / `DEEP_MODEL` | override the models | optional |
-| `TICK_SECONDS` | tick cadence | optional |
-| `USER_NAME` / `AGENT_NAME` | labels | optional |
+- **`.env`** (gitignored) — secrets + personal only: `ANTHROPIC_API_KEY`, `USER_NAME`,
+  `USER_LOCATION`, `TIMEZONE` (and the launch flag `KILN_LIVE`).
+- **`state/config.yaml`** (committed) — the agent tunables (`chat_model`, `tick_seconds`, …).
+- **`server.yaml`** (committed) — the server's `host` / `port` / `agent`:
+
+| Key (server.yaml) | Used by | Env override | Default |
+|-------------------|---------|--------------|---------|
+| `host` | server bind + clients | `KILN_HOST` | `127.0.0.1` |
+| `port` | server bind + clients | `KILN_PORT` | `8000` |
+| `agent` | `connect.sh` (default attach target) | `KILN_AGENT` | `agnika` |
+
+`serve.sh`/`connect.sh` read these from `config.py` (not the shell), so they honour `server.yaml` +
+any env override. Binary pins `KILN_UVICORN` / `KILN_BIN` (optional, env-only) override the
+auto-detected `.venv`/PATH binaries.
 
 The home agent boots **live** (real models), so it has the same two requirements as
 `KILN_LIVE=1 kiln`: the `ANTHROPIC_API_KEY` for chat, and an installed, logged-in **Claude Code CLI**
 (`claude`) for the deep branch. Without them the agent still ticks, but model turns degrade to error
 strings instead of replies.
 
-The helper scripts (`serve.sh` / `connect.sh`) read their own settings from the **same `.env`** — a
-matching shell env var overrides the file, and `connect.sh`'s first CLI argument overrides the agent:
-
-| Key | Used by | Default |
-|-----|---------|---------|
-| `KILN_HOST` | both | `127.0.0.1` |
-| `KILN_PORT` | both | `8000` |
-| `KILN_AGENT` | `connect.sh` (the agent to attach to) | `agnika` |
-| `KILN_UVICORN` | `serve.sh` (pin the uvicorn binary) | auto-detect `.venv`/PATH |
-| `KILN_BIN` | `connect.sh` (pin the kiln binary) | auto-detect `.venv`/PATH |
-
-> `KILN_SERVE` is **deliberately not** an `.env` key. kiln's config auto-loads `.env`, so a value
-> there would boot a live agent on any plain import (including the test suite); `serve.sh` sets
+> `KILN_SERVE` is **deliberately not** in any committed file. kiln's config auto-loads `.env`, so a
+> value there would boot a live agent on any plain import (including the test suite); `serve.sh` sets
 > `KILN_SERVE=1` itself, only when you actually run it.
 
 > `.env` is gitignored. Never commit your API key.

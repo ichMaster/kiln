@@ -56,18 +56,17 @@ Reads: `GET /health`, `GET /agents`, `GET /agent/{id}/history?limit=N`.
 
 ## Configuration
 
-A local `.env` file (not committed) sets the models and behavior — without
-editing code. Real environment variables take priority over the file.
+Config is split by concern and resolved **env var > YAML file > built-in default**:
 
-| Variable | What it sets | Default |
-|---|---|---|
-| `CHAT_MODEL` | chat branch model | `claude-haiku-4-5-20251001` |
-| `DEEP_MODEL` | reasoning branch model | `claude-opus-4-8` |
-| `TICK_SECONDS` | tick length (sec; live only) | `0.5` |
-| `THINK_THRESHOLD` | how easily a turn goes to the stronger model | `0.45` |
-| `SELF_COOLDOWN` | pause (ticks) before the engine speaks again | `5` |
-| `KILN_LIVE` | `1` — enable live mode | — |
-| `ANTHROPIC_API_KEY` | key for the chat branch | — |
+| File | Committed? | Holds | Examples |
+|---|---|---|---|
+| `.env` | no (secrets) | API key + personal | `ANTHROPIC_API_KEY`, `USER_NAME`, `USER_LOCATION`, `TIMEZONE`, `KILN_LIVE` |
+| `state/config.yaml` | yes | agent tunables | `chat_model`, `deep_model`, `tick_seconds`, `think_threshold`, `world_awareness`, `agent_name` |
+| `state/needs_model.yaml` | yes | the need model | `drift`, `satiation`, `need_triggers` |
+| `server.yaml` | yes | tick-server | `host`, `port`, `agent` |
+
+Edit the YAML files directly; a matching environment variable (UPPER_SNAKE of the key, e.g.
+`TICK_SECONDS=2`) overrides a file value for one run. `.env` is gitignored — never commit your key.
 
 **Persona.** The voice and character of your conversation partner live in
 [`state/canon.md`](state/canon.md) — it's plain text, edit it freely. If the

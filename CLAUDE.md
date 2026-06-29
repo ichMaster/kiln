@@ -65,7 +65,9 @@ dry-run demo in `kiln/__main__.py` stays a smoke test.
 All hand-edited config is under `STATE_DIR` (defined in `config.py`, = repo root `/state`):
 `state/needs_model.yaml` (the need **MODEL** — committed config: `drift`/`satiation`/`need_triggers`
 + the trigger-wiring scalars `reach_out_need`/`reach_out_models`/`reflect_need`/`self_cooldown`/`thought_cooldown`/`rest_wake`;
-`config.load_needs` → `DEFAULT_NEEDS` fallback, needs **PyYAML**), `state/prompts.md` (self-trigger
+`config.load_needs` → `DEFAULT_NEEDS` fallback, needs **PyYAML**), `state/config.yaml` (the **agent
+tunables** — models, ticks, awareness, persona; `config.load_config` → `DEFAULT_CONFIG`),
+`state/prompts.md` (self-trigger
 prompts), `state/canon.md` (the **canon** — the persona/voice that becomes the system prompt of both
 branches), `state/mood.json` (v0.9 — the need/biorhythm **bands** (thresholds + Ukrainian names) and
 the behavioural **cues** for the `## Настрій` section; `mood.load_mood` → `DEFAULT_MOOD` fallback),
@@ -80,18 +82,26 @@ otherwise).
 auto-written, gitignored); `state/needs_model.yaml` = the model you edit to tune Agnika (calibration,
 committed like `mood.json`).
 
-### Config via `.env`
+### Config: `.env` (secrets) + committed YAML
 
-`load_dotenv()` (a tiny stdlib-only `KEY=VALUE` parser in `config.py`, no dependency)
-reads `.env` from the repo root **before** the config constants are defined, so these can be set
-without touching code: `CHAT_MODEL`, `DEEP_MODEL`, `TICK_SECONDS`, `THINK_THRESHOLD`,
-`SELF_COOLDOWN`, `REST_WAKE`, `THINKING_TOKENS`, `FACTS_DIGEST_LINES`, `MAX_FACTS`,
-`FACTS_ENABLED`, `MEMORY_SUMMARIES`, `SUMMARY_SENTENCES`, `USAGE_REPORT`, `USER_LOCATION`,
-`TIMEZONE`, `RECENT_MESSAGES`, `WORLD_AWARENESS`, `USER_NAME`, `AGENT_NAME` (plus `KILN_LIVE`,
-`ANTHROPIC_API_KEY` for live mode). It uses `os.environ.setdefault`,
-so a real environment variable always wins over `.env`. `.env` is gitignored. The **need model**
-(`DRIFT`/`SATIATION`/`NEED_TRIGGERS` + `SELF_COOLDOWN`/`THOUGHT_COOLDOWN`/`REST_WAKE`/`REACH_OUT_NEED`/`REACH_OUT_MODELS`/`REFLECT_NEED`)
-is **not** in `.env` — it lives in `state/needs_model.yaml` (`config.load_needs`).
+Three layers, resolved **env var > YAML file > built-in default** (the `config._opt_*` helpers):
+
+- **`.env`** (gitignored — `load_dotenv`, a tiny stdlib `KEY=VALUE` parser) holds **only** secrets +
+  personal fields: `ANTHROPIC_API_KEY` and `USER_NAME` / `USER_LOCATION` / `TIMEZONE`. Plus the
+  env-only launch flags `KILN_LIVE` / `KILN_SERVE` / `KILN_HOME` (never a committed default — a
+  committed `live: true` would be dangerous).
+- **`state/config.yaml`** (committed — `config.load_config` → `DEFAULT_CONFIG` fallback, needs PyYAML)
+  holds the agent tunables: `chat_model`/`deep_model`/`thought_model`, `tick_seconds`,
+  `think_threshold`, `thinking_tokens`, `thoughts_*`, `facts_*`, `max_facts`, `memory_summaries`,
+  `summary_sentences`, `world_awareness`/`mood_awareness`/`biorhythm`, `recent_messages`,
+  `usage_report`, `agent_name`, `agent_birth`.
+- **`server.yaml`** (committed — `config.load_server_config` → `DEFAULT_SERVER`) holds the tick-server
+  `host` / `port` / `agent` → `SERVER_HOST`/`SERVER_PORT`/`SERVER_AGENT` (env overrides
+  `KILN_HOST`/`KILN_PORT`/`KILN_AGENT`; `serve.sh`/`connect.sh` read these via `config.py`).
+
+A real environment variable (UPPER_SNAKE of the YAML key, e.g. `TICK_SECONDS`) overrides the file.
+The **need model** (`DRIFT`/`SATIATION`/`NEED_TRIGGERS` + the trigger scalars) is separate again —
+`state/needs_model.yaml` (`config.load_needs`).
 
 ## Architecture (the big-picture flow)
 

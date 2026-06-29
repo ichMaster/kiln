@@ -1,0 +1,39 @@
+# kiln — agent config (committed). Non-secret tunables for the agent's behaviour. The need MODEL
+# lives in needs_model.yaml and the mood bands in mood.json; secrets and personal fields stay in
+# .env (ANTHROPIC_API_KEY, USER_NAME, USER_LOCATION, TIMEZONE). A real environment variable
+# (UPPER_SNAKE of the key, e.g. TICK_SECONDS) overrides any value here.
+
+# Branch models
+chat_model: claude-haiku-4-5-20251001   # cheap/fast chat (Anthropic Messages API)
+deep_model: claude-opus-4-8             # reasoning / tools via `claude -p`
+# thought_model: claude-haiku-4-5-20251001   # inner-monologue model; unset = chat_model
+
+# Tick loop / routing
+tick_seconds: 1.0          # seconds between ticks (live mode)
+think_threshold: 0.85      # turn-weight above which a turn routes to the deep brain
+thinking_tokens: 8000      # MAX_THINKING_TOKENS budget for every `claude -p` call
+
+# Inner thoughts (v0.10)
+thoughts_enabled: true
+thought_visible_every: 3   # a fresh thought surfaces in chat ~1/N (1 = always, large = rarely)
+thoughts_in_prompt: 5      # recent thoughts shown in the inner-thoughts prompt section (0 = off)
+
+# Facts / long memory (v0.6)
+facts_enabled: true
+facts_digest_lines: 12     # max lines in the start-time user-facts digest
+max_facts: 0               # most-recent stored facts fed to the digest (0 = all)
+memory_summaries: 5        # most-recent session summaries loaded into the prompt (0 = all)
+summary_sentences: 5       # target length of each session summary
+
+# Awareness blocks
+world_awareness: true      # the world block — current time + last-session messages (v0.8)
+mood_awareness: true       # the mood block — needs + biorhythm (v0.9)
+biorhythm: true            # the biorhythm sub-block within mood
+recent_messages: 10        # recent turns in the prior-session block (0 = off)
+
+# Usage reporting (v0.7)
+usage_report: true         # write a usage-ledger line + report on session close
+
+# Persona
+agent_name: Агніка         # label for the agent's turns
+agent_birth: "12.08.2001"  # seeds the daily biorhythm; empty = parsed from the canon
