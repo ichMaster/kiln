@@ -972,3 +972,28 @@ def test_system_omits_curiosity_when_master_off(monkeypatch, tmp_path):
 
     system = _captured_system(monkeypatch, eng, tmp_path, curiosity=0.9, curiosity_on=False)
     assert "## Цікавість" not in system  # CURIOSITY off -> no nudge even when high
+
+
+def test_status_snapshot_surfaces_curiosity_as_a_full_need():
+    """v0.11: curiosity isn't a trigger, but the panel snapshot carries its nudge threshold + a
+    `nudge` action, so it renders as a full need (level/threshold + flag), not a bare bar."""
+    from kiln.config import CURIOSITY_THRESHOLD
+    from tui.render import needs_panel_lines
+
+    state = State(needs={"connection": 0.1, "curiosity": 0.62})
+    snap = _status_snapshot("idle", state, TriggerBook(), SessionStats(), None, 1)
+    assert snap["thresholds"]["curiosity"] == CURIOSITY_THRESHOLD
+    assert snap["actions"]["curiosity"] == "nudge"
+    row = next(r for r in needs_panel_lines(snap) if "цікавість" in r)
+    assert "0.62/0.50" in row and "→ nudge" in row  # full need row, over-threshold
+
+
+def test_status_snapshot_omits_curiosity_threshold_when_master_off(monkeypatch):
+    import kiln.engine as eng
+
+    monkeypatch.setattr(eng, "CURIOSITY", False)
+    snap = eng._status_snapshot(
+        "idle", State(needs={"curiosity": 0.62}), TriggerBook(), SessionStats(), None, 1
+    )
+    assert "curiosity" not in snap["thresholds"]  # CURIOSITY off -> no panel threshold
+    assert snap["needs"]["curiosity"] == 0.62  # the level still shows

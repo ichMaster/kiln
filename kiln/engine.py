@@ -399,6 +399,11 @@ def _status_snapshot(
     thresholds = {name: cfg["threshold"] for name, cfg in NEED_TRIGGERS.items()}
     # what addresses each need (the self-trigger branch)
     actions = {name: cfg["action"] for name, cfg in NEED_TRIGGERS.items()}
+    # v0.11: curiosity is NOT a trigger (no self-message), but surface its nudge threshold so the
+    # panel shows it as a full need (`0.62/0.50 → nudge` + the colour gradient), not a bare bar.
+    if CURIOSITY and "curiosity" in state.needs:
+        thresholds["curiosity"] = CURIOSITY_THRESHOLD
+        actions["curiosity"] = "nudge"
     cooldowns = {name: c for name, c in tg.cooldown.items() if c > 0}
     # headline model for the status bar follows the last branch (deep/Opus is the default;
     # a "tool" branch runs a sub-agent whose own model is shown on the reply label instead)
