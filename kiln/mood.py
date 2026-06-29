@@ -57,6 +57,15 @@ DEFAULT_MOOD = {
 }
 
 
+# v0.11 curiosity provocation: while curiosity is over the threshold, every turn's prompt carries
+# this nudge to ASK real questions and dig deeper rather than mirror. Persona-layer (Ukrainian,
+# intentional); overridable via an optional top-level `curiosity_nudge` field in state/mood.json.
+DEFAULT_CURIOSITY_NUDGE = (
+    "Тобі зараз цікаво. Постав живе, конкретне питання й копай глибше — "
+    "не дзеркаль і не переказуй співрозмовника, веди розмову вперед."
+)
+
+
 def load_mood(path: Path = MOOD_FILE) -> dict:
     """The mood config (bands / labels / cues) from `state/mood.json`; DEFAULT_MOOD if the file is
     missing or invalid (a fresh clone / broken edit still starts)."""
@@ -97,6 +106,9 @@ NEED_LABELS, NEED_CUES, NEED_BANDS, _PERIODS, _BIO_BANDS, _BIO_LABELS, BIO_CUES 
 # Needs flagged `"mood_line": false` (v0.11 curiosity) are nudge-only: they carry a label so the
 # TUI panel can name them, but they are NOT rendered as a `## Настрій` status line.
 NEED_NOMOOD = {k for k, v in _cfg["needs"].items() if v.get("mood_line") is False}
+# The curiosity nudge text — from the optional `curiosity_nudge` field in state/mood.json, else the
+# default. Module-level so it tracks the same config source the rest of the mood layer uses.
+CURIOSITY_NUDGE_TEXT = _cfg.get("curiosity_nudge") or DEFAULT_CURIOSITY_NUDGE
 
 
 def biorhythm(now: _dt.datetime, birth: _dt.datetime) -> dict[str, float]:
@@ -159,3 +171,12 @@ def mood_block(needs: dict[str, float], bio: dict[str, float] | None = None) -> 
     if bio is not None:
         lines.append(biorhythm_block(bio))
     return "\n".join(lines)
+
+
+def curiosity_nudge(curiosity: float, threshold: float) -> str:
+    """The v0.11 `## Цікавість` provocation: when `curiosity >= threshold`, a short Ukrainian nudge
+    to ask real, specific questions and dig deeper rather than mirror the user; below the threshold
+    → "". Pure — the text comes from `CURIOSITY_NUDGE_TEXT` (config/default), no I/O."""
+    if curiosity < threshold:
+        return ""
+    return "## Цікавість\n" + CURIOSITY_NUDGE_TEXT

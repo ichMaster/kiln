@@ -109,6 +109,27 @@ def test_mood_block_excludes_nudge_only_curiosity():
     assert "самотність 0.70" in block  # the cued needs still render unchanged
 
 
+# --- v0.11 curiosity_nudge (the ## Цікавість provocation) ---
+
+
+def test_curiosity_nudge_only_at_or_above_threshold():
+    from kiln.mood import curiosity_nudge
+
+    assert curiosity_nudge(0.49, 0.5) == ""  # below -> no nudge
+    assert curiosity_nudge(0.50, 0.5).startswith("## Цікавість")  # boundary == is included
+    assert "## Цікавість" in curiosity_nudge(0.8, 0.5)  # above
+
+
+def test_curiosity_nudge_text_is_the_configurable_persona_line(monkeypatch):
+    import kiln.mood as mood
+
+    # default carries the asks-don't-mirror persona line
+    assert "не дзеркаль" in mood.curiosity_nudge(0.6, 0.5)
+    # the text is sourced from CURIOSITY_NUDGE_TEXT — changing it changes the output
+    monkeypatch.setattr(mood, "CURIOSITY_NUDGE_TEXT", "ПИТАЙ")
+    assert mood.curiosity_nudge(0.6, 0.5) == "## Цікавість\nПИТАЙ"
+
+
 # --- mood config loaded from state/mood.json ---
 
 
