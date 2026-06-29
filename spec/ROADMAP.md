@@ -415,8 +415,9 @@ deterministic; local — no external calls.
 
 ### 1.1 Tick-server: engine = WS/HTTP server, clients attach — ⬜
 **Goal:** the engine is an always-on server; TUI and (later) web are clients; the
-foundation of the agent **hub**. Full design + the client/server split:
-[`spec/features/server-architecture.en.md`](features/server-architecture.en.md)
+foundation of the agent **hub** — and v1.1 already runs **two** agents (Agnika + the
+companion **Pashu**) to prove the hub is real, not single-tenant. Full design + the
+client/server split: [`spec/features/server-architecture.en.md`](features/server-architecture.en.md)
 ([UK](features/server-architecture.uk.md)).
 
 **Scope review (after v0):** v0 already drew every seam this needs — `Channel`
@@ -441,17 +442,23 @@ async/FSM rewrite is 1.2.
 5. **Non-blocking under load** — a blocking `deep` on one agent's thread must not stall the async layer
    (`/health` + a second agent stay responsive).
 6. **HTTP helpers** — `GET /agents`, `GET /agent/{id}/history?limit=N` (scrollback on attach).
-7. **Remote TUI client** — a `--remote ws://…` mode reusing `tui/render.py`; the in-process `Bridge`
-   stays for local/dev.
-8. **Docs + contracts** — promote ARCHITECTURE's planned server/event-protocol bullets to current.
+7. **Second agent — Pashu** — author a minimal `state/pashu/` (own canon/needs/mood/prompts) + register
+   `AgentRuntime("pashu")` at boot beside Agnika; both tick concurrently with isolated `.kiln/{id}/` +
+   `state/{id}/`; Pashu gets a narrower permission-scope field (enforced in 1.3). **Developing + connecting
+   Pashu is in this phase.**
+8. **Remote TUI client** — a `--remote ws://…/agent/{id}` mode (pick Agnika or Pashu) reusing
+   `tui/render.py`; the in-process `Bridge` stays for local/dev.
+9. **Docs + contracts** — promote ARCHITECTURE's planned server/event-protocol bullets to current.
 
 Stack: FastAPI/Starlette + websockets (silt is a working server example). **Out of scope:** the
-event-queue FSM (1.2), tools + permission enforcement (1.3), RAG (1.4), web client + multi-agent UI
-(v2). Everything `agent_id`-scoped (incl. a not-yet-enforced permission-scope field) so v2 is additive.
+event-queue FSM (1.2), tools + permission enforcement (1.3), RAG (1.4), the web client + the operator
+multi-agent **management UI** — add/start/stop/inspect agents from a panel; v1.1 registers Agnika +
+Pashu in config (v2). Everything `agent_id`-scoped (incl. a not-yet-enforced permission-scope field).
 
 **DoD:** the server ticks with **no client connected**; a TUI client attaches over WS and holds a
-turn; a **second client sees the same session**; the API is `agent_id`-scoped; model calls don't
-freeze the server; all tests on `MockBrain` (zero paid calls).
+turn; a **second client sees the same session**; the host runs **Agnika and Pashu concurrently with
+isolated state** (a turn on one doesn't touch the other); the API is `agent_id`-scoped; model calls
+don't freeze the server; all tests on `MockBrain` (zero paid calls).
 
 ### 1.2 State machine (FSM, events, queue) — ⬜
 **Goal:** an event-driven core behind the server.

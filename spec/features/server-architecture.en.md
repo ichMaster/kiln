@@ -41,7 +41,7 @@ zero lines** in v1.1. All new code is the host + transport.
                           ┌────────────────────────── server process (one) ─────────────────────────┐
                           │                                                                          │
    ws://…/agent/agnika ───┤  AgentHost (registry: agent_id -> AgentRuntime)                          │
-   ws://…/agent/lumi   ───┤                                                                          │
+   ws://…/agent/pashu  ───┤                                                                          │
                           │   AgentRuntime("agnika"):                                                │
                           │     ├─ engine.run(channel=ServerChannel, output=ServerOutput,            │
                           │     │             brain=LiveBrain)   ← on its OWN thread (as the TUI does)│
@@ -170,20 +170,25 @@ Because v0 finished the seams, v1.1 is tightly bounded.
 
 **In scope**
 - Async server (FastAPI/Starlette + websockets); a `GET /health` + `GET /agents`.
-- `AgentHost` + `AgentRuntime` (one agent), `agent_id`-scoped routes and persistence paths.
+- `AgentHost` + `AgentRuntime`, `agent_id`-scoped routes and persistence paths.
+- **Two agents hosted concurrently — Agnika *and* the companion Pashu (§12)** — each a separate
+  `AgentRuntime` with its own thread, bus, `state/{agent_id}/`, and `.kiln/{agent_id}/` (developing
+  Pashu's data + connecting a client to it is part of this version, not a later one).
 - `ServerChannel` + `ServerOutput` + a per-agent broadcast hub (the network `Bridge`).
 - The WS **event protocol** above (serialise the existing `Output`/`status` events; echo-free).
 - The tick loop runs server-side **with no client**; **non-blocking** model calls (per-agent thread).
-- A **remote-mode TUI client** that connects over WS and reuses `tui/render.py` (the in-process
-  `Bridge` stays for local/dev).
+- A **remote-mode TUI client** that connects over WS to a chosen `agent_id`, reusing `tui/render.py`
+  (the in-process `Bridge` stays for local/dev).
 - Tests against `MockBrain`: server ticks with no client; a client attaches and holds a turn; a
-  **second client sees the same session**; `agent_id` isolation; zero paid calls.
+  **second client sees the same session**; **Agnika and Pashu tick concurrently with isolated state**;
+  zero paid calls.
 
 **Out of scope (later phases)**
 - The explicit event-queue **FSM** and `idle/thinking/responding/cooling` states → **v1.2**.
 - A typed-argument **tool registry** + per-agent permission **enforcement** → **v1.3**.
 - **RAG** recall over transcripts → **v1.4**.
-- The **web** client and the **multi-agent management** UI → **v2**.
+- The **web** client and the operator **multi-agent management** UI (add/start/stop/inspect agents from
+  a panel — v1.1 registers Agnika + Pashu in config) → **v2**.
 - Auth / TLS / multi-user accounts (single-operator localhost assumed for v1.x).
 
 ## 10. Implementation plan
@@ -212,15 +217,23 @@ Ordered, each step shippable and tested; later steps depend on earlier ones.
    keep responding.*
 6. **HTTP helpers.** `GET /agents` (ids + status), `GET /agent/{id}/history?limit=N` from the store.
    *DoD: a fresh client renders recent scrollback on attach.*
-7. **Remote TUI client.** A `--remote ws://…` mode for the Textual app: a `WsBridge` (or a WS-backed
-   `Channel`/`Output` pair) that feeds the existing `_render`; reuse `render.py` unchanged. *DoD: the
-   TUI attached over WS holds a full turn and shows the status/needs panel, identical to local mode.*
-8. **Docs + contracts.** Update `ARCHITECTURE.md` (promote the planned server/event-protocol bullets
+7. **Second agent — Pashu (§12).** Author a minimal `state/pashu/` (its own `canon.md` + needs / mood
+   / prompts) and register `AgentRuntime("pashu")` in the host at boot, beside Agnika. Both agents tick
+   concurrently on separate threads with isolated `.kiln/{id}/` + `state/{id}/`; Pashu gets a narrower
+   permission-scope field (enforced in v1.3). *DoD: the host runs Agnika + Pashu at once; a client
+   attaches to `ws://…/agent/pashu` independently; a turn on one agent doesn't touch the other's
+   needs/store.*
+8. **Remote TUI client.** A `--remote ws://…/agent/{id}` mode for the Textual app (pick Agnika or
+   Pashu): a `WsBridge` (or WS-backed `Channel`/`Output`) that feeds the existing `_render`; reuse
+   `render.py` unchanged. *DoD: the TUI attached over WS to either agent holds a full turn and shows
+   the status/needs panel, identical to local mode.*
+9. **Docs + contracts.** Update `ARCHITECTURE.md` (promote the planned server/event-protocol bullets
    to "current"), pin the event protocol as a contract test. *DoD: ARCHITECTURE matches the shipped
    server; protocol contract test green.*
 
-**Critical path:** 1 → 2 → 3 → 4 → 7 (5/6 land alongside). **Effort:** ~M+M+M+M (the protocol and the
-remote client are the bulk; the engine is untouched). **Model note:** every test runs against
+**Critical path:** 1 → 2 → 3 → 4 → 7 → 8 (5/6 land alongside). **Effort:** ~M each (the protocol, the
+second agent, and the remote client are the bulk; the engine is untouched). **Model note:** every test
+runs against
 `MockBrain` — **zero paid calls**.
 
 ## 11. Risks & decisions
@@ -234,3 +247,32 @@ remote client are the bulk; the engine is untouched). **Model note:** every test
   It is a contract test.
 - **Backpressure.** A slow/dead client must not block the hub or the engine thread; broadcast is
   best-effort per connection (drop-and-disconnect a stuck socket), the engine never awaits a client.
+
+## 12. Second agent: **Pashu** (in scope of v1.1)
+
+v1.1 hosts **two** agents, not one: **Agnika** (`agent_id: "agnika"`, home / elevated) and **Pashu**
+(`agent_id: "pashu"`, the first companion). Hosting a *real* second agent — not merely an
+`agent_id`-scoped API — is **part of this version's DoD**: it is the proof that the host is a genuine
+multi-agent hub. Both **developing** Pashu and **connecting** to it ship in v1.1.
+
+**What it takes — and what it doesn't:**
+
+- **Zero engine changes.** Pashu runs the *same* `engine.run()` on its *own* thread; the mind is
+  identical code. Only its **data** differs. This is exactly what the `agent_id`-scoping of §8 buys.
+- **Development (Pashu's data).** Its own `agent_id`-scoped paths: a `state/pashu/` with **its own**
+  `canon.md` (Pashu's persona), `needs.json` (independent levels), `needs_model.yaml`, `mood.json`,
+  `prompts.md`, and `.kiln/pashu/{store.json, usage-ledger.jsonl}`. v1.1 ships a **minimal Pashu canon**
+  so a second agent genuinely runs (the full persona can deepen later); Agnika and Pashu never share
+  state.
+- **Connection (Pashu's bus + route).** A second `AgentRuntime("pashu")` runs beside
+  `AgentRuntime("agnika")` (the host is just a `dict`); `ws://…/agent/pashu` exposes Pashu's own
+  broadcast hub. A client attaches to Agnika **or** Pashu; both tick concurrently, and multiple clients
+  on Pashu see Pashu's session exactly as for Agnika.
+- **A narrower permission scope.** **Agnika = home / elevated**; **Pashu = a companion with a narrower
+  scope**. The scope field is set per agent in v1.1; **enforcement** arrives with tools in **v1.3** —
+  so Pashu's narrower scope only *bites* then.
+
+**Still out of scope here (v2):** the operator **management UI** to add / start / stop / inspect agents
+from a panel (§2.2 in the roadmap). In v1.1, Pashu is registered in **config** (a second `agent_id` +
+its `state/pashu/` files, both started at server boot); v2 makes that operator-driven from the UI.
+
