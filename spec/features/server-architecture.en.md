@@ -367,7 +367,7 @@ This is also part of phase 1.6.
 into one shared store — for example a shared picture of the world that they update together. This is the
 only way that brings back the problem we discussed earlier: when two agents write into the same file at
 once, they overwrite each other's changes. So this way has to wait for a proper database (PostgreSQL,
-from phase 1.9) that can manage simultaneous writes correctly, rather than a shared JSON file.
+from phase 1.10) that can manage simultaneous writes correctly, rather than a shared JSON file.
 
 Why do we prefer passing messages over sharing memory? Because in the first two ways each agent stays
 the only one writing to its own state, and the agents only ever exchange copies through the host. That
@@ -375,7 +375,7 @@ keeps the agents isolated, keeps concurrent access simple, and means no agent ca
 data. The third way gives up that safety, which is exactly why it depends on the database. So the
 natural order is: in 1.2 the agents are isolated; in 1.6 direct messages and observation appear, as a
 permission-controlled tool, and one TUI can hold several agents at once; shared memory comes only after
-the move to PostgreSQL in 1.9; and that shared substrate then powers the group-chat rooms in 1.10, where
+the move to PostgreSQL in 1.10; and that shared substrate then powers the group-chat rooms in 1.11, where
 several agents and the user share one conversation and everyone can answer to all.
 
 One last point — guarding against endless loops. Finding the right agent to message is easy, since each

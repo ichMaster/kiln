@@ -24,7 +24,7 @@ What is **not** here yet, so you are not surprised:
   arrives in phase 1.6.
 - **You cannot address several agents from one window.** One client talks to one agent; to use both,
   open two clients. A single window that holds several agents, and group rooms where everyone sees
-  everything, come later (1.6 and 1.10).
+  everything, come later (1.6 and 1.11).
 - **There is no operator UI** to add, start, or stop agents. You register an agent in a config file
   and restart the server (a management panel is a v2 concern).
 - **Permission scopes are set but not enforced.** Each agent carries a scope (the home agent is broad,
@@ -194,4 +194,4 @@ later enforcement, not a security boundary today.
   §13 (what's shared vs isolated, and the per-agent config), §14 (how agents *will* talk to each other,
   in 1.6).
 - [../spec/ROADMAP.md](../spec/ROADMAP.md) — §1.2 (this phase) and what comes next (1.6 inter-agent
-  messaging, 1.10 group rooms).
+  messaging, 1.11 group rooms).

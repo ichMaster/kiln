@@ -517,7 +517,7 @@ file; brute-force cosine top-K — ample at one user's corpus, no DB/server need
 recall top-K relevant fragments into the turn, deduped against the window, capped.
 Port from Lumi (`core/embedder.py`, `chunking.py`, `memory.py`). Decide embedder
 (local?), chunking, when to inject; keep recall behind a seam so the durable vector
-backend can move to **pgvector at 1.9**.
+backend can move to **pgvector at 1.10**.
 **DoD:** `/recall` returns relevant past lines; automatic RAG injects them per turn. (1.5 then exposes
 the same recall as a fire-able `recall` tool, so the FSM can recall on demand, not only auto-inject.)
 
@@ -541,7 +541,7 @@ host of 1.2 into a shared space. (Design: [server-architecture §14](features/se
 **Why here:** the direct continuation of v1.2 (Pashu) — it needs only 1.2's host and **1.5's tool
 registry** (for the `send_to` tool), and it's the first **user** of the `peer.message` event the 1.3 FSM
 reserves. Agents share no state with one another (messages pass as **copies** through the host), so
-there's no new persistence risk; the **shared-memory** form of agent talk waits for Postgres (1.9).
+there's no new persistence risk; the **shared-memory** form of agent talk waits for Postgres (1.10).
 **Tasks:** an inter-agent **`send_to(agent_id, text)` tool** — agent A's message lands on agent B's
 inbox tagged as coming from a **peer** (§14, form 1); **per-agent permission scope** (from 1.5) decides
 who may message whom; optional **observation** (form 2) — an agent subscribes to another's public stream
@@ -572,12 +572,33 @@ file; **validation at load** (unreachable states, unknown events/actions/tools);
 broken file heals to the default; a bad action/state is caught at load with a clear error; every
 transition is traceable; all on `MockBrain`.
 
-### 1.8 Non-blocking execution (FSM) — ⬜
+### 1.8 FSM simulation & calibration — ⬜
+**Goal:** **measure** an agent's behaviour, not just define it — run its FSM **headless** for thousands
+of ticks across scripted scenarios, collect the transition stream, and **visualize** the dynamics so you
+calibrate `fsm.yaml` (and the need model) from data, not guesswork.
+**Why here:** a declarative FSM (1.7) is "behaviour as data"; this is the loop that **tunes** it — define
+→ simulate → see the dynamics → re-tune. It consumes the **transition tracing** the 1.3/1.7 engine
+already emits — a harness + analytics around it, nothing new in the runtime. (Concept:
+[features/fsm.md](features/fsm.md).)
+**Tasks:** a **headless sim harness** — `engine.run` on `MockBrain`, fast ticks, no live model, driven by
+**scripted scenarios** (input patterns, need-level trajectories, time spans) for N ticks against one
+agent's `fsm.yaml`; a structured **trace** of every `state → event → guard → action → state` (+ tick +
+needs snapshot); **analytics over the trace** — a state-occupancy **histogram** (time in each state), a
+transition **heatmap** (from→to frequency), transition **timing/triggers** (when each fires + which
+event/guard caused it), and **scenario/variant comparison** (same FSM across scenarios, or two
+`fsm.yaml`s on one scenario); render to graphs (matplotlib/plotly) + a summary report; a `[sim]` extra
+so the base install stays light.
+**DoD:** a scenario suite runs an agent's FSM for thousands of ticks with **zero paid calls** and
+produces a state histogram + a transition heatmap + a when/why-transitions-fired timeline; two `fsm.yaml`
+variants are compared on the same scenario; the analytics surface a miscalibration (e.g. an unreachable
+state, or a state she never leaves) you can act on.
+
+### 1.9 Non-blocking execution (FSM) — ⬜
 **Goal:** a long `deep` call no longer freezes the machine — it runs on a **worker**, the FSM stays in
 `thinking`/`responding`, and the loop **keeps draining the event queue**; the reply returns as a
 `response.ready` event. So a `/status` (or a queued peer message) is handled *during* a call, not after.
 **Why here:** an optimization of the 1.3 runtime; the **later** phases inherit it for free — especially
-**group chats (1.10)**, where a busy N-way room makes a blocking deep call most painful. Reuses kiln's
+**group chats (1.11)**, where a busy N-way room makes a blocking deep call most painful. Reuses kiln's
 proven rotation-worker pattern — `_finalize_async` already computes off-thread and hands the result back
 through a queue. (Concept: [features/fsm.md](features/fsm.md).)
 **Tasks:** a model-calling action runs on a worker; the FSM enters `thinking`, the loop continues; the
@@ -588,18 +609,18 @@ does. Thread model unchanged (server-architecture §11).
 the reply lands; the reply still arrives and transitions to `responding`; Agnika's observable behaviour
 is otherwise unchanged; all on `MockBrain`.
 
-### 1.9 Persistence → PostgreSQL — ⬜
+### 1.10 Persistence → PostgreSQL — ⬜
 **Goal:** move per-agent persistence off JSON files onto **PostgreSQL**, behind a
 backend-agnostic **Store seam** — incremental writes (O(1) row `INSERT` vs today's
 O(n) whole-file rewrite every turn), safe concurrent multi-process access (no
 last-writer-wins clobbering), and a queryable backend (incl. **pgvector** for RAG)
 that v2's web + operator hub builds on. JSON stays the zero-dependency default;
 Postgres is opt-in.
-**Why here:** by 1.8 the engine is multi-agent (1.2), event-driven (1.3), with RAG
+**Why here:** by 1.9 the engine is multi-agent (1.2), event-driven (1.3), with RAG
 (1.4), tools (1.5), and cross-agent conversation (1.6) — the JSON store is now the
 ceiling (real-time persistence rewrites the whole file each turn; two processes on one
 agent's store clobber each other), the **shared-memory** form of agent talk (the
-group-chat rooms coming in 1.10) needs a backend that arbitrates writers, and v2 (web
+group-chat rooms coming in 1.11) needs a backend that arbitrates writers, and v2 (web
 client + admin panel + multi-agent management) needs concurrent, queryable storage.
 This is the **v1→v2 bridge**.
 **Tasks:** formalize `store.py` into a `StoreBackend` interface (load /
@@ -624,16 +645,16 @@ concurrently with no lost writes (the v1.1 clobbering hazard gone); RAG recall r
 a pgvector query; the JSON backend still passes the full store-contract suite and the
 `pytest` baseline needs no database.
 
-### 1.10 Group chats (shared rooms) — ⬜
+### 1.11 Group chats (shared rooms) — ⬜
 **Goal:** several **separate chat rooms**, each shared by the user and **several agents** — everyone in
 a room sees every message, and any agent can **answer the whole room**. The full multi-party form of the
 1.8 conversation: not the user addressing one agent, but a shared space where participants talk to all.
 **Why here:** a room is **shared conversation state** that every participant reads **and** writes — the
 "shared-memory" form [server-architecture §14](features/server-architecture.en.md) deferred to a
-write-arbitrating database, so it builds directly on **Postgres (1.9)**; the routing reuses 1.8's
+write-arbitrating database, so it builds directly on **Postgres (1.10)**; the routing reuses 1.6's
 host-brokered fan-out, generalized from one-to-one to a room.
 **Tasks:** a **room** model — an id, a participant set (the user + chosen agents), and a **shared message
-history in Postgres** (1.9); create / join / leave. **Fan-out:** a message posted to a room (by the user
+history in Postgres** (1.10); create / join / leave. **Fan-out:** a message posted to a room (by the user
 or any agent) is delivered to every other participant agent's inbox, tagged with the room and sender
 (§14 host-brokering, now N-way). **Answer-to-all:** an agent's reply goes back to the **room**, broadcast
 to every participant; an agent **decides whether to chime in** rather than being forced to answer every
