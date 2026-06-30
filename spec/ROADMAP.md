@@ -648,30 +648,6 @@ with nothing to add stays **silent** (no forced reply); the room transcript **pe
 a re-attached client replays the full room history; each agent's own needs/store remain untouched by the
 others; all on `MockBrain` (zero paid calls).
 
-### 1.11 Games — ⬜
-**Goal:** kiln's core as a swappable brain driving world-bodies / games.
-**Tasks:** a **brain↔body interface** (clay's pattern: the body sends needs + surroundings, the brain
-returns an action), proven by a **ladder of games over the one seam** — turn-based → real-time →
-strategy:
-- **tic-tac-toe** — the simplest turn-based game; the brain↔body seam smoke test.
-- **checkers** (`claude-code-test/russian-checkers`) — a full board: moves, TUI render.
-- **snake** / **pong** / **tetris** — real-time arcade: the brain acts on a **fast tick**, not in
-  turns (the seam must carry continuous control + a live frame, not just board states).
-- **MicroRTS** — real-time **strategy**: multi-unit planning under a clock, the stress test for the
-  seam (and a bridge toward a real opponent/agent driving the other side).
-
-Then integrate the **world-bodies** (a living world the brain inhabits, not a game it wins):
-- **mote** (`~/development/mote`) — a needs-driven ASCII creature whose **perception→intent** interface
-  *already is* this seam (body on fast ticks; the LLM mind consulted on a separate thread only when
-  something matters; `goto`/`build`/`rest`/`wander` + a `say` line). It mirrors kiln's own design, so
-  it's the **natural first world-body** — adapt its brain port to kiln's engine.
-- **clay** (voxel) / **silt** (Lenia) — richer world-bodies on the same seam.
-
-Specs in `lumi/.../games/`.
-**DoD:** Agnika plays a full **turn-based** game (tic-tac-toe, then checkers) **and** drives at least
-one **real-time** body (snake or pong) in the TUI — both through the same brain↔body seam; the same
-brain also drives a **world-body** (mote, then clay/silt). **MicroRTS** is the strategy stretch goal.
-
 ## v2 — Web & multi-agent hub
 
 ### 2.1 Web UI — ⬜
@@ -718,3 +694,30 @@ Haiku thoughts, `## Думки` in the prompt, `thoughts` in the store, `/though
 surfacing-as-a-turn). What stays for v3: a deeper **always-on inner-voice loop** that
 reflects between turns, **updates plans/mood**, and decides whether to speak (Lumi
 `core/inner_voice*` + `nudge.py`, on the FSM) — built on **3.2 Plans** once it lands.
+
+### 3.5 Games — ⬜
+**Goal:** kiln's core as a swappable brain driving world-bodies / games.
+**Why v3 (moved from v1):** embodiment, not engine plumbing — the same brain that has needs, plans, and
+an inner life (v3) now also *inhabits* worlds. v1 stays focused on the tick-server / hub / FSM / storage
+foundation; this is where the agent goes to live in a world.
+**Tasks:** a **brain↔body interface** (clay's pattern: the body sends needs + surroundings, the brain
+returns an action), proven by a **ladder of games over the one seam** — turn-based → real-time →
+strategy:
+- **tic-tac-toe** — the simplest turn-based game; the brain↔body seam smoke test.
+- **checkers** (`claude-code-test/russian-checkers`) — a full board: moves, TUI render.
+- **snake** / **pong** / **tetris** — real-time arcade: the brain acts on a **fast tick**, not in
+  turns (the seam must carry continuous control + a live frame, not just board states).
+- **MicroRTS** — real-time **strategy**: multi-unit planning under a clock, the stress test for the
+  seam (and a bridge toward a real opponent/agent driving the other side).
+
+Then integrate the **world-bodies** (a living world the brain inhabits, not a game it wins):
+- **mote** (`~/development/mote`) — a needs-driven ASCII creature whose **perception→intent** interface
+  *already is* this seam (body on fast ticks; the LLM mind consulted on a separate thread only when
+  something matters; `goto`/`build`/`rest`/`wander` + a `say` line). It mirrors kiln's own design, so
+  it's the **natural first world-body** — adapt its brain port to kiln's engine.
+- **clay** (voxel) / **silt** (Lenia) — richer world-bodies on the same seam.
+
+Specs in `lumi/.../games/`.
+**DoD:** Agnika plays a full **turn-based** game (tic-tac-toe, then checkers) **and** drives at least
+one **real-time** body (snake or pong) in the TUI — both through the same brain↔body seam; the same
+brain also drives a **world-body** (mote, then clay/silt). **MicroRTS** is the strategy stretch goal.
