@@ -487,18 +487,28 @@ de-globalizing config, **not** authoring Pashu's files):
 
 **Out of scope:** the operator panel to add/start/stop/inspect agents (v2) — here Pashu is registered in
 config, started at server boot; and **inter-agent communication** (agents talking to each other) → its
-own phase, **1.6** (built on the 1.5 tool registry — see
+own phase, **1.8** (built on the 1.5 tool registry — see
 [server-architecture §14](features/server-architecture.en.md)).
 **DoD:** the host runs **Agnika and Pashu concurrently with isolated state** — a turn or self-trigger
 on one **never** touches the other's needs/store; a TUI attaches over WS to Pashu and holds a turn;
 `agent_id` isolation is contract-tested; all tests on `MockBrain` (zero paid calls).
 
-### 1.3 State machine (FSM, events, queue) — ⬜
-**Goal:** an event-driven core behind the server.
-**Tasks:** states (idle/thinking/responding/cooling); one event queue (input,
-ticks, self-triggers) consumed one at a time; makes "input > self-trigger > idle"
-explicit; events = WS messages. cf. `lumi/core/cycle.py`.
-**DoD:** the loop is an FSM driven by a queue; the server emits the same events.
+### 1.3 FSM core (explicit, table-driven) — ⬜
+**Goal:** make the agent's behaviour an **explicit, table-driven** state machine instead of `run()`'s
+implicit `if/elif` priority — the foundation for a per-agent declarative FSM (1.6) and tool-actions
+(1.5). (Concept: [features/fsm.md](features/fsm.md).)
+**Tasks:** name the **states** (`idle`/`thinking`/`responding`/`cooling`/`resting`) and drive them from
+a **transition table** — `(state, event, guard) → (action, next_state)` — whose *default* table
+reproduces today's behaviour, so 1.3 is **behaviour-preserving**; a unified **event queue** (typed:
+`user.message`, `command`, `self_trigger:<need>`, `tick`, `rotate.request`; reserved `peer.message` /
+`room.message` / `tool.result`) consumed one at a time, folding the inbox + `rotate_results` into one
+and making "input > self-trigger > idle" a **queue policy**; an **action-registry seam** where the
+built-in actions (`chat`/`deep`/`reach_out`/`think`/`idle`/`rotate`) are **registered as built-in
+tools**, so 1.5 extends the *same* vocabulary; surface `cooling` as a real post-turn state. The model
+call still **blocks** within the agent (non-blocking execution is 1.7).
+**DoD:** the loop is an FSM over a queued transition table; `advance(state, event)` is unit-tested; the
+default table reproduces v1.2 behaviour (Agnika byte-for-byte, all tests green); the server emits the
+same events.
 
 ### 1.4 RAG — ⬜
 **Goal:** exact recall over past conversations.
@@ -507,25 +517,59 @@ file; brute-force cosine top-K — ample at one user's corpus, no DB/server need
 recall top-K relevant fragments into the turn, deduped against the window, capped.
 Port from Lumi (`core/embedder.py`, `chunking.py`, `memory.py`). Decide embedder
 (local?), chunking, when to inject; keep recall behind a seam so the durable vector
-backend can move to **pgvector at 1.7**.
+backend can move to **pgvector at 1.9**.
 **DoD:** `/recall` returns relevant past lines; automatic RAG injects them per turn.
 
 ### 1.5 Tools — ⬜
-**Goal:** Agnika's own permission-scoped tools.
-**Tasks:** a typed-argument tool registry, separate from Claude Code's; **per-agent
-permission scope** (Agnika = broad system/home; companions narrow); e.g.
-time/notes/RAG-search/start-a-game. cf. Lumi's file/imagetool/news.
-**DoD:** Agnika calls a registered tool within her scope; a companion agent is
-denied an out-of-scope tool.
+**Goal:** Agnika's own permission-scoped tools — **and the action vocabulary the FSM fires** (1.3/1.6).
+**Tasks:** a typed-argument tool registry, separate from Claude Code's; **per-agent permission scope**
+(Agnika = broad system/home; companions narrow); e.g. time/notes/RAG-search/start-a-game. Built **for
+the FSM**: the built-in actions (`chat`/`deep`/`reach_out`/`think`/`idle`/`rotate`, registered in 1.3)
+and user tools share **one registry**, so an `fsm.yaml` action is just a tool name and an agent's scope
+gates which its machine may fire (concept: [features/fsm.md](features/fsm.md)). cf. Lumi's
+file/imagetool/news.
+**DoD:** Agnika calls a registered tool within her scope; a companion agent is denied an out-of-scope
+tool; the FSM fires a built-in action through the same registry path as a user tool.
 
-### 1.6 Multi-agent conversation — ⬜
+### 1.6 Declarative FSM (YAML per agent) — ⬜
+**Goal:** define an agent's **behaviour in YAML**, not Python — `state/{id}/fsm.yaml` (states +
+transitions + tool-actions) interpreted by the 1.3 engine. An agent then differs in its *logic*, not
+only its calibration (needs/mood/persona). (Concept: [features/fsm.md](features/fsm.md).)
+**Why here:** it needs both halves it sits between — the **table-driven FSM** (1.3, the interpreter)
+and the **tool registry** (1.5, the action vocabulary). With both, this phase is a thin **loader**:
+`fsm.yaml` → the transition table the engine already runs.
+**Tasks:** a small **DSL** — states, `on: {event: {guard, action, to}}`, guards as a **constrained
+predicate** over needs/flags (`rest >= 0.9`, `self_messages`), actions referencing **tools** by name;
+a per-agent loader (`state/{id}/fsm.yaml` → table) that **heals to the default table** on a missing/bad
+file; **validation at load** (unreachable states, unknown events/actions/tools); **transition tracing**
+(`state → event → guard → action → state`). Spec the DSL first (event names, guard grammar, params).
+**DoD:** Pashu runs a hand-written `fsm.yaml` (e.g. reaches out on her own guard) with **no Python**; a
+broken file heals to the default; a bad action/state is caught at load with a clear error; every
+transition is traceable; all on `MockBrain`.
+
+### 1.7 Non-blocking execution (FSM) — ⬜
+**Goal:** a long `deep` call no longer freezes the machine — it runs on a **worker**, the FSM stays in
+`thinking`/`responding`, and the loop **keeps draining the event queue**; the reply returns as a
+`response.ready` event. So a `/status` (or a queued peer message) is handled *during* a call, not after.
+**Why here:** an optimization of the 1.3 runtime, independent of the social phases (which inherit it for
+free). Reuses kiln's proven rotation-worker pattern — `_finalize_async` already computes off-thread and
+hands the result back through a queue. (Concept: [features/fsm.md](features/fsm.md).)
+**Tasks:** a model-calling action runs on a worker; the FSM enters `thinking`, the loop continues; the
+worker enqueues `response.ready`; the per-agent **single-writer** invariant (all store writes on the
+agent thread) is preserved — the worker only computes, the agent thread applies, exactly as rotation
+does. Thread model unchanged (server-architecture §11).
+**DoD:** while an agent is mid-`deep` (mocked slow), a `/status` and a queued event are handled **before**
+the reply lands; the reply still arrives and transitions to `responding`; Agnika's observable behaviour
+is otherwise unchanged; all on `MockBrain`.
+
+### 1.8 Multi-agent conversation — ⬜
 **Goal:** one client, many agents — a single TUI where the user holds conversations with **several**
 hosted agents at once, **and** the agents can talk to **each other**. Turns the isolated multi-agent
 host of 1.2 into a shared space. (Design: [server-architecture §14](features/server-architecture.en.md).)
 **Why here:** 1.2 hosts several isolated agents and 1.5 builds the permission-scoped **tool registry** —
 this phase spends both. Agents share no state with one another (messages pass as **copies** through the
 host), so there's no new persistence risk; the **shared-memory** form of agent talk waits for Postgres
-(1.7).
+(1.9).
 **Tasks:** an inter-agent **`send_to(agent_id, text)` tool** — agent A's message lands on agent B's
 inbox tagged as coming from a **peer** (§14, form 1); **per-agent permission scope** (from 1.5) decides
 who may message whom; optional **observation** (form 2) — an agent subscribes to another's public stream
@@ -539,18 +583,18 @@ Pashu a message **within her scope** and Pashu's reply appears in the same windo
 the `send_to` scope cannot message a peer; a turn or peer message on one agent still **never** touches
 the other's needs/store; all on `MockBrain` (zero paid calls).
 
-### 1.7 Persistence → PostgreSQL — ⬜
+### 1.9 Persistence → PostgreSQL — ⬜
 **Goal:** move per-agent persistence off JSON files onto **PostgreSQL**, behind a
 backend-agnostic **Store seam** — incremental writes (O(1) row `INSERT` vs today's
 O(n) whole-file rewrite every turn), safe concurrent multi-process access (no
 last-writer-wins clobbering), and a queryable backend (incl. **pgvector** for RAG)
 that v2's web + operator hub builds on. JSON stays the zero-dependency default;
 Postgres is opt-in.
-**Why here:** by 1.6 the engine is multi-agent (1.2), event-driven (1.3), with RAG
-(1.4), tools (1.5), and cross-agent conversation (1.6) — the JSON store is now the
+**Why here:** by 1.8 the engine is multi-agent (1.2), event-driven (1.3), with RAG
+(1.4), tools (1.5), and cross-agent conversation (1.8) — the JSON store is now the
 ceiling (real-time persistence rewrites the whole file each turn; two processes on one
 agent's store clobber each other), the **shared-memory** form of agent talk (the
-group-chat rooms coming in 1.8) needs a backend that arbitrates writers, and v2 (web
+group-chat rooms coming in 1.10) needs a backend that arbitrates writers, and v2 (web
 client + admin panel + multi-agent management) needs concurrent, queryable storage.
 This is the **v1→v2 bridge**.
 **Tasks:** formalize `store.py` into a `StoreBackend` interface (load /
@@ -575,16 +619,16 @@ concurrently with no lost writes (the v1.1 clobbering hazard gone); RAG recall r
 a pgvector query; the JSON backend still passes the full store-contract suite and the
 `pytest` baseline needs no database.
 
-### 1.8 Group chats (shared rooms) — ⬜
+### 1.10 Group chats (shared rooms) — ⬜
 **Goal:** several **separate chat rooms**, each shared by the user and **several agents** — everyone in
 a room sees every message, and any agent can **answer the whole room**. The full multi-party form of the
-1.6 conversation: not the user addressing one agent, but a shared space where participants talk to all.
+1.8 conversation: not the user addressing one agent, but a shared space where participants talk to all.
 **Why here:** a room is **shared conversation state** that every participant reads **and** writes — the
 "shared-memory" form [server-architecture §14](features/server-architecture.en.md) deferred to a
-write-arbitrating database, so it builds directly on **Postgres (1.7)**; the routing reuses 1.6's
+write-arbitrating database, so it builds directly on **Postgres (1.9)**; the routing reuses 1.8's
 host-brokered fan-out, generalized from one-to-one to a room.
 **Tasks:** a **room** model — an id, a participant set (the user + chosen agents), and a **shared message
-history in Postgres** (1.7); create / join / leave. **Fan-out:** a message posted to a room (by the user
+history in Postgres** (1.9); create / join / leave. **Fan-out:** a message posted to a room (by the user
 or any agent) is delivered to every other participant agent's inbox, tagged with the room and sender
 (§14 host-brokering, now N-way). **Answer-to-all:** an agent's reply goes back to the **room**, broadcast
 to every participant; an agent **decides whether to chime in** rather than being forced to answer every
@@ -599,7 +643,7 @@ with nothing to add stays **silent** (no forced reply); the room transcript **pe
 a re-attached client replays the full room history; each agent's own needs/store remain untouched by the
 others; all on `MockBrain` (zero paid calls).
 
-### 1.9 Games — ⬜
+### 1.11 Games — ⬜
 **Goal:** kiln's core as a swappable brain driving world-bodies / games.
 **Tasks:** a **brain↔body interface** (clay's pattern: the body sends needs + surroundings, the brain
 returns an action), proven by a **ladder of games over the one seam** — turn-based → real-time →
