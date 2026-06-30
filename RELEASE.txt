@@ -1,6 +1,26 @@
 kiln — Release Notes
 ====================
 
+Version 1.2.0 (2026-06-30)
+--------------------------
+- Companion agent — Pashu (v1.2 phase; KILN-056..060): a real second agent hosted beside Agnika with
+  fully isolated state. A per-agent AgentConfig (need-model / mood / tunables from state/{id}/) is
+  threaded through engine.run; the default agent reads the module globals, so Agnika is byte-for-byte.
+- Multi-agent host: server.yaml's agents: list boots each agent on its own thread with isolated
+  state/{id}/ + .kiln/{id}/; a per-agent permission scope (broad/narrow; set, NOT enforced until 1.5);
+  GET /agents lists both with their scope. Attach a companion with ./connect.sh pashu.
+- Per-agent display name: the TUI labels each agent by its own name (Pashu shows as Pashu, not Agnika);
+  the status snapshot carries agent_name.
+- Pashu authored: state/pashu/ (canon, needs_model, mood, prompts, config) — a distinct companion.
+- Config split (post-1.1): .env (secrets + personal) + state/config.yaml (agent) + server.yaml
+  (server); live need levels moved from state/needs.json to .kiln/needs.json.
+- Real-time persistence + session control: every turn persisted live; /reload (re-read
+  canon/prompts/memory mid-session) and /rotate (non-blocking session rotation) as slash commands and
+  HTTP endpoints; optional auto-rotation (rotate_every_hours).
+- World timeline now draws from ALL prior sessions, not just the last.
+- Docs/roadmap: docs/multi-agent-setup.md; the v1 roadmap reorganized (RAG before Tools; new phases
+  1.6 Multi-agent conversation, 1.7 PostgreSQL, 1.8 Group chats, 1.9 Games + a game ladder + mote).
+
 Version 1.1.0 (2026-06-29)
 --------------------------
 - Tick-server (v1.1): run the agent as an always-on WS/HTTP server (new server/ package, the
