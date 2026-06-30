@@ -449,7 +449,7 @@ async/FSM rewrite is 1.2.
 Stack: FastAPI/Starlette + websockets (silt is a working server example). The host is `agent_id`-keyed
 and **N-capable from the start** (incl. a not-yet-enforced permission-scope field) so **1.2** is purely
 additive. **Out of scope:** the **second agent / multi-agent concurrency → 1.2**; the event-queue FSM
-(1.3), tools + permission enforcement (1.4), RAG (1.5), the web client + operator management UI (v2).
+(1.3), RAG (1.4), tools + permission enforcement (1.5), the web client + operator management UI (v2).
 
 **DoD:** the server ticks with **no client connected**; a TUI client attaches over WS and holds a
 turn; a **second client sees the same session**; the API is `agent_id`-scoped; model calls don't
@@ -463,7 +463,7 @@ and with **fully isolated state**. Builds directly on 1.1's `agent_id`-scoped, N
 `needs_model.yaml` / `mood.json` / `prompts.md` — and `.kiln/pashu/`; register a second
 `AgentRuntime("pashu")` at boot; both agents tick concurrently on separate threads; `GET /agents`
 lists both; a client attaches to `ws://…/agent/pashu` independently; Pashu carries a **narrower
-permission-scope** field (only *enforced* once tools land in 1.4). **Out of scope:** the operator panel
+permission-scope** field (only *enforced* once tools land in 1.5). **Out of scope:** the operator panel
 to add/start/stop/inspect agents (v2) — here Pashu is registered in config, started at server boot.
 **DoD:** the host runs **Agnika and Pashu concurrently with isolated state** — a turn or self-trigger
 on one **never** touches the other's needs/store; a TUI attaches over WS to Pashu and holds a turn;
@@ -476,21 +476,21 @@ ticks, self-triggers) consumed one at a time; makes "input > self-trigger > idle
 explicit; events = WS messages. cf. `lumi/core/cycle.py`.
 **DoD:** the loop is an FSM driven by a queue; the server emits the same events.
 
-### 1.4 Tools — ⬜
-**Goal:** Agnika's own permission-scoped tools.
-**Tasks:** a typed-argument tool registry, separate from Claude Code's; **per-agent
-permission scope** (Agnika = broad system/home; companions narrow); e.g.
-time/notes/RAG-search/start-a-game. cf. Lumi's file/imagetool/news.
-**DoD:** Agnika calls a registered tool within her scope; a companion agent is
-denied an out-of-scope tool.
-
-### 1.5 RAG — ⬜
+### 1.4 RAG — ⬜
 **Goal:** exact recall over past conversations.
 **Tasks:** embed `history/*.json` → vector store; recall top-K relevant fragments
 into the turn, deduped against the window, capped. Port from Lumi
 (`core/embedder.py`, `chunking.py`, `memory.py`). Decide embedder (local?), store
 (sqlite-vss/chroma), chunking, when to inject.
 **DoD:** `/recall` returns relevant past lines; automatic RAG injects them per turn.
+
+### 1.5 Tools — ⬜
+**Goal:** Agnika's own permission-scoped tools.
+**Tasks:** a typed-argument tool registry, separate from Claude Code's; **per-agent
+permission scope** (Agnika = broad system/home; companions narrow); e.g.
+time/notes/RAG-search/start-a-game. cf. Lumi's file/imagetool/news.
+**DoD:** Agnika calls a registered tool within her scope; a companion agent is
+denied an out-of-scope tool.
 
 ### 1.6 Games — ⬜
 **Goal:** kiln's core as a swappable brain driving world-bodies / games.

@@ -163,7 +163,7 @@ reshape:
   `prompts.md`). The default agent (`agnika`) maps to today's paths for a clean migration.
 - **Runtime:** one `AgentRuntime` per id (its own loop, bus, brain). The host is just a `dict`.
 - **Permission scope** (the field that later gates tools) is attached to each agent here but **not yet
-  enforced** — enforcement is v1.4 (Tools). Designing the field now keeps v1.4 additive.
+  enforced** — enforcement is v1.5 (Tools). Designing the field now keeps v1.5 additive.
 
 ## 9. Scope: v1.1 (server) + v1.2 (Pashu), reviewed against v0
 
@@ -189,8 +189,8 @@ Because v0 finished the seams, both phases are tightly bounded. **v1.1** = the s
 
 **Out of scope (later phases)**
 - The explicit event-queue **FSM** and `idle/thinking/responding/cooling` states → **v1.3**.
-- A typed-argument **tool registry** + per-agent permission **enforcement** → **v1.4**.
-- **RAG** recall over transcripts → **v1.5**.
+- **RAG** recall over transcripts → **v1.4**.
+- A typed-argument **tool registry** + per-agent permission **enforcement** → **v1.5**.
 - The **web** client and the operator **multi-agent management** UI (add/start/stop/inspect agents from
   a panel — v1.2 registers Pashu in config) → **v2**.
 - Auth / TLS / multi-user accounts (single-operator localhost assumed for v1.x).
@@ -282,7 +282,7 @@ on top of the v1.1 single-agent server.
   broadcast hub. A client attaches to Agnika **or** Pashu; both tick concurrently, and multiple clients
   on Pashu see Pashu's session exactly as for Agnika.
 - **A narrower permission scope.** **Agnika = home / elevated**; **Pashu = a companion with a narrower
-  scope**. The scope field is set per agent in v1.2; **enforcement** arrives with tools in **v1.4** —
+  scope**. The scope field is set per agent in v1.2; **enforcement** arrives with tools in **v1.5** —
   so Pashu's narrower scope only *bites* then.
 
 **Still out of scope here (v2):** the operator **management UI** to add / start / stop / inspect agents
