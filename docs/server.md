@@ -204,8 +204,9 @@ Persistence is **`agent_id`-scoped**, split into committed **config** (`state/`)
 | store (summaries, transcripts, facts, thoughts) | `.kiln/store.json` | `.kiln/{id}/store.json` |
 | usage ledger / report | `.kiln/usage-*.{jsonl,md}` | `.kiln/{id}/usage-*` |
 
-Two agents never share a store. (The mood / needs-model *config* is still global in v1.1; per-agent
-config arrives with the second agent in v1.2.)
+Two agents never share a store. The mood / needs-model / config is **also per-agent** (v1.2) — each
+agent runs on its own calibration. For hosting more than one agent at once, see
+[multi-agent-setup.md](multi-agent-setup.md).
 
 ## 8. Troubleshooting
 
@@ -223,5 +224,7 @@ config arrives with the second agent in v1.2.)
 - [../spec/features/server-architecture.en.md](../spec/features/server-architecture.en.md) — the
   design: seams reused, process/concurrency model, the network bus, the event protocol, `agent_id`
   scoping, and the v1.2 second agent (Pashu).
+- [multi-agent-setup.md](multi-agent-setup.md) — hosting **several agents at once** (v1.2): the
+  `agents:` list, connecting to each, what's isolated, and adding a companion.
 - [../spec/ROADMAP.md](../spec/ROADMAP.md) — §1.1 (this server) and what's next.
 - [architecture.md](architecture.md) · [how-it-works.md](how-it-works.md) — the engine itself.

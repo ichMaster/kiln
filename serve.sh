@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# serve.sh — start the kiln tick-server (v1.1): hosts the home agent (agnika) over WS/HTTP.
+# serve.sh — start the kiln tick-server: hosts the configured agents (server.yaml `agents:`,
+# v1.2 = agnika + pashu) over WS/HTTP, each on its own thread with fully isolated state.
 #
 # Host/port come from server.yaml (via config.py); a KILN_HOST / KILN_PORT env var still overrides.
 #   ./serve.sh                       # address from server.yaml (default 127.0.0.1:8000)
@@ -23,8 +24,10 @@ else
   exit 1
 fi
 
-# Resolve host/port from config.py (server.yaml + env overrides + defaults).
-read -r HOST PORT < <("$PY" -c "from kiln import config as c; print(c.SERVER_HOST, c.SERVER_PORT)")
+# Resolve host/port + the configured agents from config.py (server.yaml + env overrides + defaults).
+read -r HOST PORT AGENTS < <(
+  "$PY" -c "from kiln import config as c; print(c.SERVER_HOST, c.SERVER_PORT, ','.join(c.SERVER_AGENTS))"
+)
 
 # Resolve the uvicorn binary: KILN_UVICORN pin, else the project venv, else PATH.
 UVICORN="${KILN_UVICORN:-}"
@@ -39,5 +42,5 @@ if [ -z "$UVICORN" ]; then
   fi
 fi
 
-echo "kiln tick-server → http://${HOST}:${PORT}  (home agent: agnika)  — Ctrl-C to stop"
+echo "kiln tick-server → http://${HOST}:${PORT}  (agents: ${AGENTS})  — Ctrl-C to stop"
 exec env KILN_SERVE=1 "$UVICORN" server.app:app --host "$HOST" --port "$PORT" "$@"
