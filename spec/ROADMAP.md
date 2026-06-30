@@ -467,8 +467,8 @@ substantive work — move the need-model/mood/tunable loads from module constant
 lists both; a client attaches to `ws://…/agent/pashu` independently; Pashu carries a **narrower
 permission-scope** field (only *enforced* once tools land in 1.5). **Out of scope:** the operator panel
 to add/start/stop/inspect agents (v2) — here Pashu is registered in config, started at server boot; and
-**inter-agent communication** (agents talking to each other) → v1.5+ (it's a permission-scoped action —
-see [server-architecture §14](features/server-architecture.en.md)).
+**inter-agent communication** (agents talking to each other) → its own phase, **1.6** (built on the 1.5
+tool registry — see [server-architecture §14](features/server-architecture.en.md)).
 **DoD:** the host runs **Agnika and Pashu concurrently with isolated state** — a turn or self-trigger
 on one **never** touches the other's needs/store; a TUI attaches over WS to Pashu and holds a turn;
 `agent_id` isolation is contract-tested; all tests on `MockBrain` (zero paid calls).
@@ -487,7 +487,7 @@ file; brute-force cosine top-K — ample at one user's corpus, no DB/server need
 recall top-K relevant fragments into the turn, deduped against the window, capped.
 Port from Lumi (`core/embedder.py`, `chunking.py`, `memory.py`). Decide embedder
 (local?), chunking, when to inject; keep recall behind a seam so the durable vector
-backend can move to **pgvector at 1.6**.
+backend can move to **pgvector at 1.7**.
 **DoD:** `/recall` returns relevant past lines; automatic RAG injects them per turn.
 
 ### 1.5 Tools — ⬜
@@ -498,18 +498,40 @@ time/notes/RAG-search/start-a-game. cf. Lumi's file/imagetool/news.
 **DoD:** Agnika calls a registered tool within her scope; a companion agent is
 denied an out-of-scope tool.
 
-### 1.6 Persistence → PostgreSQL — ⬜
+### 1.6 Multi-agent conversation — ⬜
+**Goal:** one client, many agents — a single TUI where the user holds conversations with **several**
+hosted agents at once, **and** the agents can talk to **each other**. Turns the isolated multi-agent
+host of 1.2 into a shared space. (Design: [server-architecture §14](features/server-architecture.en.md).)
+**Why here:** 1.2 hosts several isolated agents and 1.5 builds the permission-scoped **tool registry** —
+this phase spends both. Agents share no state with one another (messages pass as **copies** through the
+host), so there's no new persistence risk; the **shared-memory** form of agent talk waits for Postgres
+(1.7).
+**Tasks:** an inter-agent **`send_to(agent_id, text)` tool** — agent A's message lands on agent B's
+inbox tagged as coming from a **peer** (§14, form 1); **per-agent permission scope** (from 1.5) decides
+who may message whom; optional **observation** (form 2) — an agent subscribes to another's public stream
+and overhears it. Loop protection is the agent's **own cadence + the rest need** (no special guard, see
+§14). The **remote TUI** attaches to **several agents at once** (one socket per agent under the hood)
+and shows them together — switch between agents, or a pane each — and the user directs a typed line to
+the chosen agent (an active-agent selection or an `@name` prefix); every turn is labelled with the
+speaking agent's name (the user's, each agent's, and peer messages).
+**DoD:** from **one TUI** the user holds simultaneous conversations with Agnika and Pashu; Agnika sends
+Pashu a message **within her scope** and Pashu's reply appears in the same window; a companion **denied**
+the `send_to` scope cannot message a peer; a turn or peer message on one agent still **never** touches
+the other's needs/store; all on `MockBrain` (zero paid calls).
+
+### 1.7 Persistence → PostgreSQL — ⬜
 **Goal:** move per-agent persistence off JSON files onto **PostgreSQL**, behind a
 backend-agnostic **Store seam** — incremental writes (O(1) row `INSERT` vs today's
 O(n) whole-file rewrite every turn), safe concurrent multi-process access (no
 last-writer-wins clobbering), and a queryable backend (incl. **pgvector** for RAG)
 that v2's web + operator hub builds on. JSON stays the zero-dependency default;
 Postgres is opt-in.
-**Why here:** by 1.5 the engine is multi-agent (1.2), event-driven (1.3), with RAG
-(1.4) + tools (1.5) — the JSON store is now the ceiling (real-time persistence
-rewrites the whole file each turn; two processes on one agent's store clobber each
-other) and v2 (web client + admin panel + multi-agent management) needs concurrent,
-queryable storage. This is the **v1→v2 bridge**.
+**Why here:** by 1.6 the engine is multi-agent (1.2), event-driven (1.3), with RAG
+(1.4), tools (1.5), and cross-agent conversation (1.6) — the JSON store is now the
+ceiling (real-time persistence rewrites the whole file each turn; two processes on one
+agent's store clobber each other), the **shared-memory** form of agent-to-agent talk
+(1.6) needs a backend that arbitrates writers, and v2 (web client + admin panel +
+multi-agent management) needs concurrent, queryable storage. This is the **v1→v2 bridge**.
 **Tasks:** formalize `store.py` into a `StoreBackend` interface (load /
 `recent_history` / `upsert_session` / `remove_session` / add summary·facts·thought) —
 the engine already routes all persistence through it, so this is a refactor and JSON
@@ -532,7 +554,7 @@ concurrently with no lost writes (the v1.1 clobbering hazard gone); RAG recall r
 a pgvector query; the JSON backend still passes the full store-contract suite and the
 `pytest` baseline needs no database.
 
-### 1.7 Games — ⬜
+### 1.8 Games — ⬜
 **Goal:** kiln's core as a swappable brain driving world-bodies / games.
 **Tasks:** a brain↔body interface (clay's pattern: body sends needs + surroundings,
 brain returns an action); first concrete game — **checkers**
