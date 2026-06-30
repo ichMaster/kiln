@@ -375,10 +375,20 @@ data. The third way gives up that safety, which is exactly why it depends on the
 natural order is: in 1.2 the agents are isolated; in 1.5 direct messages and observation appear, as a
 permission-controlled tool; and shared memory comes only after the move to PostgreSQL.
 
-One last point — guarding against endless loops. Finding the right agent is easy, because each one
-already has its own name (the same identifier used everywhere else). But if Agnika writes to Pashu, who
-replies to Agnika, who writes back again, the two could loop forever. So the tool that lets agents
-message each other has to come with safety rails from the start: a limit on how many messages, a limit
-on how deep an exchange can go, and a guard against an endless back-and-forth. This matters all the more
-because every one of those messages is a real, paid call to the model.
+One last point — guarding against endless loops. Finding the right agent to message is easy, since each
+one already has its own name. The real worry is a runaway exchange: if Agnika writes to Pashu, who
+replies to Agnika, who writes back again, the two could in principle loop forever — and every one of
+those messages is a real, paid call to the model. The reassuring part is that kiln needs no special
+anti-loop machinery for this; two mechanisms the agent already has take care of it.
+
+The first is the response speed, which is set in the config. An agent never replies instantly — it
+speaks on the beat of its tick loop, and how fast that beat runs is a config setting. So even a brisk
+back-and-forth unfolds at that deliberate, throttled pace rather than at machine speed.
+
+The second is the agent's need for rest. kiln already treats rest as one of the agent's needs: the more
+it does — writing messages included — the more that need builds up, and once it climbs high enough the
+engine makes the agent fall quiet and rest instead of producing more. An agent drawn into a long
+exchange therefore simply tires, exactly as it would during any other busy stretch. This isn't a rule
+invented for agent-to-agent chat; it's the same needs model that governs all of the agent's behaviour,
+doing its job here too.
 
