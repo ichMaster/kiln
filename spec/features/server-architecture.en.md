@@ -335,39 +335,50 @@ never moves the other's needs) is exactly what proves the de-globalization is co
 
 ## 14. Inter-agent communication
 
-v1.2 agents are **islands** — isolated by design, with **no** channel between them (the DoD is
-*non-interference*). But the two seams that carry user↔agent traffic generalise to agent↔agent, so the
-architecture is communication-ready while the capability itself is a **later phase**: sending to a peer
-is an *action*, so it's permission-scoped and rides with the **tool registry (v1.5)**.
+In version 1.2 each agent lives on its own. Agnika and Pashu have no channel between them at all, and
+that is deliberate: the whole point of the phase is to prove that they don't interfere with each other.
+Even so, the architecture is already ready for agents to talk to one another whenever we decide to allow
+it. It won't take much, because the same machinery the user uses to talk to an agent works just as well
+between two agents. The capability itself arrives later — around phase 1.5, together with tools — since
+"send a message to another agent" is an action, and actions are governed by permissions.
 
-**The host is the broker.** `AgentHost` already holds every `AgentRuntime` — hence every inbox and
-every hub — so it is the natural switchboard. Three forms, safest first:
+The key idea is that the host always sits in the middle. The host is the component that holds all the
+agents together, so it is the one that knows how to find any of them and hand a message across. There
+are three ways agents can communicate, from the simplest and safest to the most involved.
 
-1. **Host-brokered message-passing (the first form).** Agent A emits a *peer message* addressed to
-   `agent_id` B; the host drops it onto **B's existing inbox**, tagged with `sender_id` and a `peer`
-   role (≠ `user`). B handles it as an ordinary turn but knows it's from a peer. This **reuses the
-   `Channel` inbox verbatim** — no new transport — and passes only a **copy**, so there's **no shared
-   mutable state and no new corruption risk** (just one more producer on B's single-consumer queue). It
-   surfaces as a **tool** (`send_to(agent_id, text)`), hence permission-scoped: Agnika (elevated) may DM
-   a companion; a locked-down companion may be denied. → **v1.5**.
-2. **Observation / subscription.** The host subscribes B to A's **broadcast hub**, so B *overhears* A's
-   public messages (a shared "room"). One-way, read-only, still no shared writes — useful for an ambient
-   companion reacting to another agent. → **v1.5** (same scoping).
-3. **Shared blackboard (deferred).** A common store/memory both agents read **and write** (shared
-   world-state). This is the only form that **reintroduces the multi-writer hazard of §11** — two agent
-   threads writing one store, the clobbering from the store-concurrency discussion — so it waits for a
-   backend that arbitrates writers: the **PostgreSQL/pgvector backend (v1.6)** with row/advisory locks,
-   not a shared JSON file.
+**The first way is a direct message through the host.** Suppose Agnika wants to say something to Pashu.
+She doesn't reach into Pashu directly; she hands the message to the host and says who it is for. The
+host drops that message into Pashu's ordinary inbox — the very same queue the user's messages arrive in
+— and simply marks that it came from another agent rather than from a person. Pashu then handles it like
+any normal turn, but knows it came from a peer. This is the safest way, because the agents share
+nothing: the message is passed as a copy, so one agent cannot corrupt another's state. And because
+sending a message to another agent is its own action, it will be offered as a tool, which means it can
+be allowed or denied per agent — granted to Agnika, who has broad permissions, and withheld from a
+locked-down companion. This arrives in phase 1.5.
 
-**Why message-passing, not shared memory.** Forms 1–2 keep every agent the **sole writer of its own
-state** and move *copies* through the host, so the isolation invariant survives untouched, concurrency
-stays trivial, and a misbehaving agent can't corrupt a peer. Form 3 trades that for a shared substrate
-and therefore depends on the DB phase. The natural path: **v1.2 isolated → v1.5 host-brokered DMs +
-observation (tool-scoped) → v1.6+ optional shared blackboard on Postgres.**
+**The second way is observation.** Instead of writing to a specific agent, one agent can simply listen
+to what another says out loud. The host subscribes Pashu to Agnika's stream of messages, and Pashu
+hears everything she says, as if they were in the same room. This is one-way and read-only — nobody
+changes anyone else's state. It is useful when you want one agent to react in the background to another.
+This is also phase 1.5.
 
-**Addressing & loop-safety.** Peers are already addressable by `agent_id` (the same key the WS routes
-and persistence paths use) — no new namespace. Whatever exposes peer-send owns the safety rails: a
-**loop guard** (stop A→B→A ping-pong), per-agent **rate limits**, and a depth/turn budget, so two
-agents can't spin each other into a runaway exchange (each peer message is still a real, billed turn on
-the shared key).
+**The third way is shared memory, and it is deferred.** Here both agents don't just read but also write
+into one shared store — for example a shared picture of the world that they update together. This is the
+only way that brings back the problem we discussed earlier: when two agents write into the same file at
+once, they overwrite each other's changes. So this way has to wait for a proper database (PostgreSQL,
+from phase 1.6) that can manage simultaneous writes correctly, rather than a shared JSON file.
+
+Why do we prefer passing messages over sharing memory? Because in the first two ways each agent stays
+the only one writing to its own state, and the agents only ever exchange copies through the host. That
+keeps the agents isolated, keeps concurrent access simple, and means no agent can corrupt another's
+data. The third way gives up that safety, which is exactly why it depends on the database. So the
+natural order is: in 1.2 the agents are isolated; in 1.5 direct messages and observation appear, as a
+permission-controlled tool; and shared memory comes only after the move to PostgreSQL.
+
+One last point — guarding against endless loops. Finding the right agent is easy, because each one
+already has its own name (the same identifier used everywhere else). But if Agnika writes to Pashu, who
+replies to Agnika, who writes back again, the two could loop forever. So the tool that lets agents
+message each other has to come with safety rails from the start: a limit on how many messages, a limit
+on how deep an exchange can go, and a guard against an endless back-and-forth. This matters all the more
+because every one of those messages is a real, paid call to the model.
 
