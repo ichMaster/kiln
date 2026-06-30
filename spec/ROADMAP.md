@@ -518,18 +518,21 @@ recall top-K relevant fragments into the turn, deduped against the window, cappe
 Port from Lumi (`core/embedder.py`, `chunking.py`, `memory.py`). Decide embedder
 (local?), chunking, when to inject; keep recall behind a seam so the durable vector
 backend can move to **pgvector at 1.9**.
-**DoD:** `/recall` returns relevant past lines; automatic RAG injects them per turn.
+**DoD:** `/recall` returns relevant past lines; automatic RAG injects them per turn. (1.5 then exposes
+the same recall as a fire-able `recall` tool, so the FSM can recall on demand, not only auto-inject.)
 
 ### 1.5 Tools — ⬜
 **Goal:** Agnika's own permission-scoped tools — **and the action vocabulary the FSM fires** (1.3/1.6).
 **Tasks:** a typed-argument tool registry, separate from Claude Code's; **per-agent permission scope**
-(Agnika = broad system/home; companions narrow); e.g. time/notes/RAG-search/start-a-game. Built **for
-the FSM**: the built-in actions (`chat`/`deep`/`reach_out`/`think`/`idle`/`rotate`, registered in 1.3)
-and user tools share **one registry**, so an `fsm.yaml` action is just a tool name and an agent's scope
-gates which its machine may fire (concept: [features/fsm.md](features/fsm.md)). cf. Lumi's
-file/imagetool/news.
+(Agnika = broad system/home; companions narrow); e.g. time / notes / start-a-game, **plus a `recall`
+tool over the 1.4 RAG index** — on-demand recall as a fire-able FSM action, complementing 1.4's
+automatic per-turn injection. Built **for the FSM**: the built-in actions
+(`chat`/`deep`/`reach_out`/`think`/`idle`/`rotate`, registered in 1.3) and user tools share **one
+registry**, so an `fsm.yaml` action is just a tool name and an agent's scope gates which its machine
+may fire (concept: [features/fsm.md](features/fsm.md)). cf. Lumi's file/imagetool/news.
 **DoD:** Agnika calls a registered tool within her scope; a companion agent is denied an out-of-scope
-tool; the FSM fires a built-in action through the same registry path as a user tool.
+tool; the `recall` tool queries the 1.4 RAG index; the FSM fires a built-in action through the same
+registry path as a user tool.
 
 ### 1.6 Declarative FSM (YAML per agent) — ⬜
 **Goal:** define an agent's **behaviour in YAML**, not Python — `state/{id}/fsm.yaml` (states +
