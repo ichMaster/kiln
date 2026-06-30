@@ -529,9 +529,10 @@ Postgres is opt-in.
 **Why here:** by 1.6 the engine is multi-agent (1.2), event-driven (1.3), with RAG
 (1.4), tools (1.5), and cross-agent conversation (1.6) — the JSON store is now the
 ceiling (real-time persistence rewrites the whole file each turn; two processes on one
-agent's store clobber each other), the **shared-memory** form of agent-to-agent talk
-(1.6) needs a backend that arbitrates writers, and v2 (web client + admin panel +
-multi-agent management) needs concurrent, queryable storage. This is the **v1→v2 bridge**.
+agent's store clobber each other), the **shared-memory** form of agent talk (the
+group-chat rooms coming in 1.8) needs a backend that arbitrates writers, and v2 (web
+client + admin panel + multi-agent management) needs concurrent, queryable storage.
+This is the **v1→v2 bridge**.
 **Tasks:** formalize `store.py` into a `StoreBackend` interface (load /
 `recent_history` / `upsert_session` / `remove_session` / add summary·facts·thought) —
 the engine already routes all persistence through it, so this is a refactor and JSON
@@ -554,7 +555,31 @@ concurrently with no lost writes (the v1.1 clobbering hazard gone); RAG recall r
 a pgvector query; the JSON backend still passes the full store-contract suite and the
 `pytest` baseline needs no database.
 
-### 1.8 Games — ⬜
+### 1.8 Group chats (shared rooms) — ⬜
+**Goal:** several **separate chat rooms**, each shared by the user and **several agents** — everyone in
+a room sees every message, and any agent can **answer the whole room**. The full multi-party form of the
+1.6 conversation: not the user addressing one agent, but a shared space where participants talk to all.
+**Why here:** a room is **shared conversation state** that every participant reads **and** writes — the
+"shared-memory" form [server-architecture §14](features/server-architecture.en.md) deferred to a
+write-arbitrating database, so it builds directly on **Postgres (1.7)**; the routing reuses 1.6's
+host-brokered fan-out, generalized from one-to-one to a room.
+**Tasks:** a **room** model — an id, a participant set (the user + chosen agents), and a **shared message
+history in Postgres** (1.7); create / join / leave. **Fan-out:** a message posted to a room (by the user
+or any agent) is delivered to every other participant agent's inbox, tagged with the room and sender
+(§14 host-brokering, now N-way). **Answer-to-all:** an agent's reply goes back to the **room**, broadcast
+to every participant; an agent **decides whether to chime in** rather than being forced to answer every
+line — the same routing/needs model, so a room doesn't erupt into N replies per message and the **rest
+need + cadence** throttle crosstalk. **TUI:** several separate chats open at once — switch between rooms;
+within a room every turn is labelled by who said it (the user, each agent); the user posts to the active
+room, optionally `@`-mentioning a participant to aim a line (everyone still sees it). Per-agent private
+state (needs, store) stays isolated — **only the room transcript is shared.**
+**DoD:** the user runs **two** separate rooms; in a room with Agnika + Pashu a user message reaches both,
+and each may answer the whole room (both replies visible to the user **and to each other**); an agent
+with nothing to add stays **silent** (no forced reply); the room transcript **persists in Postgres** and
+a re-attached client replays the full room history; each agent's own needs/store remain untouched by the
+others; all on `MockBrain` (zero paid calls).
+
+### 1.9 Games — ⬜
 **Goal:** kiln's core as a swappable brain driving world-bodies / games.
 **Tasks:** a brain↔body interface (clay's pattern: body sends needs + surroundings,
 brain returns an action); first concrete game — **checkers**

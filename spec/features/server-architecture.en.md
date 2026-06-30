@@ -374,8 +374,9 @@ the only one writing to its own state, and the agents only ever exchange copies 
 keeps the agents isolated, keeps concurrent access simple, and means no agent can corrupt another's
 data. The third way gives up that safety, which is exactly why it depends on the database. So the
 natural order is: in 1.2 the agents are isolated; in 1.6 direct messages and observation appear, as a
-permission-controlled tool, and one TUI can hold several agents at once; and shared memory comes only
-after the move to PostgreSQL in 1.7.
+permission-controlled tool, and one TUI can hold several agents at once; shared memory comes only after
+the move to PostgreSQL in 1.7; and that shared substrate then powers the group-chat rooms in 1.8, where
+several agents and the user share one conversation and everyone can answer to all.
 
 One last point — guarding against endless loops. Finding the right agent to message is easy, since each
 one already has its own name. The real worry is a runaway exchange: if Agnika writes to Pashu, who
