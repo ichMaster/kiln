@@ -28,7 +28,7 @@ v1.1 виносить цикл у **окремий серверний проце
 | `Channel.poll() -> str \| None` | неблокуючий порт вводу (`StdinChannel`, `ScriptedChannel`, `TuiChannel`) | `ServerChannel` вичитує чергу вводу агента, яку наповнюють WS-події `user.message`/`command` |
 | `Output` (`user`/`agent`/`usage`/`notice`/`status`) | ядро пише **кожну** відповідь/usage/notice/status через цей порт, ніколи не `print` | `ServerOutput` серіалізує кожен виклик у WS-подію і **розсилає** її всім клієнтам цього агента |
 | `Bridge` (echo-free inbox/outbox) | внутрішньопроцесні потокобезпечні черги між потоком рушія та UI | узагальнюється у **мережеву шину**: WS замінює in-memory черги; echo-free збережено |
-| `status(snapshot)` щотіку | `{status, model, branch, tick, needs, thresholds, actions, hottest, cooldowns, stats}` | стає WS-подією `status` дослівно (живить статус-бар / панель потреб будь-якого клієнта) |
+| `status(snapshot)` щотіку | `{status, model, agent_name, branch, tick, needs, thresholds, actions, hottest, cooldowns, stats}` | стає WS-подією `status` дослівно (живить статус-бар / панель потреб будь-якого клієнта; v1.2 `agent_name` маркує правильного агента) |
 | `agent(text, is_self, lead, model, is_thought, is_curiosity)` | прапорці відповіді, що зросли у v0.10/v0.11 | подія `agnika.message` несе ті самі прапорці, щоб кожен клієнт рендерив однаково |
 | `.kiln/store.json`, `state/*` | посесійний store + поагентна калібрація (`needs_model.yaml`, `mood.json`, `canon.md`, …) | масштабовано **по `agent_id`**, щоб агенти не ділили стан |
 

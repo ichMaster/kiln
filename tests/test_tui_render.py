@@ -161,5 +161,12 @@ def test_needs_panel_shows_action():
 
 
 def test_agent_label_marks_self():
-    assert agent_label(False) == "Agnika"
+    assert agent_label(False) == "Agnika"  # default name (back-compat)
     assert agent_label(True) == "Agnika (self)"
+
+
+def test_agent_label_uses_per_agent_name():
+    # v1.2: the name comes from the status snapshot's agent_name, so a TUI on Pashu shows Pashu
+    assert agent_label(False, "Pashu") == "Pashu"
+    assert agent_label(True, "Pashu") == "Pashu (self)"
+    assert agent_label(False, "Агніка") == "Агніка"

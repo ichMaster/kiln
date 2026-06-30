@@ -25,13 +25,14 @@ _WEEKDAYS_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"]
 _ECHOED_STAMP = re.compile(r"^(?:\s*\[[^\]]*\d{1,2}:\d{2}[^\]]*\]\s*)+")
 
 
-def role_label(role: str) -> str:
+def role_label(role: str, agent_name: str | None = None) -> str:
     """Speaker name for a turn's role in transcripts / timeline / `/prompt` (USER_NAME /
-    AGENT_NAME; falls back to the raw role for anything else)."""
+    AGENT_NAME; falls back to the raw role for anything else). `agent_name` (v1.2): the per-agent
+    bot name; None → the module global AGENT_NAME (the agnika default)."""
     if role == ROLE_USER:
         return USER_NAME
     if role == ROLE_BOT:
-        return AGENT_NAME
+        return agent_name if agent_name is not None else AGENT_NAME
     return role
 
 
@@ -52,11 +53,13 @@ def strip_leading_stamp(text: str) -> str:
     return _ECHOED_STAMP.sub("", text or "").lstrip()
 
 
-def strip_leading_name(text: str) -> str:
+def strip_leading_name(text: str, agent_name: str | None = None) -> str:
     """Drop a leading `**Агніка:**` / `Агніка:` the model echoed into a reply — it mirrors the
-    timeline's `Name:` labels. Only her own AGENT_NAME (never the user's); bold markers optional.
-    Built at call time so it respects the current AGENT_NAME."""
-    pat = rf"^\s*\*{{0,2}}\s*{re.escape(AGENT_NAME)}\s*\*{{0,2}}\s*:\s*\*{{0,2}}\s*"
+    timeline's `Name:` labels. Only her own name (never the user's); bold markers optional.
+    `agent_name` (v1.2): the per-agent name to strip; None → the module global AGENT_NAME, so a
+    companion (e.g. Pashu) strips its OWN echoed name, not Agnika's."""
+    name = agent_name if agent_name is not None else AGENT_NAME
+    pat = rf"^\s*\*{{0,2}}\s*{re.escape(name)}\s*\*{{0,2}}\s*:\s*\*{{0,2}}\s*"
     return re.sub(pat, "", text or "")
 
 

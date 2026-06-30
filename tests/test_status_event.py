@@ -21,6 +21,7 @@ from kiln.usage import usage_record
 SNAPSHOT_KEYS = {
     "status",
     "model",
+    "agent_name",
     "branch",
     "tick",
     "needs",

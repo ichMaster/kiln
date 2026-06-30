@@ -28,9 +28,10 @@ def fmt_tok(n: int) -> str:
     return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
 
 
-def agent_label(is_self: bool) -> str:
-    """Reply name; self-triggered replies are marked `Agnika (self)`."""
-    return "Agnika (self)" if is_self else "Agnika"
+def agent_label(is_self: bool, name: str = "Agnika") -> str:
+    """Reply name; self-triggered replies are marked `… (self)`. `name` (v1.2) is the agent's name
+    from the status snapshot (`agent_name`) — so a TUI on Pashu shows Pashu, not Agnika."""
+    return f"{name} (self)" if is_self else name
 
 
 def user_label() -> str:

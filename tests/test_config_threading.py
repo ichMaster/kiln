@@ -92,3 +92,16 @@ def test_run_threads_config_into_drift_and_status(monkeypatch):
     )
     assert snaps[-1]["thresholds"]["connection"] == 0.99  # config's triggers, not the global
     assert snaps[-1]["needs"]["connection"] == pytest.approx(0.15)  # 3 idle ticks × 0.05 drift
+
+
+def test_status_snapshot_carries_per_agent_name():
+    """The snapshot carries agent_name so a remote TUI labels the right agent (None → global)."""
+    import kiln.config as config
+    from kiln.stats import SessionStats
+
+    state, tg, stats = State(needs={}), eng.TriggerBook(), SessionStats()
+    pashu = dataclasses.replace(AgentConfig.for_agent(), agent_name="Пашу")
+    assert (
+        eng._status_snapshot("idle", state, tg, stats, None, 0)["agent_name"] == config.AGENT_NAME
+    )
+    assert eng._status_snapshot("idle", state, tg, stats, None, 0, pashu)["agent_name"] == "Пашу"

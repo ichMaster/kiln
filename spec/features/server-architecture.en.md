@@ -29,7 +29,7 @@ proved a thread-plus-bus topology (`Bridge`). So v1.1 is **not** a rewrite of th
 | `Channel.poll() -> str \| None` | non-blocking input port (`StdinChannel`, `ScriptedChannel`, `TuiChannel`) | a `ServerChannel` drains a per-agent input queue fed by WS `user.message` / `command` |
 | `Output` (`user`/`agent`/`usage`/`notice`/`status`) | the core writes **every** reply/usage/notice/status through this port, never `print` | a `ServerOutput` serialises each call to a WS event and **broadcasts** it to all clients on that agent |
 | `Bridge` (echo-free inbox/outbox) | in-process thread-safe queues between the engine thread and the UI | generalised into a **network bus**: WS replaces the in-memory queues; echo-free is preserved |
-| `status(snapshot)` every tick | `{status, model, branch, tick, needs, thresholds, actions, hottest, cooldowns, stats}` | becomes the `status` WS event verbatim (drives any client's status bar / needs panel) |
+| `status(snapshot)` every tick | `{status, model, agent_name, branch, tick, needs, thresholds, actions, hottest, cooldowns, stats}` | becomes the `status` WS event verbatim (drives any client's status bar / needs panel; v1.2 `agent_name` labels the right agent) |
 | `agent(text, is_self, lead, model, is_thought, is_curiosity)` | reply flags grown across v0.10/v0.11 | the `agnika.message` event carries the same flags so any client renders identically |
 | `.kiln/store.json`, `state/*` | per-session store + per-agent calibration (`needs_model.yaml`, `mood.json`, `canon.md`, …) | scoped **per `agent_id`** so multiple agents don't share state |
 

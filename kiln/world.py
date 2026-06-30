@@ -63,32 +63,35 @@ def world_now(now: _dt.datetime, location: str = "") -> str:
     return f"{head}\nОрієнтуйся на час доби: {_RHYTHM[part]}."
 
 
-def recent_timed(history: list[dict], n: int) -> str:
+def recent_timed(history: list[dict], n: int, agent_name: str | None = None) -> str:
     """The last `n` turns as a timestamped timeline — `[Сб 28.06.2026 11:52] Віталік: …`. Every
     line carries the full date+time (`fmt_stamp`); turns without a parseable `at` show no stamp.
-    Empty / `n <= 0` → ""."""
+    Empty / `n <= 0` → "". `agent_name` (v1.2): the per-agent bot label; None → the global."""
     if n <= 0 or not history:
         return ""
     lines = []
     for t in history[-n:]:
-        who = role_label(t.get("role") or "?")
+        who = role_label(t.get("role") or "?", agent_name)
         # drop any echoed stamp + name label baked into the stored reply
-        text = strip_leading_name(strip_leading_stamp((t.get("text") or "").strip()))
+        text = strip_leading_name(strip_leading_stamp((t.get("text") or "").strip()), agent_name)
         stamp = fmt_stamp(t.get("at"))
         prefix = f"{stamp} " if stamp else ""
         lines.append(f"{prefix}{who}: {text}")
     return "\n".join(lines)
 
 
-def world_block(now: _dt.datetime, location: str, history: list[dict], n: int) -> str:
+def world_block(
+    now: _dt.datetime, location: str, history: list[dict], n: int, agent_name: str | None = None
+) -> str:
     """The full world block for the system prompt: the `## Зараз` paragraph + the
     `## Повідомлення з минулої сесії` timeline. Each section is omitted when empty (the timeline
-    is empty when there's no prior session); `""` when both are. Pure (now injected)."""
+    is empty when there's no prior session); `""` when both are. Pure (now injected).
+    `agent_name` (v1.2): the per-agent bot label for the timeline; None → the global default."""
     parts = []
     nowtext = world_now(now, location)
     if nowtext.strip():
         parts.append("## Зараз\n" + nowtext)
-    timed = recent_timed(history, n)
+    timed = recent_timed(history, n, agent_name)
     if timed.strip():
         parts.append("## Повідомлення з минулої сесії\n" + timed)
     return "\n\n".join(parts)

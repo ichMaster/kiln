@@ -177,6 +177,7 @@ class KilnApp(App):
         self._brain = brain
         self._engine_thread: threading.Thread | None = None
         self._last_reply = ""  # for Ctrl+Y (copy last reply)
+        self._agent_name = "Agnika"  # display name; updated from each status snapshot (per-agent)
         self._transcript: list[str] = []  # plain-text mirror of the log (for Ctrl+O)
 
     def compose(self) -> ComposeResult:
@@ -225,6 +226,7 @@ class KilnApp(App):
                 self._render(log, event)
 
     def _update_status(self, snap: dict) -> None:
+        self._agent_name = snap.get("agent_name") or self._agent_name  # per-agent reply label
         self.query_one("#status", Static).update(status_line1(snap))
         self.query_one("#stats", Static).update(status_line2(snap))
         rows = needs_panel_lines(snap)
@@ -243,7 +245,7 @@ class KilnApp(App):
                 return
             is_self = event.get("is_self", False)
             name_style = _SELF_STYLE if is_self else _BOT_STYLE
-            name = agent_label(is_self)
+            name = agent_label(is_self, self._agent_name)
             if event.get("is_curiosity"):  # v0.11: subtle marker — she acted on the curiosity nudge
                 name += " (?)"
             model = event.get("model")

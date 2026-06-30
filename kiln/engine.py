@@ -35,6 +35,7 @@ from pathlib import Path
 from .brain import Brain, LiveBrain, MockBrain
 from .commands import handle_command
 from .config import (
+    AGENT_NAME,
     BIORHYTHM,
     CHAT_MODEL,
     DEEP_MODEL,
@@ -406,6 +407,9 @@ def respond(
     chat_model = config.chat_model if config is not None else CHAT_MODEL
     deep_model = config.deep_model if config is not None else DEEP_MODEL
     sat = config.satiation if config is not None else SATIATION
+    name = (
+        config.agent_name if config is not None else AGENT_NAME
+    )  # strip THIS agent's echoed label
     if force:
         cls = force
     else:
@@ -436,9 +440,9 @@ def respond(
         route = f"TOOLS/{deep_model.split('-')[1]}"
         event = "deep"
 
-    # Strip a leading name the model echoed (it mirrors the timeline's "Агніка:" labels) — clean
+    # Strip a leading name the model echoed (it mirrors the timeline's "Name:" labels) — clean
     # for both display and storage, so it never shows and never compounds in the next timeline.
-    reply = strip_leading_name(reply)
+    reply = strip_leading_name(reply, name)
     # The reply goes into the history too (timestamped, v0.8).
     history.append(turn(ROLE_BOT, reply))
 
@@ -476,6 +480,7 @@ def _status_snapshot(
     return {
         "status": status,
         "model": model,
+        "agent_name": config.agent_name if config is not None else AGENT_NAME,  # v1.2: TUI label
         "branch": branch,
         "tick": tick,
         "needs": dict(state.needs),
@@ -562,6 +567,9 @@ def run(
     mood_cfg = (
         config.mood if config is not None else None
     )  # None -> mood.py module globals (agnika)
+    agent_name = (
+        config.agent_name if config is not None else AGENT_NAME
+    )  # bot label (timeline/reply)
     paths.state_dir.mkdir(parents=True, exist_ok=True)  # state dir must exist for writing
     paths.store_file.parent.mkdir(parents=True, exist_ok=True)  # .kiln[/{agent}] for store + needs
     state = load_state(paths.needs_file)
@@ -600,7 +608,11 @@ def run(
         # v0.8 world + v0.9 mood + v0.10 thoughts, composed PER TURN — the clock, needs (incl. the
         # v0.11 curiosity cue in ## Настрій), and latest thoughts stay live; the prior-session
         # timeline and the day's biorhythm are static. All off -> the static base.
-        world = world_block(_now(), USER_LOCATION, prev_turns, recent_messages) if world_on else ""
+        world = (
+            world_block(_now(), USER_LOCATION, prev_turns, recent_messages, agent_name)
+            if world_on
+            else ""
+        )
         mood = mood_block(state.needs, session_bio if bio_on else None, mood_cfg) if mood_on else ""
         thoughts = (
             thoughts_block(store["thoughts"], thoughts_in_prompt, {h["text"] for h in history})
@@ -638,7 +650,7 @@ def run(
         t0 = time.monotonic()
         text, usage = brain.chat(ephemeral, _system())
         stats.record("thought", usage, time.monotonic() - t0)
-        text = strip_leading_name(text).strip()
+        text = strip_leading_name(text, agent_name).strip()
         apply_satiation(state, "thought", config)  # the thought discharges «незібраність»
         if not text:
             return None

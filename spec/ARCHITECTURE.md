@@ -245,7 +245,8 @@ multi-agent is additive, not a rewrite:
   asked), shown with a subtle ` (?)`. The TUI bridge `agent` event carries both. The method set
   foreshadows the event protocol below.
 - **Status event (v0.4):** `run()` emits a `status(snapshot)` **every tick** —
-  `{status, model, branch, tick, needs, thresholds, actions, hottest, cooldowns, stats}` where
+  `{status, model, agent_name, branch, tick, needs, thresholds, actions, hottest, cooldowns, stats}`
+  (`agent_name` v1.2 — the per-agent display name, so a remote TUI labels the right agent) where
   `stats = {turns, tokens_total, tokens_by_branch, last_tokens, last_latency,
   avg_latency}` (`SessionStats`). It's the live data the TUI status bar + needs panel
   render from; a precursor to the v1.1 WS `status` event.
