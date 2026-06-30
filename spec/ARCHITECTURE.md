@@ -279,6 +279,16 @@ multi-agent is additive, not a rewrite:
 - `state/memory.md` — datestamped cross-session summaries (generated; gitignored).
 - `history/session-*.json` — `{session, started_at, ended_at, mode, turns, history[]}` (generated; gitignored; RAG corpus).
 - `.env` — models + scalar knobs + `ANTHROPIC_API_KEY` (gitignored).
+
+> **Per-agent calibration (v1.2, `config.AgentConfig`).** `AgentConfig.for_agent(id)` bundles one
+> agent's full calibration — the need model (`needs_model.yaml`), the tunables (`config.yaml`), and the
+> mood bands/cues (`mood.json`) — each read from that agent's `state/{id}/`. The **default agent**
+> (agnika / unset) reads the flat `state/`, reproducing the module-level globals **byte-for-byte**; a
+> missing/broken file heals to the `DEFAULT_*`. **`config.yaml` is scoped per-agent**
+> (`state/{id}/config.yaml`) — the settled decision — so a companion can run its own model / tick rate;
+> an env var (UPPER_SNAKE) still overrides any agent's value per key. KILN-057 threads the `AgentConfig`
+> into `engine.run`; until then the engine reads the module globals (= the agnika config).
+
 - Planned: per-`agent_id` scoping of all the above; structured memory (facts/impressions), plans, vector store.
 
 ## Configuration and secrets

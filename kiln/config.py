@@ -392,3 +392,108 @@ DEFAULT_CANON = (
 # Marker words that hint at a need for reasoning or actions.
 THINK_HINTS = ("чому", "поясни", "проаналізуй", "порівняй", "розбери", "обґрунтуй")
 TOOL_HINTS = ("файл", "запусти", "збережи", "прочитай", "пошукай", "знайди", "пошук")
+
+
+# --- Per-agent calibration (v1.2, KILN-056) ---------------------------------
+# v1.1 loads the calibration as the module-level constants above (one global set). v1.2 makes it
+# PER-AGENT: `AgentConfig.for_agent(id)` bundles a single agent's full calibration — the need MODEL
+# (drift/satiation/triggers + scalars from needs_model.yaml), the tunables (models/ticks/awareness…
+# from config.yaml), and the mood bands/cues (mood.json) — each from that agent's `state/{id}/`.
+# The DEFAULT agent (agnika / unset) reads the flat `state/` files, so it reproduces the globals
+# above byte-for-byte. `config.yaml` is scoped PER-AGENT (`state/{id}/config.yaml`) — the settled
+# decision — so a companion can run a cheaper model or a slower tick; a real env var (UPPER_SNAKE)
+# still overrides any agent's value, the same operator escape hatch as the globals. KILN-057 threads
+# this into `engine.run`; until then the engine reads the module globals (= the agnika config).
+@dataclass(frozen=True)
+class AgentConfig:
+    agent_id: str
+    # need MODEL (state/{id}/needs_model.yaml)
+    need_triggers: dict
+    drift: dict
+    satiation: dict
+    reach_out_need: str
+    reach_out_models: tuple
+    reflect_need: str
+    self_cooldown: int
+    thought_cooldown: int
+    rest_wake: float
+    # tunables (state/{id}/config.yaml; env var > file > default)
+    chat_model: str
+    deep_model: str
+    thought_model: str
+    tick_seconds: float
+    think_threshold: float
+    thinking_tokens: int
+    thoughts_enabled: bool
+    thought_visible_every: int
+    thoughts_in_prompt: int
+    facts_enabled: bool
+    facts_digest_lines: int
+    max_facts: int
+    memory_summaries: int
+    summary_sentences: int
+    world_awareness: bool
+    mood_awareness: bool
+    biorhythm: bool
+    recent_messages: int
+    usage_report: bool
+    agent_name: str
+    agent_birth: str
+    rotate_every_hours: float
+    # mood bands/cues (state/{id}/mood.json), raw config
+    mood: dict
+
+    @classmethod
+    def for_agent(cls, agent_id: str | None = None) -> AgentConfig:
+        """Resolve one agent's full calibration from its `state/{id}/` files (the default agent uses
+        the flat `state/`, reproducing the module globals). A missing/broken file falls back to the
+        built-in `DEFAULT_*`; an env var (UPPER_SNAKE) still overrides any tunable per key."""
+        import copy
+
+        from .mood import load_mood  # lazy: mood imports config (avoid the cycle)
+
+        sdir = AgentPaths.for_agent(agent_id).state_dir
+        cfg = load_config(sdir / "config.yaml")
+        try:
+            nm = _build_needs(load_needs(sdir / "needs_model.yaml"))
+        except (KeyError, TypeError, ValueError):
+            nm = _build_needs(DEFAULT_NEEDS)  # structurally malformed -> defaults
+        mood = load_mood(sdir / "mood.json")  # load_mood already heals a missing/broken file
+        chat = _opt_str(cfg, "chat_model", "CHAT_MODEL", "claude-haiku-4-5-20251001")
+        return cls(
+            agent_id=agent_id or DEFAULT_AGENT,
+            need_triggers=copy.deepcopy(nm["NEED_TRIGGERS"]),
+            drift=copy.deepcopy(nm["DRIFT"]),
+            satiation=copy.deepcopy(nm["SATIATION"]),
+            reach_out_need=nm["REACH_OUT_NEED"],
+            reach_out_models=nm["REACH_OUT_MODELS"],
+            reflect_need=nm["REFLECT_NEED"],
+            self_cooldown=nm["SELF_COOLDOWN"],
+            thought_cooldown=nm["THOUGHT_COOLDOWN"],
+            rest_wake=nm["REST_WAKE"],
+            chat_model=chat,
+            deep_model=_opt_str(cfg, "deep_model", "DEEP_MODEL", "claude-opus-4-8"),
+            thought_model=_opt_str(cfg, "thought_model", "THOUGHT_MODEL", "") or chat,
+            tick_seconds=_opt_float(cfg, "tick_seconds", "TICK_SECONDS", 0.5),
+            think_threshold=_opt_float(cfg, "think_threshold", "THINK_THRESHOLD", 0.45),
+            thinking_tokens=_opt_int(cfg, "thinking_tokens", "THINKING_TOKENS", 8000),
+            thoughts_enabled=_opt_bool(cfg, "thoughts_enabled", "THOUGHTS_ENABLED", True),
+            thought_visible_every=_opt_int(
+                cfg, "thought_visible_every", "THOUGHT_VISIBLE_EVERY", 5
+            ),
+            thoughts_in_prompt=_opt_int(cfg, "thoughts_in_prompt", "THOUGHTS_IN_PROMPT", 8),
+            facts_enabled=_opt_bool(cfg, "facts_enabled", "FACTS_ENABLED", True),
+            facts_digest_lines=_opt_int(cfg, "facts_digest_lines", "FACTS_DIGEST_LINES", 8),
+            max_facts=_opt_int(cfg, "max_facts", "MAX_FACTS", 0),
+            memory_summaries=_opt_int(cfg, "memory_summaries", "MEMORY_SUMMARIES", 0),
+            summary_sentences=_opt_int(cfg, "summary_sentences", "SUMMARY_SENTENCES", 5),
+            world_awareness=_opt_bool(cfg, "world_awareness", "WORLD_AWARENESS", True),
+            mood_awareness=_opt_bool(cfg, "mood_awareness", "MOOD_AWARENESS", True),
+            biorhythm=_opt_bool(cfg, "biorhythm", "BIORHYTHM", True),
+            recent_messages=_opt_int(cfg, "recent_messages", "RECENT_MESSAGES", 10),
+            usage_report=_opt_bool(cfg, "usage_report", "USAGE_REPORT", True),
+            agent_name=_opt_str(cfg, "agent_name", "AGENT_NAME", "Агніка"),
+            agent_birth=_opt_str(cfg, "agent_birth", "AGENT_BIRTH", ""),
+            rotate_every_hours=_opt_float(cfg, "rotate_every_hours", "ROTATE_EVERY_HOURS", 0.0),
+            mood=copy.deepcopy(mood),
+        )
