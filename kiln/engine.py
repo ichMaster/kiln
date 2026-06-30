@@ -48,6 +48,7 @@ from .config import (
     REFLECT_NEED,
     REST_MESSAGE,
     REST_WAKE,
+    ROTATE_EVERY_HOURS,
     SATIATION,
     SELF_COOLDOWN,
     SELF_SILENCE_NOTE,
@@ -635,6 +636,7 @@ def run(
     reached_out = False  # she self-initiated and the user hasn't replied since (anti-repeat)
     rest_threshold = NEED_TRIGGERS.get("rest", {}).get("threshold", 1.1)  # >1 -> never sleeps
     last_tick = time.monotonic()  # for catch-up drift over real time
+    session_start_wall = last_tick  # for auto-rotation (ROTATE_EVERY_HOURS); reset on rotate
     try:
         while (ticks is None or t < ticks) and not (stop_event and stop_event.is_set()):
             # A model call blocks the loop, so one iteration can last many
@@ -669,6 +671,13 @@ def run(
                 output.notice(
                     f"[rotate] previous session summarized{f' + {added} facts' if added else ''}"
                 )
+            # Auto-rotation: every ROTATE_EVERY_HOURS of real time, rotate the session (only when it
+            # has content worth summarizing). 0 = off. The /rotate command sets this flag too.
+            do_rotate = (
+                ROTATE_EVERY_HOURS > 0
+                and bool(history)
+                and (time.monotonic() - session_start_wall) >= ROTATE_EVERY_HOURS * 3600
+            )
             # Rest gate (hysteresis): when fatigue (rest) reaches its threshold Agnika stops
             # answering and only recovers (idle) until rest falls back to REST_WAKE. The band
             # (sleep >= threshold, wake <= REST_WAKE) makes her actually rest instead of
@@ -712,30 +721,7 @@ def run(
                     prev_turns = _previous_session_turns(paths.store_file, started)
                     output.notice("[reload] canon, prompts, and memory reloaded")
                 elif action == "rotate":
-                    # Non-blocking rotation: cut over to a FRESH session now; the slow summary/facts
-                    # for the old one run on a worker and fold in later (the agent never pauses).
-                    old_id, old_turns, old_stats = started, list(history), stats
-                    cleaned_old = prune_history(old_turns)
-                    if not cleaned_old:
-                        remove_session(store, old_id)  # all-noise: nothing worth summarizing
-                        save_store(store, paths.store_file)
-                    else:
-                        oended = _dt.datetime.now().isoformat(timespec="seconds")
-                        ostamp = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
-                        upsert_session(store, old_id, old_id, session_mode, cleaned_old, oended)
-                        save_store(store, paths.store_file)
-                        existing = [f.get("text", "") for f in store.get("facts", [])]
-                        threading.Thread(
-                            target=_finalize_async,
-                            args=(old_id, cleaned_old, existing, old_stats, old_id, oended, ostamp),
-                            daemon=True,
-                        ).start()
-                    started = _dt.datetime.now().isoformat(timespec="microseconds")
-                    history.clear()
-                    stats = SessionStats()
-                    branch = None
-                    prev_turns = _previous_session_turns(paths.store_file, started)
-                    output.notice("[rotate] session rotated; summarizing the previous one…")
+                    do_rotate = True  # rotated after this tick's input is handled (below)
                 elif action == "handled":
                     pass  # command handled (commands work even while resting)
                 elif resting:
@@ -796,6 +782,34 @@ def run(
             else:
                 apply_satiation(state, "idle")  # silence: rest + cooling down
                 # a silent tick isn't printed — check state via /status
+
+            if do_rotate:
+                # Non-blocking rotation (from /rotate or the timer): cut over to a fresh session now,
+                # the old one's slow summary/facts on a worker (folded in later). The agent never
+                # pauses (real-time persistence already stored the old turns).
+                old_id, old_turns, old_stats = started, list(history), stats
+                cleaned_old = prune_history(old_turns)
+                if not cleaned_old:
+                    remove_session(store, old_id)  # all-noise: nothing worth summarizing
+                    save_store(store, paths.store_file)
+                else:
+                    oended = _dt.datetime.now().isoformat(timespec="seconds")
+                    ostamp = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+                    upsert_session(store, old_id, old_id, session_mode, cleaned_old, oended)
+                    save_store(store, paths.store_file)
+                    existing = [f.get("text", "") for f in store.get("facts", [])]
+                    threading.Thread(
+                        target=_finalize_async,
+                        args=(old_id, cleaned_old, existing, old_stats, old_id, oended, ostamp),
+                        daemon=True,
+                    ).start()
+                started = _dt.datetime.now().isoformat(timespec="microseconds")
+                history.clear()
+                stats = SessionStats()
+                branch = None
+                prev_turns = _previous_session_turns(paths.store_file, started)
+                session_start_wall = time.monotonic()  # reset the auto-rotate clock
+                output.notice("[rotate] session rotated; summarizing the previous one…")
 
             if len(history) != hlen:
                 _save_session_live()  # real-time: a turn was added this tick -> persist it now

@@ -532,6 +532,43 @@ def test_rotate_finalizes_session_and_starts_fresh(monkeypatch, tmp_path):
     assert any("SUM" in (x.get("text") or "") for x in st["summaries"])  # old session summarized
 
 
+def test_auto_rotation_by_interval(monkeypatch, tmp_path):
+    """ROTATE_EVERY_HOURS auto-rotates the session once that much real time elapses — no /rotate."""
+    import kiln.engine as eng
+    from kiln import store as kstore
+
+    _isolate(monkeypatch, eng, tmp_path)
+    store_path = tmp_path / "store.json"
+    monkeypatch.setattr(eng, "load_store", lambda *a, **k: kstore.load_store(store_path))
+    monkeypatch.setattr(eng, "save_store", lambda s, *a, **k: kstore.save_store(s, store_path))
+    monkeypatch.setattr(eng, "summarize", lambda *a, **k: "SUM")
+    monkeypatch.setattr(eng, "ROTATE_EVERY_HOURS", 1.0)  # 1 hour
+
+    clock = {"t": 0.0}
+    monkeypatch.setattr(eng.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(eng.time, "sleep", lambda *_: None)
+    notices = []
+
+    class Cap(StatusRecorder):
+        def notice(self, text):
+            notices.append(text)
+
+    class Chan:  # tick 1: a turn; tick 2: jump the clock 2h -> tick 3's timer fires (no command)
+        def __init__(self):
+            self.t = 0
+
+        def poll(self):
+            self.t += 1
+            if self.t == 2:
+                clock["t"] = 7200.0
+            return "hello" if self.t == 1 else None
+
+    eng.run(ticks=6, live=False, brain=MockBrain(), output=Cap(), channel=Chan())
+    st = kstore.load_store(store_path)
+    assert any("rotated" in n for n in notices)  # the timer rotated it (no /rotate was sent)
+    assert any("SUM" in (x.get("text") or "") for x in st["summaries"])  # old session summarized
+
+
 def _mood_scenario(monkeypatch, eng, tmp_path):
     """Common setup: isolate, mute world, fixed needs — so only the ## Настрій block varies."""
     _isolate(monkeypatch, eng, tmp_path)

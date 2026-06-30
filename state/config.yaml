@@ -34,6 +34,9 @@ recent_messages: 10        # recent turns in the prior-session block (0 = off)
 # Usage reporting (v0.7)
 usage_report: true         # write a usage-ledger line + report on session close
 
+# Session rotation (server)
+rotate_every_hours: 0      # auto-rotate the live session every N hours (0 = off; /rotate still works)
+
 # Persona
 agent_name: Агніка         # label for the agent's turns
 agent_birth: "12.08.2001"  # seeds the daily biorhythm; empty = parsed from the canon

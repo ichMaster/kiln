@@ -125,6 +125,7 @@ DEFAULT_CONFIG = {
     "usage_report": True,
     "agent_name": "Агніка",
     "agent_birth": "",
+    "rotate_every_hours": 0,  # auto-rotate the session every N hours (0 = off, manual only)
 }
 DEFAULT_SERVER = {"host": "127.0.0.1", "port": 8000, "agent": "agnika"}
 
@@ -345,6 +346,11 @@ AGENT_BIRTH = _opt_str(_CONFIG, "agent_birth", "AGENT_BIRTH", "")
 # BIORHYTHM toggles just the biorhythm sub-block within it.
 MOOD_AWARENESS = _opt_bool(_CONFIG, "mood_awareness", "MOOD_AWARENESS", True)
 BIORHYTHM = _opt_bool(_CONFIG, "biorhythm", "BIORHYTHM", True)
+
+# v1.1.x: auto-rotate the session every N hours of real time (close+summarize, start fresh;
+# non-blocking). 0 = off (rotate only on /rotate or POST …/rotate). Only fires on a long-running
+# server — a short dry-run never reaches the interval.
+ROTATE_EVERY_HOURS = _opt_float(_CONFIG, "rotate_every_hours", "ROTATE_EVERY_HOURS", 0.0)
 
 # v0.11 curiosity is a NORMAL need: it drifts (DRIFT["curiosity"]), shows in `## Настрій` with a
 # behavioural cue per band (state/mood.json), and is discharged by the SATIATION["asked"] event —
