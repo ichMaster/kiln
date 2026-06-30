@@ -52,6 +52,9 @@ Then attach a TUI client to it (the agent stays alive when you quit the client):
 
     kiln --tui --remote ws://localhost:8000/agent/agnika
 
+**Multiple agents (v1.2)** — `server.yaml`'s `agents:` list boots more than one (e.g. `[agnika, pashu]`),
+each on its own thread with fully isolated state; attach to a companion with `./connect.sh pashu`.
+
 Reads: `GET /health`, `GET /agents`, `GET /agent/{id}/history?limit=N`.
 
 ## Configuration
@@ -63,7 +66,7 @@ Config is split by concern and resolved **env var > YAML file > built-in default
 | `.env` | no (secrets) | API key + personal | `ANTHROPIC_API_KEY`, `USER_NAME`, `USER_LOCATION`, `TIMEZONE`, `KILN_LIVE` |
 | `state/config.yaml` | yes | agent tunables | `chat_model`, `deep_model`, `tick_seconds`, `think_threshold`, `world_awareness`, `agent_name` |
 | `state/needs_model.yaml` | yes | the need model | `drift`, `satiation`, `need_triggers` |
-| `server.yaml` | yes | tick-server | `host`, `port`, `agent` |
+| `server.yaml` | yes | tick-server | `host`, `port`, `agent`, `agents` (the set booted, v1.2) |
 
 Edit the YAML files directly; a matching environment variable (UPPER_SNAKE of the key, e.g.
 `TICK_SECONDS=2`) overrides a file value for one run. `.env` is gitignored — never commit your key.

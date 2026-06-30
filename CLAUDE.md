@@ -46,8 +46,9 @@ python -m kiln                      # same as `kiln`
 KILN_LIVE=1 kiln                    # live: interactive StdinChannel; ticks run on their own, you type into the terminal
 
 pip install -e .[server]            # tick-server extra (fastapi/uvicorn/websockets); base install stays stdlib
-KILN_SERVE=1 uvicorn server.app:app # v1.1 tick-server: boots the home agent (agnika), hosts it over WS/HTTP
+KILN_SERVE=1 uvicorn server.app:app # tick-server: boots every server.yaml `agents:` id (v1.2: agnika + pashu)
 kiln --tui --remote ws://localhost:8000/agent/agnika   # attach a TUI client; the agent lives on, server-side
+./connect.sh pashu                  # v1.2: attach to a companion agent (each is fully isolated)
 
 pytest                              # the test suite (runs against a mock brain — zero paid calls)
 ruff check . && ruff format --check .   # lint + format gate

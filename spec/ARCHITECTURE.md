@@ -296,7 +296,10 @@ multi-agent is additive, not a rewrite:
 > selectors / `classify` / `respond` / `_status_snapshot` / `mood_block` read it; `config=None` is the
 > agnika default and reads the module globals (so the v0/v1.1 behaviour is byte-for-byte unchanged).
 
-- Planned: per-`agent_id` scoping of all the above; structured memory (facts/impressions), plans, vector store.
+- Per-`agent_id` scoping of the above is **current**: persistence (store / needs / ledger, v1.1) and
+  calibration (need-model / mood / config via `AgentConfig`, v1.2) — a turn or self-trigger on one agent
+  never touches another's state/store/config (KILN-060 e2e). Planned: structured memory
+  (facts/impressions), plans, vector store.
 
 ## Configuration and secrets
 
