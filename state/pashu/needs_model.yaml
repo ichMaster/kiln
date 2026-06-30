@@ -1,0 +1,35 @@
+# Pashu — the need MODEL (committed calibration; v1.2 per-agent). Calmer and more self-contained than
+# Agnika: she reaches out less often (higher connection threshold + slower loneliness drift) and rests
+# longer after speaking first (longer self_cooldown). Same shape as state/needs_model.yaml; loaded by
+# config.load_needs → AgentConfig.for_agent("pashu"); a missing/broken file heals to DEFAULT_NEEDS.
+
+need_triggers:
+  connection: {threshold: 0.90, action: chat}          # Agnika reaches out at 0.80; Pashu waits longer
+  rest: {threshold: 0.92, action: idle}
+  novelty: {threshold: 0.90, action: tool, agent: session-wiki}
+  intensity: {threshold: 0.85, action: deep}
+  reflection: {threshold: 0.55, action: thought}
+  curiosity: {threshold: 0.70, action: ask}
+
+drift:
+  connection: 0.0006     # slower loneliness than Agnika (0.0010) — more self-contained
+  rest: -0.005
+  novelty: 0.0001
+  intensity: 0.0003      # calmer — builds tension more slowly
+  reflection: 0.0012
+  curiosity: 0.0015
+
+satiation:
+  chat: {connection: -0.35, rest: 0.2, novelty: 0, intensity: -0.001}
+  deep: {connection: -0.6, rest: 0.4, novelty: -0.0015, intensity: -0.80}
+  session-wiki: {connection: -0.6, rest: 0.4, novelty: -0.90, intensity: -0.15}
+  idle: {connection: 0, rest: -0.01, novelty: 0.0001, intensity: 0.0005}
+  thought: {reflection: -0.7}
+  asked: {curiosity: -0.4}
+
+reach_out_need: connection
+reach_out_models: [intensity, novelty]
+reflect_need: reflection
+self_cooldown: 8         # quieter — longer silence after reaching out (Agnika: 5)
+thought_cooldown: 6
+rest_wake: 0.80

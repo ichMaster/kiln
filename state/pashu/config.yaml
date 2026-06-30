@@ -1,0 +1,7 @@
+# Pashu — agent config (committed; v1.2 per-agent tunables). A calmer companion. Only the keys that
+# differ from the built-in DEFAULT_CONFIG are set here; the rest inherit the defaults (load_config
+# merges DEFAULT_CONFIG + this file). An env var (UPPER_SNAKE) still overrides any key.
+
+agent_name: Pashu          # label for Pashu's turns (distinct from Агніка)
+tick_seconds: 1.0          # a calmer cadence than the snappy default
+think_threshold: 0.55      # leans to cheap chat a touch more than Agnika — she's unhurried
