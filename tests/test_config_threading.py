@@ -83,7 +83,11 @@ def test_run_threads_config_into_drift_and_status(monkeypatch):
             snaps.append(s)
 
     eng.run(
-        ticks=3, live=False, channel=eng.ScriptedChannel({}), brain=MockBrain(), output=Rec(),
+        ticks=3,
+        live=False,
+        channel=eng.ScriptedChannel({}),
+        brain=MockBrain(),
+        output=Rec(),
         config=cfg,
     )
     assert snaps[-1]["thresholds"]["connection"] == 0.99  # config's triggers, not the global
