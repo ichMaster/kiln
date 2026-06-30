@@ -784,7 +784,7 @@ def run(
                 # a silent tick isn't printed — check state via /status
 
             if do_rotate:
-                # Non-blocking rotation (from /rotate or the timer): cut over to a fresh session now,
+                # Non-blocking rotation (from /rotate or the timer): cut to a fresh session now,
                 # the old one's slow summary/facts on a worker (folded in later). The agent never
                 # pauses (real-time persistence already stored the old turns).
                 old_id, old_turns, old_stats = started, list(history), stats
