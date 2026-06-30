@@ -188,7 +188,7 @@ TICK_SECONDS = _opt_float(_CONFIG, "tick_seconds", "TICK_SECONDS", 0.5)
 # The need MODEL — per-need drift, satiation (closing) events, trigger thresholds + the trigger
 # wiring + cooldowns — lives in state/needs_model.yaml; edit THAT to tune Agnika. It's loaded here;
 # DEFAULT_NEEDS is the fallback for a fresh clone / a broken edit / no PyYAML. (The runtime need
-# LEVELS are separate — state/needs.json, save_state/load_state.) `need_triggers` action: chat ->
+# LEVELS are separate — .kiln/needs.json, save_state/load_state.) `need_triggers` action: chat ->
 # Haiku, deep -> Opus, idle -> rest gate, tool -> sub-agent, thought -> v0.10 monologue, ask ->
 # v0.11 curiosity. Only reach_out_need (connection) self-triggers a message; reflection/curiosity
 # have an entry (threshold + panel display) but don't self-trigger.
