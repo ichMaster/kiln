@@ -478,10 +478,12 @@ explicit; events = WS messages. cf. `lumi/core/cycle.py`.
 
 ### 1.4 RAG — ⬜
 **Goal:** exact recall over past conversations.
-**Tasks:** embed `history/*.json` → vector store; recall top-K relevant fragments
-into the turn, deduped against the window, capped. Port from Lumi
-(`core/embedder.py`, `chunking.py`, `memory.py`). Decide embedder (local?), store
-(sqlite-vss/chroma), chunking, when to inject.
+**Tasks:** embed `history/*.json` → a **flat file index** (vectors in a NumPy/JSON
+file; brute-force cosine top-K — ample at one user's corpus, no DB/server needed);
+recall top-K relevant fragments into the turn, deduped against the window, capped.
+Port from Lumi (`core/embedder.py`, `chunking.py`, `memory.py`). Decide embedder
+(local?), chunking, when to inject; keep recall behind a seam so the durable vector
+backend can move to **pgvector at 1.6**.
 **DoD:** `/recall` returns relevant past lines; automatic RAG injects them per turn.
 
 ### 1.5 Tools — ⬜
@@ -512,7 +514,7 @@ stays the reference impl; a schema (`agents` / `sessions` / `messages` / `summar
 embeddings table) + migrations; a Postgres backend over psycopg/asyncpg with a pool
 (per-turn `INSERT`, indexed reads, **transactions** replacing the temp-file+rename
 atomicity; the single-writer invariant becomes a row/advisory **lock** — so the v1.1
-two-process hazard is *resolved*, not just avoided); fold the 1.4 RAG index into
+two-process hazard is *resolved*, not just avoided); fold the 1.4 flat-file RAG index into
 pgvector (one backend for transcripts + recall); a one-shot **idempotent importer**
 `.kiln/{id}/store.json` → PG for every agent + an exporter back (round-trip parity, an
 escape hatch); config — `DATABASE_URL` in `.env` (a secret), `store_backend:
