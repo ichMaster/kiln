@@ -16,7 +16,7 @@ import queue
 import threading
 
 from kiln.brain import Brain
-from kiln.config import AgentPaths
+from kiln.config import DEFAULT_AGENT, AgentConfig, AgentPaths, agent_scope
 
 from .bus import BroadcastHub, ServerChannel, ServerOutput, Sink
 
@@ -32,6 +32,8 @@ class AgentRuntime:
         ticks: int | None = None,
         live: bool = True,
         paths: AgentPaths | None = None,
+        config: AgentConfig | None = None,
+        scope: str | None = None,
     ) -> None:
         self.agent_id = agent_id
         self.hub = BroadcastHub()
@@ -41,6 +43,17 @@ class AgentRuntime:
         self._brain = brain  # None → engine.run() picks LiveBrain (live) / MockBrain (dry)
         # Default to the agent's standard root; an explicit override is for tests / custom hosting.
         self._paths = paths if paths is not None else AgentPaths.for_agent(agent_id)
+        # v1.2 per-agent calibration: the DEFAULT agent runs on the module globals (config=None — a
+        # test monkeypatching e.g. eng.TICK_SECONDS still wins, agnika IS the globals); a companion
+        # gets its own AgentConfig.for_agent(id). An explicit `config` overrides either.
+        if config is not None:
+            self._config = config
+        elif agent_id and agent_id != DEFAULT_AGENT:
+            self._config = AgentConfig.for_agent(agent_id)
+        else:
+            self._config = None
+        # v1.2 permission scope (set, NOT enforced until tools/1.5): home agent broad, rest narrow.
+        self.scope = scope if scope is not None else agent_scope(agent_id)
         self._ticks = ticks
         self._live = live
         self._stop = threading.Event()
@@ -70,6 +83,7 @@ class AgentRuntime:
                 "output": self._output,
                 "paths": self._paths,
                 "stop_event": self._stop,
+                "config": self._config,  # v1.2: agent calibration (None = the agnika globals)
             },
             name=f"agent-{self.agent_id}",
             daemon=True,

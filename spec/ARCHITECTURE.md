@@ -309,7 +309,10 @@ code. Secrets (`ANTHROPIC_API_KEY`) live only in `.env`.
 ## Security and permissions
 
 - **Per-agent permission scope** (from the hub design): an agent can only use the
-  tools/access its scope grants. Agnika (home) is elevated; companions narrow.
+  tools/access its scope grants. Agnika (home) is elevated; companions narrow. The
+  field is **set in v1.2** (`config.agent_scope(id)` → `broad`/`narrow`, carried on each
+  `AgentRuntime`, surfaced in `GET /agents`) but **not enforced** — enforcement arrives
+  with the tool registry in **1.5**.
 - **Closed hub** (later): multi-agent/multi-user stays an admin-managed allowlist;
   no open sign-up.
 - **Untrusted inputs** (later, with tools/RAG/web): tool/web/file content is data,

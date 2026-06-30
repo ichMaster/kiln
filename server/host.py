@@ -9,7 +9,7 @@ v1.2); each is `agent_id`-scoped (its own hub, inbox, thread, and `AgentPaths`).
 from __future__ import annotations
 
 from kiln.brain import Brain
-from kiln.config import DEFAULT_AGENT, AgentPaths
+from kiln.config import DEFAULT_AGENT, SERVER_AGENTS, AgentConfig, AgentPaths
 
 from .runtime import AgentRuntime
 
@@ -28,17 +28,29 @@ class AgentHost:
         ticks: int | None = None,
         live: bool = True,
         paths: AgentPaths | None = None,
+        config: AgentConfig | None = None,
+        scope: str | None = None,
     ) -> AgentRuntime:
         existing = self._agents.get(agent_id)
         if existing is not None:
             return existing
-        runtime = AgentRuntime(agent_id, brain=brain, ticks=ticks, live=live, paths=paths).start()
+        runtime = AgentRuntime(
+            agent_id, brain=brain, ticks=ticks, live=live, paths=paths, config=config, scope=scope
+        ).start()
         self._agents[agent_id] = runtime
         return runtime
 
     def boot_default(self, brain: Brain | None = None, *, live: bool = True) -> AgentRuntime:
         """Start the home agent (agnika) — v1.1's single agent."""
         return self.start(DEFAULT_AGENT, brain=brain, live=live)
+
+    def boot_configured(
+        self, agent_ids: list[str] | None = None, brain: Brain | None = None, *, live: bool = True
+    ) -> list[AgentRuntime]:
+        """v1.2: start every configured agent (server.yaml `agents:` → SERVER_AGENTS by default) —
+        each on its own thread with its own AgentConfig + AgentPaths + scope (idempotent per id)."""
+        ids = agent_ids if agent_ids is not None else SERVER_AGENTS
+        return [self.start(aid, brain=brain, live=live) for aid in ids]
 
     def get(self, agent_id: str) -> AgentRuntime | None:
         return self._agents.get(agent_id)

@@ -30,10 +30,11 @@ host = AgentHost()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Boot the home agent (agnika) so it ticks server-side with no client. Guarded by KILN_SERVE so
-    # importing the app (tests / TestClient) never starts a LIVE agent (tests stay paid-call-free).
+    # Boot every configured agent (server.yaml `agents:` → SERVER_AGENTS; v1.2 = agnika + pashu) so
+    # each ticks server-side with no client, on its own thread + isolated state. Guarded by
+    # KILN_SERVE so importing the app (tests/TestClient) never starts a LIVE agent (no paid calls).
     if os.environ.get("KILN_SERVE"):
-        host.boot_default(live=True)
+        host.boot_configured(live=True)
     try:
         yield
     finally:
@@ -51,8 +52,11 @@ def health() -> dict:
 
 @app.get("/agents")
 def list_agents() -> list[dict]:
-    """The live agents and each one's latest status snapshot."""
-    return [{"agent_id": aid, "status": host.get(aid).latest_status()} for aid in host.agents()]
+    """The live agents, each one's permission scope (v1.2; set, not enforced), and latest status."""
+    return [
+        {"agent_id": aid, "scope": host.get(aid).scope, "status": host.get(aid).latest_status()}
+        for aid in host.agents()
+    ]
 
 
 @app.get("/agent/{agent_id}/history")
