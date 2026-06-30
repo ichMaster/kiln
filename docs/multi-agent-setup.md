@@ -21,10 +21,10 @@ What works today:
 What is **not** here yet, so you are not surprised:
 
 - **Agents cannot talk to each other.** They are deliberately isolated in v1.2; inter-agent messaging
-  arrives in phase 1.8.
+  arrives in phase 1.6.
 - **You cannot address several agents from one window.** One client talks to one agent; to use both,
   open two clients. A single window that holds several agents, and group rooms where everyone sees
-  everything, come later (1.8 and 1.10).
+  everything, come later (1.6 and 1.10).
 - **There is no operator UI** to add, start, or stop agents. You register an agent in a config file
   and restart the server (a management panel is a v2 concern).
 - **Permission scopes are set but not enforced.** Each agent carries a scope (the home agent is broad,
@@ -192,6 +192,6 @@ later enforcement, not a security boundary today.
 - [server.md](server.md) — the single-agent server: install, the WS protocol, the HTTP endpoints.
 - [../spec/features/server-architecture.en.md](../spec/features/server-architecture.en.md) — the design:
   §13 (what's shared vs isolated, and the per-agent config), §14 (how agents *will* talk to each other,
-  in 1.8).
-- [../spec/ROADMAP.md](../spec/ROADMAP.md) — §1.2 (this phase) and what comes next (1.8 inter-agent
+  in 1.6).
+- [../spec/ROADMAP.md](../spec/ROADMAP.md) — §1.2 (this phase) and what comes next (1.6 inter-agent
   messaging, 1.10 group rooms).

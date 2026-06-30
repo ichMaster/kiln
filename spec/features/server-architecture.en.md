@@ -339,7 +339,7 @@ In version 1.2 each agent lives on its own. Agnika and Pashu have no channel bet
 that is deliberate: the whole point of the phase is to prove that they don't interfere with each other.
 Even so, the architecture is already ready for agents to talk to one another whenever we decide to allow
 it. It won't take much, because the same machinery the user uses to talk to an agent works just as well
-between two agents. The capability itself arrives later — it gets its own phase, 1.8, built on the tool
+between two agents. The capability itself arrives later — it gets its own phase, 1.6, built on the tool
 system from 1.5 — since "send a message to another agent" is an action, and actions are governed by
 permissions. (That same phase also grows the TUI so one window can hold several agents at once.)
 
@@ -355,13 +355,13 @@ any normal turn, but knows it came from a peer. This is the safest way, because 
 nothing: the message is passed as a copy, so one agent cannot corrupt another's state. And because
 sending a message to another agent is its own action, it will be offered as a tool, which means it can
 be allowed or denied per agent — granted to Agnika, who has broad permissions, and withheld from a
-locked-down companion. This arrives in phase 1.8.
+locked-down companion. This arrives in phase 1.6.
 
 **The second way is observation.** Instead of writing to a specific agent, one agent can simply listen
 to what another says out loud. The host subscribes Pashu to Agnika's stream of messages, and Pashu
 hears everything she says, as if they were in the same room. This is one-way and read-only — nobody
 changes anyone else's state. It is useful when you want one agent to react in the background to another.
-This is also part of phase 1.8.
+This is also part of phase 1.6.
 
 **The third way is shared memory, and it is deferred.** Here both agents don't just read but also write
 into one shared store — for example a shared picture of the world that they update together. This is the
@@ -373,7 +373,7 @@ Why do we prefer passing messages over sharing memory? Because in the first two 
 the only one writing to its own state, and the agents only ever exchange copies through the host. That
 keeps the agents isolated, keeps concurrent access simple, and means no agent can corrupt another's
 data. The third way gives up that safety, which is exactly why it depends on the database. So the
-natural order is: in 1.2 the agents are isolated; in 1.8 direct messages and observation appear, as a
+natural order is: in 1.2 the agents are isolated; in 1.6 direct messages and observation appear, as a
 permission-controlled tool, and one TUI can hold several agents at once; shared memory comes only after
 the move to PostgreSQL in 1.9; and that shared substrate then powers the group-chat rooms in 1.10, where
 several agents and the user share one conversation and everyone can answer to all.
