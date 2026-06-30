@@ -459,16 +459,36 @@ freeze the server; all tests on `MockBrain` (zero paid calls).
 **Goal:** prove the hub is real — host a **second** agent, **Pashu**, alongside Agnika: concurrently
 and with **fully isolated state**. Builds directly on 1.1's `agent_id`-scoped, N-capable host (design:
 [`server-architecture.en.md` §12](features/server-architecture.en.md) / [UK](features/server-architecture.uk.md)).
-**Tasks:** author a minimal `state/pashu/` — its own `canon.md` (Pashu's persona) + `needs.json` /
-`needs_model.yaml` / `mood.json` / `prompts.md` — and `.kiln/pashu/`; **de-globalize config** (the
-substantive work — move the need-model/mood/tunable loads from module constants to per-agent, see
-[server-architecture §13](features/server-architecture.en.md)); register a second
-`AgentRuntime("pashu")` at boot; both agents tick concurrently on separate threads; `GET /agents`
-lists both; a client attaches to `ws://…/agent/pashu` independently; Pashu carries a **narrower
-permission-scope** field (only *enforced* once tools land in 1.5). **Out of scope:** the operator panel
-to add/start/stop/inspect agents (v2) — here Pashu is registered in config, started at server boot; and
-**inter-agent communication** (agents talking to each other) → its own phase, **1.6** (built on the 1.5
-tool registry — see [server-architecture §14](features/server-architecture.en.md)).
+**Implementation tasks** (ordered; task 1 is the gate the rest build on — the substantive work is
+de-globalizing config, **not** authoring Pashu's files):
+1. **`AgentConfig` — de-globalize config (the gate).** Move the import-time module constants —
+   `CHAT_MODEL`/`DEEP_MODEL`/`TICK_SECONDS`/`THINK_THRESHOLD` (`config.yaml`), `DRIFT`/`SATIATION`/
+   `NEED_TRIGGERS` + the trigger scalars (`needs_model.yaml`), and the mood bands/cues (`mood.json`) —
+   into a per-agent `AgentConfig` resolved from that agent's `state/{id}/` and carried into
+   `engine.run`. `agnika` resolves to today's values, so 1.1 behaviour is unchanged. Until this lands a
+   second agent silently inherits Agnika's calibration. *Contract test: two `AgentConfig`s with
+   different need-model/mood don't bleed into each other.* (§13)
+2. **Per-agent loaders.** Make `load_needs` / `load_mood` / `load_config` take an agent and read
+   `state/{id}/…` (falling back to the built-in `DEFAULT_*`). Settle the **open call** — keep the
+   `config.yaml` tunables (models, tick, threshold) **shared** process-wide, or scope them per-agent
+   (`state/{id}/config.yaml`); persona/calibration is per-agent regardless. (§13)
+3. **Author Pashu's data.** A minimal but real `state/pashu/` — `canon.md` (Pashu's persona),
+   `needs_model.yaml`, `mood.json`, `prompts.md` (+ optional `config.yaml`) — and the `.kiln/pashu/`
+   runtime dir, so a second agent genuinely runs (the persona can deepen later). (§12)
+4. **Register Pashu in the host.** Drive the hosted set from server config (a list of `agent_id`s);
+   start `AgentRuntime("pashu")` beside `agnika` at boot, each on its own thread with isolated
+   `.kiln/{id}/` + `state/{id}/`. (§3, §12)
+5. **Per-agent permission-scope field.** Each runtime carries a scope (Agnika broad, Pashu narrow), set
+   per agent and **not yet enforced** — enforcement arrives with tools in 1.5. (§8)
+6. **Routes + client.** `GET /agents` lists both with status; `ws://…/agent/pashu` serves Pashu's own
+   hub; the remote TUI (`./connect.sh pashu`) attaches to either agent. (§6, §12)
+7. **Isolation contract test (the DoD).** A turn or self-trigger on one agent never moves the other's
+   needs / store / session; both tick concurrently on `MockBrain`; zero paid calls. (§9)
+
+**Out of scope:** the operator panel to add/start/stop/inspect agents (v2) — here Pashu is registered in
+config, started at server boot; and **inter-agent communication** (agents talking to each other) → its
+own phase, **1.6** (built on the 1.5 tool registry — see
+[server-architecture §14](features/server-architecture.en.md)).
 **DoD:** the host runs **Agnika and Pashu concurrently with isolated state** — a turn or self-trigger
 on one **never** touches the other's needs/store; a TUI attaches over WS to Pashu and holds a turn;
 `agent_id` isolation is contract-tested; all tests on `MockBrain` (zero paid calls).
