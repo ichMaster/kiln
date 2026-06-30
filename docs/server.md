@@ -188,6 +188,9 @@ attach `snapshot` include the **current** conversation — not just prior closed
   refreshes and the agent never pauses. Two notices arrive: `[rotate] session rotated…` (cutover)
   and `[rotate] previous session summarized…` (completion). With multiple clients attached, all of
   them share the one session and see these notices together.
+- **Automatic rotation** — set `rotate_every_hours: N` in `state/config.yaml` (default `0` = off) and
+  the agent runs the same non-blocking `/rotate` every `N` hours of real time (only when the session
+  has content to summarize). Needs a restart to pick up the config change.
 
 ## 7. Where data lives
 
