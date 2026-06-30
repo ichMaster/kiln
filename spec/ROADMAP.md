@@ -460,11 +460,15 @@ freeze the server; all tests on `MockBrain` (zero paid calls).
 and with **fully isolated state**. Builds directly on 1.1's `agent_id`-scoped, N-capable host (design:
 [`server-architecture.en.md` §12](features/server-architecture.en.md) / [UK](features/server-architecture.uk.md)).
 **Tasks:** author a minimal `state/pashu/` — its own `canon.md` (Pashu's persona) + `needs.json` /
-`needs_model.yaml` / `mood.json` / `prompts.md` — and `.kiln/pashu/`; register a second
+`needs_model.yaml` / `mood.json` / `prompts.md` — and `.kiln/pashu/`; **de-globalize config** (the
+substantive work — move the need-model/mood/tunable loads from module constants to per-agent, see
+[server-architecture §13](features/server-architecture.en.md)); register a second
 `AgentRuntime("pashu")` at boot; both agents tick concurrently on separate threads; `GET /agents`
 lists both; a client attaches to `ws://…/agent/pashu` independently; Pashu carries a **narrower
 permission-scope** field (only *enforced* once tools land in 1.5). **Out of scope:** the operator panel
-to add/start/stop/inspect agents (v2) — here Pashu is registered in config, started at server boot.
+to add/start/stop/inspect agents (v2) — here Pashu is registered in config, started at server boot; and
+**inter-agent communication** (agents talking to each other) → v1.5+ (it's a permission-scoped action —
+see [server-architecture §14](features/server-architecture.en.md)).
 **DoD:** the host runs **Agnika and Pashu concurrently with isolated state** — a turn or self-trigger
 on one **never** touches the other's needs/store; a TUI attaches over WS to Pashu and holds a turn;
 `agent_id` isolation is contract-tested; all tests on `MockBrain` (zero paid calls).

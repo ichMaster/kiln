@@ -237,7 +237,7 @@ Ordered, each step shippable and tested; later steps depend on earlier ones. Ste
 9. **Second agent — Pashu (§12).** Author a minimal `state/pashu/` (its own `canon.md` + needs / mood
    / prompts) and register `AgentRuntime("pashu")` in the host at boot, beside Agnika. Both agents tick
    concurrently on separate threads with isolated `.kiln/{id}/` + `state/{id}/`; Pashu gets a narrower
-   permission-scope field (enforced in v1.4). The remote TUI (step 7) can attach to either agent.
+   permission-scope field (enforced in v1.5). The remote TUI (step 7) can attach to either agent.
    *DoD: the host runs Agnika + Pashu at once; a client attaches to `ws://…/agent/pashu` independently;
    a turn on one agent doesn't touch the other's needs/store.*
 
@@ -288,4 +288,86 @@ on top of the v1.1 single-agent server.
 **Still out of scope here (v2):** the operator **management UI** to add / start / stop / inspect agents
 from a panel (§2.2 in the roadmap). In v1.2, Pashu is registered in **config** (a second `agent_id` +
 its `state/pashu/` files, both started at server boot); v2 makes that operator-driven from the UI.
+
+## 13. Shared vs isolated: the multi-agent boundary
+
+One process, N agents. Rule of thumb: **the agent's *mind* and *memory* are isolated per `agent_id`;
+*process infrastructure* and *operator credentials* are shared.** A turn or self-trigger on one agent
+must never touch another's state — that is v1.2's contract-tested DoD.
+
+**Isolated — one per `agent_id`** (its `AgentRuntime` owns all of it; a turn on one never moves another's):
+
+| Isolated | What | Where |
+|---|---|---|
+| Thread | own `engine.run()` loop — ticks, drifts, self-triggers independently | in-memory |
+| Need **levels** | live `State` (drift/satiation) + `TriggerBook` (hysteresis/cooldowns) | `.kiln/{id}/needs.json` (+ runtime) |
+| Memory / store | sessions, messages, summaries, facts, thoughts; session id + rotation | `.kiln/{id}/store.json` |
+| Usage | token ledger + report (per-agent cost) | `.kiln/{id}/usage-*` |
+| Persona | canon (voice) + self-trigger prompts | `state/{id}/canon.md`, `prompts.md` |
+| Calibration | the need **model** (drift/satiation/triggers) + mood bands/cues | `state/{id}/needs_model.yaml`, `mood.json` |
+| Bus | inbox queue + broadcast hub (its own attached clients / session) | in-memory |
+| Permission scope | the field that gates tools (Agnika broad, Pashu narrow) | per-agent |
+
+**Shared — one per server process** (by design):
+
+| Shared | What | Why it's safe to share |
+|---|---|---|
+| Process + event loop | the single Python process; the async FastAPI/uvicorn layer | stateless re: any agent — routes by `agent_id`, pumps each agent's bus |
+| Host registry | `AgentHost` (`agent_id -> AgentRuntime` dict) | the broker; holds runtimes, owns no agent state — it's also the switchboard of §14 |
+| Credentials | `ANTHROPIC_API_KEY` + the logged-in `claude` CLI | **one key/CLI for all agents → shared billing**; keys never leave the server |
+| Launch flags | `KILN_SERVE`, `server.yaml` host/port | process-level, not a property of any agent |
+
+**The real v1.2 work — de-globalizing config.** The per-agent *files* above are reachable by path
+(`AgentPaths`), but v1.1's code loads persona/calibration/tunables as **module-level constants at
+import** — `CHAT_MODEL`, `DRIFT`/`SATIATION`/`NEED_TRIGGERS`, the mood bands. Today **canon, prompts,
+store, need levels, and the ledger are already `agent_id`-scoped; the need-model, mood, and the
+`config.yaml` tunables are still global.** So v1.2's substantive task isn't authoring Pashu's files
+(trivial) — it's **moving those loads from module globals to per-`AgentRuntime`** (an `AgentConfig`
+resolved when the runtime is built and carried into `engine.run`). Until that lands, a second agent
+would silently inherit Agnika's need-model/mood/models. The §1.2 isolation test (a turn on one agent
+never moves the other's needs) is exactly what proves the de-globalization is complete.
+
+> **Open decision (v1.2):** the operational `config.yaml` tunables (models, `tick_seconds`,
+> `think_threshold`) — keep **shared** process-wide, or scope them **per-agent**
+> (`state/{id}/config.yaml`)? Per-agent is the cleaner story (Pashu could run a cheaper model or a
+> slower tick); shared is less to wire. The persona/calibration (canon, prompts, need-model, mood) is
+> **per-agent regardless.**
+
+## 14. Inter-agent communication
+
+v1.2 agents are **islands** — isolated by design, with **no** channel between them (the DoD is
+*non-interference*). But the two seams that carry user↔agent traffic generalise to agent↔agent, so the
+architecture is communication-ready while the capability itself is a **later phase**: sending to a peer
+is an *action*, so it's permission-scoped and rides with the **tool registry (v1.5)**.
+
+**The host is the broker.** `AgentHost` already holds every `AgentRuntime` — hence every inbox and
+every hub — so it is the natural switchboard. Three forms, safest first:
+
+1. **Host-brokered message-passing (the first form).** Agent A emits a *peer message* addressed to
+   `agent_id` B; the host drops it onto **B's existing inbox**, tagged with `sender_id` and a `peer`
+   role (≠ `user`). B handles it as an ordinary turn but knows it's from a peer. This **reuses the
+   `Channel` inbox verbatim** — no new transport — and passes only a **copy**, so there's **no shared
+   mutable state and no new corruption risk** (just one more producer on B's single-consumer queue). It
+   surfaces as a **tool** (`send_to(agent_id, text)`), hence permission-scoped: Agnika (elevated) may DM
+   a companion; a locked-down companion may be denied. → **v1.5**.
+2. **Observation / subscription.** The host subscribes B to A's **broadcast hub**, so B *overhears* A's
+   public messages (a shared "room"). One-way, read-only, still no shared writes — useful for an ambient
+   companion reacting to another agent. → **v1.5** (same scoping).
+3. **Shared blackboard (deferred).** A common store/memory both agents read **and write** (shared
+   world-state). This is the only form that **reintroduces the multi-writer hazard of §11** — two agent
+   threads writing one store, the clobbering from the store-concurrency discussion — so it waits for a
+   backend that arbitrates writers: the **PostgreSQL/pgvector backend (v1.6)** with row/advisory locks,
+   not a shared JSON file.
+
+**Why message-passing, not shared memory.** Forms 1–2 keep every agent the **sole writer of its own
+state** and move *copies* through the host, so the isolation invariant survives untouched, concurrency
+stays trivial, and a misbehaving agent can't corrupt a peer. Form 3 trades that for a shared substrate
+and therefore depends on the DB phase. The natural path: **v1.2 isolated → v1.5 host-brokered DMs +
+observation (tool-scoped) → v1.6+ optional shared blackboard on Postgres.**
+
+**Addressing & loop-safety.** Peers are already addressable by `agent_id` (the same key the WS routes
+and persistence paths use) — no new namespace. Whatever exposes peer-send owns the safety rails: a
+**loop guard** (stop A→B→A ping-pong), per-agent **rate limits**, and a depth/turn budget, so two
+agents can't spin each other into a runaway exchange (each peer message is still a real, billed turn on
+the shared key).
 
