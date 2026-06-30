@@ -601,12 +601,20 @@ others; all on `MockBrain` (zero paid calls).
 
 ### 1.9 Games — ⬜
 **Goal:** kiln's core as a swappable brain driving world-bodies / games.
-**Tasks:** a brain↔body interface (clay's pattern: body sends needs + surroundings,
-brain returns an action); first concrete game — **checkers**
-(`claude-code-test/russian-checkers`): board, moves, TUI render; then integrate
-**clay** (voxel) / **silt** (Lenia). Specs in `lumi/.../games/`.
-**DoD:** Agnika plays a full checkers game in the TUI; the same brain drives one
-world-body.
+**Tasks:** a **brain↔body interface** (clay's pattern: the body sends needs + surroundings, the brain
+returns an action), proven by a **ladder of games over the one seam** — turn-based → real-time →
+strategy:
+- **tic-tac-toe** — the simplest turn-based game; the brain↔body seam smoke test.
+- **checkers** (`claude-code-test/russian-checkers`) — a full board: moves, TUI render.
+- **snake** / **pong** / **tetris** — real-time arcade: the brain acts on a **fast tick**, not in
+  turns (the seam must carry continuous control + a live frame, not just board states).
+- **MicroRTS** — real-time **strategy**: multi-unit planning under a clock, the stress test for the
+  seam (and a bridge toward a real opponent/agent driving the other side).
+
+Then integrate **clay** (voxel) / **silt** (Lenia) as world-bodies. Specs in `lumi/.../games/`.
+**DoD:** Agnika plays a full **turn-based** game (tic-tac-toe, then checkers) **and** drives at least
+one **real-time** body (snake or pong) in the TUI — both through the same brain↔body seam; the same
+brain also drives a world-body (clay/silt). **MicroRTS** is the strategy stretch goal.
 
 ## v2 — Web & multi-agent hub
 
