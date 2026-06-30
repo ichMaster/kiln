@@ -492,7 +492,41 @@ time/notes/RAG-search/start-a-game. cf. Lumi's file/imagetool/news.
 **DoD:** Agnika calls a registered tool within her scope; a companion agent is
 denied an out-of-scope tool.
 
-### 1.6 Games — ⬜
+### 1.6 Persistence → PostgreSQL — ⬜
+**Goal:** move per-agent persistence off JSON files onto **PostgreSQL**, behind a
+backend-agnostic **Store seam** — incremental writes (O(1) row `INSERT` vs today's
+O(n) whole-file rewrite every turn), safe concurrent multi-process access (no
+last-writer-wins clobbering), and a queryable backend (incl. **pgvector** for RAG)
+that v2's web + operator hub builds on. JSON stays the zero-dependency default;
+Postgres is opt-in.
+**Why here:** by 1.5 the engine is multi-agent (1.2), event-driven (1.3), with RAG
+(1.4) + tools (1.5) — the JSON store is now the ceiling (real-time persistence
+rewrites the whole file each turn; two processes on one agent's store clobber each
+other) and v2 (web client + admin panel + multi-agent management) needs concurrent,
+queryable storage. This is the **v1→v2 bridge**.
+**Tasks:** formalize `store.py` into a `StoreBackend` interface (load /
+`recent_history` / `upsert_session` / `remove_session` / add summary·facts·thought) —
+the engine already routes all persistence through it, so this is a refactor and JSON
+stays the reference impl; a schema (`agents` / `sessions` / `messages` / `summaries` /
+`facts` / `thoughts` / `usage_ledger`, all keyed by **`agent_id`**; a `pgvector`
+embeddings table) + migrations; a Postgres backend over psycopg/asyncpg with a pool
+(per-turn `INSERT`, indexed reads, **transactions** replacing the temp-file+rename
+atomicity; the single-writer invariant becomes a row/advisory **lock** — so the v1.1
+two-process hazard is *resolved*, not just avoided); fold the 1.4 RAG index into
+pgvector (one backend for transcripts + recall); a one-shot **idempotent importer**
+`.kiln/{id}/store.json` → PG for every agent + an exporter back (round-trip parity, an
+escape hatch); config — `DATABASE_URL` in `.env` (a secret), `store_backend:
+json|postgres` in `config.yaml` (default `json`), a `[postgres]` extra + a documented
+docker-compose Postgres.
+**DoD:** an agent runs end-to-end on Postgres (real-time turn inserts, rotation
+summary/facts, snapshot/history via queries) with **zero behaviour change** vs JSON,
+backend chosen by one knob; the importer migrates all existing `.kiln/{id}/store.json`
+and a JSON→PG→JSON round-trip matches; **two processes** read/write one agent
+concurrently with no lost writes (the v1.1 clobbering hazard gone); RAG recall runs as
+a pgvector query; the JSON backend still passes the full store-contract suite and the
+`pytest` baseline needs no database.
+
+### 1.7 Games — ⬜
 **Goal:** kiln's core as a swappable brain driving world-bodies / games.
 **Tasks:** a brain↔body interface (clay's pattern: body sends needs + surroundings,
 brain returns an action); first concrete game — **checkers**
