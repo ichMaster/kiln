@@ -45,7 +45,7 @@ DEFAULT_AGENT = "agnika"
 class AgentPaths:
     """The per-agent persistence roots threaded through `engine.run()` (KILN-051). For the default
     agent these are the module-level globals, so Agnika + all v0 data/tests are byte-for-byte. (The
-    mood / needs-model CONFIG is still module-level/global in v1.1 — per-agent config is v1.2.)"""
+    mood / needs-model CONFIG is carried per-agent by AgentConfig (v1.2), threaded into run.)"""
 
     state_dir: Path  # committed config: needs_model.yaml, canon.md, prompts.md, mood.json
     needs_file: Path  # live need LEVELS (runtime, under .kiln/ with the rest of the generated data)
@@ -402,8 +402,9 @@ TOOL_HINTS = ("файл", "запусти", "збережи", "прочитай"
 # The DEFAULT agent (agnika / unset) reads the flat `state/` files, so it reproduces the globals
 # above byte-for-byte. `config.yaml` is scoped PER-AGENT (`state/{id}/config.yaml`) — the settled
 # decision — so a companion can run a cheaper model or a slower tick; a real env var (UPPER_SNAKE)
-# still overrides any agent's value, the same operator escape hatch as the globals. KILN-057 threads
-# this into `engine.run`; until then the engine reads the module globals (= the agnika config).
+# still overrides any agent's value, the same operator escape hatch as the globals. `engine.run`
+# takes a `config` (KILN-057): None = the agnika default (reads these module globals); a per-agent
+# AgentConfig makes that agent drift/route/sound on its own model.
 @dataclass(frozen=True)
 class AgentConfig:
     agent_id: str

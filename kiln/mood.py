@@ -96,61 +96,85 @@ _cfg, _built = _resolve()
 NEED_LABELS, NEED_CUES, NEED_BANDS, _PERIODS, _BIO_BANDS, _BIO_LABELS, BIO_CUES = _built
 
 
-def biorhythm(now: _dt.datetime, birth: _dt.datetime) -> dict[str, float]:
+def _resolve_built(mood_cfg: dict | None):
+    """The runtime structures for a mood config: v1.2 per-agent `mood_cfg` built on the fly, or
+    `None` → the module globals (the agnika default — byte-for-byte). A bad per-agent config heals
+    to DEFAULT_MOOD (same as import-time)."""
+    if mood_cfg is None:
+        return NEED_LABELS, NEED_CUES, NEED_BANDS, _PERIODS, _BIO_BANDS, _BIO_LABELS, BIO_CUES
+    try:
+        return _build(mood_cfg)
+    except (KeyError, TypeError):
+        return _build(DEFAULT_MOOD)
+
+
+def biorhythm(
+    now: _dt.datetime, birth: _dt.datetime, mood_cfg: dict | None = None
+) -> dict[str, float]:
     """The three biorhythm cycles for `now` relative to `birth` — each `sin(2π·days/period)` in
     −1..+1. Counts whole days between the two **dates** (time-of-day ignored), so it's tz-safe and
-    constant across a day."""
+    constant across a day. `mood_cfg` (v1.2): per-agent periods; None → the module globals."""
+    periods = _resolve_built(mood_cfg)[3]
     n = (now.date() - birth.date()).days
-    return {name: math.sin(2 * math.pi * n / period) for name, period in _PERIODS.items()}
+    return {name: math.sin(2 * math.pi * n / period) for name, period in periods.items()}
 
 
-def bio_band(v: float) -> str:
+def bio_band(v: float, bio_bands: dict | None = None) -> str:
     """A Ukrainian band for a biorhythm value (−1..+1): критичний день near a zero-crossing,
-    підйом high-positive, спад low-negative, else нейтрально (thresholds from `state/mood.json`)."""
-    names = _BIO_BANDS["names"]
-    if abs(v) < _BIO_BANDS["critical_abs"]:
+    підйом high-positive, спад low-negative, else нейтрально (thresholds from `state/mood.json`).
+    `bio_bands` (v1.2): per-agent biorhythm bands; None → the module globals."""
+    bb = bio_bands if bio_bands is not None else _BIO_BANDS
+    names = bb["names"]
+    if abs(v) < bb["critical_abs"]:
         return names["critical"]
-    if v >= _BIO_BANDS["high"]:
+    if v >= bb["high"]:
         return names["high"]
-    if v <= _BIO_BANDS["low"]:
+    if v <= bb["low"]:
         return names["low"]
     return names["neutral"]
 
 
-def need_band(value: float) -> str:
+def need_band(value: float, bands: list | None = None) -> str:
     """A Ukrainian band for how big a need is right now (`0..1`) — the first NEED_BANDS entry whose
-    `below` exceeds the value (низька / помірна / висока / дуже висока by default)."""
-    for b in NEED_BANDS:
+    `below` exceeds the value (низька / помірна / висока / дуже висока by default).
+    `bands` (v1.2): per-agent need bands; None → the module globals."""
+    nb = bands if bands is not None else NEED_BANDS
+    for b in nb:
         if value < b["below"]:
             return b["name"]
-    return NEED_BANDS[-1]["name"]
+    return nb[-1]["name"]
 
 
-def biorhythm_block(bio: dict[str, float]) -> str:
+def biorhythm_block(bio: dict[str, float], mood_cfg: dict | None = None) -> str:
     """The day's biorhythm sub-block under `## Настрій`: one line per cycle — value + band + a
-    behavioural cue (`- фізичний +0.27 (нейтрально): рівна енергія`)."""
+    behavioural cue (`- фізичний +0.27 (нейтрально): рівна енергія`).
+    `mood_cfg` (v1.2): per-agent bands/labels/cues; None → the module globals."""
+    _, _, _, _, bio_bands, bio_labels, bio_cues = _resolve_built(mood_cfg)
     lines = ["Біоритм дня (як це на тебе впливає):"]
-    for key, label in _BIO_LABELS.items():
+    for key, label in bio_labels.items():
         v = bio[key]
-        band = bio_band(v)
-        cue = BIO_CUES.get(key, {}).get(band, "")
+        band = bio_band(v, bio_bands)
+        cue = bio_cues.get(key, {}).get(band, "")
         line = f"- {label} {v:+.2f} ({band})"
         lines.append(f"{line}: {cue}" if cue else line)
     return "\n".join(lines)
 
 
-def mood_block(needs: dict[str, float], bio: dict[str, float] | None = None) -> str:
+def mood_block(
+    needs: dict[str, float], bio: dict[str, float] | None = None, mood_cfg: dict | None = None
+) -> str:
     """The `## Настрій` section: every need by its Ukrainian label + level + band + a behavioural
     cue (how to act at that level), then the biorhythm sub-block (omitted when `bio` is None, e.g.
-    `BIORHYTHM=0`). Pure — no emotion label is computed; she reads her state and shapes her own
-    tone."""
+    `BIORHYTHM=0`). Pure — no emotion label is computed; she reads her state and shapes her tone.
+    `mood_cfg` (v1.2): per-agent labels/bands/cues; None → the module globals (agnika default)."""
+    need_labels, need_cues, need_bands, _, _, _, _ = _resolve_built(mood_cfg)
     lines = ["## Настрій"]
-    for key, label in NEED_LABELS.items():
+    for key, label in need_labels.items():
         level = needs.get(key, 0.0)
-        band = need_band(level)
-        cue = NEED_CUES.get(key, {}).get(band, "")
+        band = need_band(level, need_bands)
+        cue = need_cues.get(key, {}).get(band, "")
         line = f"{label} {level:.2f} — {band}"
         lines.append(f"{line}: {cue}" if cue else line)
     if bio is not None:
-        lines.append(biorhythm_block(bio))
+        lines.append(biorhythm_block(bio, mood_cfg))
     return "\n".join(lines)

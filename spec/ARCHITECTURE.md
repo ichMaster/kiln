@@ -150,8 +150,8 @@ Lumi-style sections:
 > `AgentPaths` (state dir + store/ledger/report/canon/prompts files); all persistence threads
 > through it. `AgentPaths.for_agent(agent_id)` maps the **default agent** (`agnika` / unset) to
 > today's flat global paths — no migration — and any other id under `state/{id}/` + `.kiln/{id}/`, so
-> two agents never share a store. The mood / needs-model *config* is still module-level in v1.1
-> (per-agent config is v1.2).
+> two agents never share a store. The mood / needs-model *config* is carried per-agent by
+> `AgentConfig` (v1.2), threaded into `engine.run`.
 
 > **Session lifecycle (v1.1.x).** Turns persist in **real time** — each tick that adds a turn
 > upserts the open session into the store (`store.upsert_session`), so a crash can't lose them and a
@@ -196,6 +196,11 @@ multi-agent is additive, not a rewrite:
 
 ## Contracts (stable seams)
 
+- **Per-agent calibration:** `engine.run(config: AgentConfig | None)` (v1.2). `config=None` is the
+  agnika default and reads the module globals (v0/v1.1 byte-for-byte); a per-agent `AgentConfig`
+  (`config.AgentConfig.for_agent(id)`) makes `drift` / `apply_satiation` / the trigger selectors /
+  `classify` / `respond` / `_status_snapshot` / `mood_block` run on that agent's need model + tunables
+  + mood. Each helper takes the same optional `config` (None → its module global, still monkeypatchable).
 - **Reply / route:** `respond(...) → {class, route, reply, usage}`.
 - **Model usage:** `{model, input, output, cache_read, cache_write, total, cost_usd}` captured by
   `usage_record` (SDK `msg.usage` / CLI `data.usage` + `total_cost_usd`). `total` = input+output
@@ -286,8 +291,10 @@ multi-agent is additive, not a rewrite:
 > (agnika / unset) reads the flat `state/`, reproducing the module-level globals **byte-for-byte**; a
 > missing/broken file heals to the `DEFAULT_*`. **`config.yaml` is scoped per-agent**
 > (`state/{id}/config.yaml`) — the settled decision — so a companion can run its own model / tick rate;
-> an env var (UPPER_SNAKE) still overrides any agent's value per key. KILN-057 threads the `AgentConfig`
-> into `engine.run`; until then the engine reads the module globals (= the agnika config).
+> an env var (UPPER_SNAKE) still overrides any agent's value per key. `engine.run(config=…)` (v1.2,
+> KILN-057) threads the `AgentConfig` through the loop — `drift` / `apply_satiation` / the trigger
+> selectors / `classify` / `respond` / `_status_snapshot` / `mood_block` read it; `config=None` is the
+> agnika default and reads the module globals (so the v0/v1.1 behaviour is byte-for-byte unchanged).
 
 - Planned: per-`agent_id` scoping of all the above; structured memory (facts/impressions), plans, vector store.
 

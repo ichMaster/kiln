@@ -65,6 +65,7 @@ from .config import (
     USAGE_REPORT,
     USER_LOCATION,
     WORLD_AWARENESS,
+    AgentConfig,
     AgentPaths,
 )
 from .history import ROLE_BOT, ROLE_USER, strip_leading_name, turn
@@ -136,17 +137,22 @@ def save_state(state: State, path: Path = NEEDS_LEVELS_FILE) -> None:
 # === Tick ===================================================================
 
 
-def drift(state: State, ticks: int = 1) -> None:
+def drift(state: State, ticks: int = 1, config: AgentConfig | None = None) -> None:
     """Each need grows by DRIFT[k] × ticks (clamped to 1.0).
     ticks > 1 — "catch-up" drift for real time that elapsed during a
-    blocking model call (see the loop in run)."""
+    blocking model call (see the loop in run).
+    `config` (v1.2): the per-agent need model; None → the module global DRIFT (the agnika default,
+    still monkeypatchable in tests). run() threads its config; direct callers omit it."""
+    dmap = config.drift if config is not None else DRIFT
     for k in state.needs:
-        state.needs[k] = min(1.0, state.needs[k] + DRIFT.get(k, 0.0) * ticks)
+        state.needs[k] = min(1.0, state.needs[k] + dmap.get(k, 0.0) * ticks)
 
 
-def apply_satiation(state: State, event: str) -> None:
-    """Closes needs per the event ('chat' | 'deep' | 'idle'), clamping at 0."""
-    for k, delta in SATIATION.get(event, {}).items():
+def apply_satiation(state: State, event: str, config: AgentConfig | None = None) -> None:
+    """Closes needs per the event ('chat' | 'deep' | 'idle'), clamping at 0.
+    `config` (v1.2): the per-agent satiation map; None → the module global SATIATION."""
+    sat = config.satiation if config is not None else SATIATION
+    for k, delta in sat.get(event, {}).items():
         if k in state.needs:
             state.needs[k] = max(0.0, state.needs[k] + delta)
 
@@ -160,11 +166,15 @@ class TriggerBook:
     curiosity_monitor: bool = False  # v0.11: ON between a curiosity crossing and falling below it
 
 
-def _crossing_trigger(state: State, tg: TriggerBook, name: str, cooldown: int) -> str | None:
+def _crossing_trigger(
+    state: State, tg: TriggerBook, name: str, cooldown: int, config: AgentConfig | None = None
+) -> str | None:
     """Fire `name` on an UPWARD threshold crossing (`NEED_TRIGGERS`) with hysteresis — fires only on
     the up-crossing, re-arms once it falls back below — and a `cooldown` of silent ticks after.
-    Returns the need name when it fires this tick, else None."""
-    cfg = NEED_TRIGGERS.get(name)
+    Returns the need name when it fires this tick, else None.
+    `config` (v1.2): the per-agent triggers; None → the module global NEED_TRIGGERS."""
+    triggers = config.need_triggers if config is not None else NEED_TRIGGERS
+    cfg = triggers.get(name)
     if cfg is None:
         return None
     if tg.cooldown.get(name, 0) > 0:
@@ -179,11 +189,16 @@ def _crossing_trigger(state: State, tg: TriggerBook, name: str, cooldown: int) -
     return name
 
 
-def select_self_trigger(state: State, tg: TriggerBook) -> str | None:
+def select_self_trigger(
+    state: State, tg: TriggerBook, config: AgentConfig | None = None
+) -> str | None:
     """The proactive reach-out fires ONLY on REACH_OUT_NEED (connection = loneliness): returns that
     need name when it crosses its threshold this tick, else None. WHICH brain answers is a separate
-    choice (reach_out_branch). Hysteresis + SELF_COOLDOWN silent ticks after firing."""
-    return _crossing_trigger(state, tg, REACH_OUT_NEED, SELF_COOLDOWN)
+    choice (reach_out_branch). Hysteresis + SELF_COOLDOWN silent ticks after firing.
+    `config` (v1.2): the per-agent reach-out need + cooldown; None → the module globals."""
+    reach = config.reach_out_need if config is not None else REACH_OUT_NEED
+    cooldown = config.self_cooldown if config is not None else SELF_COOLDOWN
+    return _crossing_trigger(state, tg, reach, cooldown, config)
 
 
 def _thought_visible(every: int) -> bool:
@@ -192,41 +207,56 @@ def _thought_visible(every: int) -> bool:
     return every > 0 and random.random() < (1.0 / every)
 
 
-def select_thought_trigger(state: State, tg: TriggerBook) -> str | None:
+def select_thought_trigger(
+    state: State, tg: TriggerBook, config: AgentConfig | None = None
+) -> str | None:
     """The inner monologue fires on REFLECT_NEED (reflection = незібраність): returns it on an
     upward crossing this tick (else None), with the same hysteresis + THOUGHT_COOLDOWN as the
-    reach-out. The thought itself (KILN-042) is generated separately — this only decides WHEN."""
-    return _crossing_trigger(state, tg, REFLECT_NEED, THOUGHT_COOLDOWN)
+    reach-out. The thought itself (KILN-042) is generated separately — this only decides WHEN.
+    `config` (v1.2): the per-agent reflect need + cooldown; None → the module globals."""
+    reflect = config.reflect_need if config is not None else REFLECT_NEED
+    cooldown = config.thought_cooldown if config is not None else THOUGHT_COOLDOWN
+    return _crossing_trigger(state, tg, reflect, cooldown, config)
 
 
-def update_curiosity_monitor(state: State, tg: TriggerBook) -> bool:
+def update_curiosity_monitor(
+    state: State, tg: TriggerBook, config: AgentConfig | None = None
+) -> bool:
     """v0.11: curiosity's "trigger" — an upward crossing of its threshold **enables the monitor**
     (`tg.curiosity_monitor`); falling back below disables it. Unlike a reach-out/thought it sends
     nothing — it just gates whether a `?` reply discharges curiosity (the monitor, in `_turn`).
-    Run every tick (after drift). Returns the monitor state. No `NEED_TRIGGERS` entry → off."""
-    cfg = NEED_TRIGGERS.get("curiosity")
+    Run every tick (after drift). Returns the monitor state. No `NEED_TRIGGERS` entry → off.
+    `config` (v1.2): the per-agent triggers; None → the module global NEED_TRIGGERS."""
+    triggers = config.need_triggers if config is not None else NEED_TRIGGERS
+    cfg = triggers.get("curiosity")
     if cfg is None:
         tg.curiosity_monitor = False
         return False
-    if _crossing_trigger(state, tg, "curiosity", 0):  # an upward crossing fires -> arm the monitor
+    if _crossing_trigger(
+        state, tg, "curiosity", 0, config
+    ):  # an upward crossing -> arm the monitor
         tg.curiosity_monitor = True
     elif state.needs.get("curiosity", 0.0) < cfg["threshold"]:  # fell below -> disarm
         tg.curiosity_monitor = False
     return tg.curiosity_monitor
 
 
-def reach_out_branch(state: State) -> tuple[str, str | None]:
+def reach_out_branch(state: State, config: AgentConfig | None = None) -> tuple[str, str | None]:
     """
     WHICH brain answers a connection reach-out, shaped by her OTHER needs at fire time:
     the first REACH_OUT_MODELS need over its threshold wins (intensity -> deep/opus, novelty
     -> session-wiki), else the reach-out need's baseline (chat). So opus/session-wiki never
     self-INITIATE — they only shape a connection-driven message. Returns (action, agent).
+    `config` (v1.2): the per-agent reach-out models/triggers/need; None → the module globals.
     """
-    for name in REACH_OUT_MODELS:
-        cfg = NEED_TRIGGERS.get(name, {})
+    models = config.reach_out_models if config is not None else REACH_OUT_MODELS
+    triggers = config.need_triggers if config is not None else NEED_TRIGGERS
+    reach = config.reach_out_need if config is not None else REACH_OUT_NEED
+    for name in models:
+        cfg = triggers.get(name, {})
         if state.needs.get(name, 0.0) >= cfg.get("threshold", 2.0):
             return cfg.get("action", "chat"), cfg.get("agent")
-    base = NEED_TRIGGERS.get(REACH_OUT_NEED, {})
+    base = triggers.get(reach, {})
     return base.get("action", "chat"), base.get("agent")
 
 
@@ -238,7 +268,9 @@ def turn_weight(state: State) -> float:
     return max(0.0, min(1.0, 0.55 * state.intensity + 0.45 * state.connection))
 
 
-def classify(prompt: str, state: State) -> tuple[str, str | None]:
+def classify(
+    prompt: str, state: State, config: AgentConfig | None = None
+) -> tuple[str, str | None]:
     """
     Route a USER turn to (class, agent), class ∈ 'chat'|'think'|'tools'|'tool'.
 
@@ -251,17 +283,23 @@ def classify(prompt: str, state: State) -> tuple[str, str | None]:
          curious, even a plain user turn gets the deeper brain, not cheap chat;
       4. a high state weight -> 'think';
       5. otherwise -> 'chat'.
+
+    `config` (v1.2): the per-agent reach-out models / triggers / think-threshold; None → the module
+    globals. The TOOL_HINTS / THINK_HINTS markers stay global (persona-layer Ukrainian words).
     """
+    models = config.reach_out_models if config is not None else REACH_OUT_MODELS
+    triggers = config.need_triggers if config is not None else NEED_TRIGGERS
+    threshold = config.think_threshold if config is not None else THINK_THRESHOLD
     low = prompt.lower()
     if any(h in low for h in TOOL_HINTS):
         return "tools", None
     if any(h in low for h in THINK_HINTS):
         return "think", None
-    for name in REACH_OUT_MODELS:  # high need -> deeper brain (same map as reach_out_branch)
-        cfg = NEED_TRIGGERS.get(name, {})
+    for name in models:  # high need -> deeper brain (same map as reach_out_branch)
+        cfg = triggers.get(name, {})
         if state.needs.get(name, 0.0) >= cfg.get("threshold", 2.0):
             return cfg.get("action", "chat"), cfg.get("agent")
-    if turn_weight(state) >= THINK_THRESHOLD:
+    if turn_weight(state) >= threshold:
         return "think", None
     return "chat", None
 
@@ -359,21 +397,26 @@ def respond(
     brain: Brain,
     force: str | None = None,
     agent: str | None = None,
+    config: AgentConfig | None = None,
 ) -> dict:
     # force ("chat"|"deep"|"tool") picks the branch directly (for self-triggers and /ask),
     # otherwise classify() routes the user turn (and may name the "tool" sub-agent). We call
     # the model ONLY through brain (seam): the core knows nothing about the SDK or the CLI.
+    # `config` (v1.2): the per-agent models + satiation; None → the module globals.
+    chat_model = config.chat_model if config is not None else CHAT_MODEL
+    deep_model = config.deep_model if config is not None else DEEP_MODEL
+    sat = config.satiation if config is not None else SATIATION
     if force:
         cls = force
     else:
-        cls, agent = classify(prompt, state)
+        cls, agent = classify(prompt, state, config)
 
     # The user's current turn goes into the shared history before the call (timestamped, v0.8).
     history.append(turn(ROLE_USER, prompt))
 
     if cls == "chat":
         reply, usage = brain.chat(history, system)
-        route = f"CHAT/{CHAT_MODEL.split('-')[1]}"  # e.g. CHAT/haiku
+        route = f"CHAT/{chat_model.split('-')[1]}"  # e.g. CHAT/haiku
         event = "chat"
     elif cls == "tool":
         # A "tool" self-trigger runs a named Claude Code sub-agent (e.g. novelty ->
@@ -383,14 +426,14 @@ def respond(
         # "tools" class below (deep + --allowedTools); here the whole turn is a sub-agent.
         reply, usage = brain.tool(agent or "", history, system)
         route = f"TOOL/{agent}"  # e.g. TOOL/session-wiki (the agent IS the trace label)
-        event = agent if agent in SATIATION else "deep"
+        event = agent if agent in sat else "deep"
     elif cls in ("think", "deep"):
         reply, usage = brain.deep(prompt, history, system, with_tools=False)
-        route = f"THINK/{DEEP_MODEL.split('-')[1]}"  # e.g. THINK/opus
+        route = f"THINK/{deep_model.split('-')[1]}"  # e.g. THINK/opus
         event = "deep"
     else:  # tools
         reply, usage = brain.deep(prompt, history, system, with_tools=True)
-        route = f"TOOLS/{DEEP_MODEL.split('-')[1]}"
+        route = f"TOOLS/{deep_model.split('-')[1]}"
         event = "deep"
 
     # Strip a leading name the model echoed (it mirrors the timeline's "Агніка:" labels) — clean
@@ -400,26 +443,36 @@ def respond(
     history.append(turn(ROLE_BOT, reply))
 
     # The branch determines which needs were closed.
-    apply_satiation(state, event)
+    apply_satiation(state, event, config)
     return {"class": cls, "route": route, "reply": reply, "usage": usage}
 
 
 def _status_snapshot(
-    status: str, state: State, tg: TriggerBook, stats: SessionStats, branch: str | None, tick: int
+    status: str,
+    state: State,
+    tg: TriggerBook,
+    stats: SessionStats,
+    branch: str | None,
+    tick: int,
+    config: AgentConfig | None = None,
 ) -> dict:
     """
     Build the per-tick status snapshot the TUI status bar / needs panel render from.
     status ∈ idle/thinking/responding; branch is the last turn class (chat/think/tools);
     tick is the real elapsed-tick count since session start (catch-up included, so time
     spent in a blocking model call is counted, not just loop iterations).
+    `config` (v1.2): the per-agent triggers + models; None → the module globals.
     """
-    thresholds = {name: cfg["threshold"] for name, cfg in NEED_TRIGGERS.items()}
+    triggers = config.need_triggers if config is not None else NEED_TRIGGERS
+    chat_model = config.chat_model if config is not None else CHAT_MODEL
+    deep_model = config.deep_model if config is not None else DEEP_MODEL
+    thresholds = {name: cfg["threshold"] for name, cfg in triggers.items()}
     # what addresses each need (the self-trigger branch)
-    actions = {name: cfg["action"] for name, cfg in NEED_TRIGGERS.items()}
+    actions = {name: cfg["action"] for name, cfg in triggers.items()}
     cooldowns = {name: c for name, c in tg.cooldown.items() if c > 0}
     # headline model for the status bar follows the last branch (deep/Opus is the default;
     # a "tool" branch runs a sub-agent whose own model is shown on the reply label instead)
-    model = CHAT_MODEL if branch == "chat" else DEEP_MODEL
+    model = chat_model if branch == "chat" else deep_model
     return {
         "status": status,
         "model": model,
@@ -469,6 +522,7 @@ def run(
     output: Output | None = None,
     paths: AgentPaths | None = None,
     stop_event: threading.Event | None = None,
+    config: AgentConfig | None = None,
 ) -> None:
     """
     The tick loop. `channel.poll()` yields the next user message or None.
@@ -479,6 +533,9 @@ def run(
     `paths` (v1.1): the per-agent persistence root (default = the flat globals).
     `stop_event` (v1.1): cooperative cancel — when set, the loop exits after the
     current tick and the `finally` still persists/summarizes (clean host shutdown).
+    `config` (v1.2): the per-agent calibration (need model / tunables / mood). None = the agnika
+    default, which reads the module globals at each point — still monkeypatchable in tests; the host
+    (KILN-059) passes a per-agent `AgentConfig` so two agents drift/route/sound on their own model.
     """
     if channel is None:
         channel = ScriptedChannel()
@@ -488,6 +545,23 @@ def run(
         output = ConsoleOutput()
     if paths is None:
         paths = AgentPaths.for_agent()  # v1.1: default agent -> today's flat global paths
+    # v1.2: resolve each calibration scalar from `config`, falling back to the module global (read
+    # here, so a test monkeypatching e.g. eng.TICK_SECONDS before run() still wins on the None path.
+    tick_seconds = config.tick_seconds if config is not None else TICK_SECONDS
+    rotate_hours = config.rotate_every_hours if config is not None else ROTATE_EVERY_HOURS
+    rest_wake = config.rest_wake if config is not None else REST_WAKE
+    recent_messages = config.recent_messages if config is not None else RECENT_MESSAGES
+    world_on = config.world_awareness if config is not None else WORLD_AWARENESS
+    mood_on = config.mood_awareness if config is not None else MOOD_AWARENESS
+    bio_on = config.biorhythm if config is not None else BIORHYTHM
+    thoughts_on = config.thoughts_enabled if config is not None else THOUGHTS_ENABLED
+    thoughts_in_prompt = config.thoughts_in_prompt if config is not None else THOUGHTS_IN_PROMPT
+    thought_every = config.thought_visible_every if config is not None else THOUGHT_VISIBLE_EVERY
+    usage_report_on = config.usage_report if config is not None else USAGE_REPORT
+    triggers = config.need_triggers if config is not None else NEED_TRIGGERS
+    mood_cfg = (
+        config.mood if config is not None else None
+    )  # None -> mood.py module globals (agnika)
     paths.state_dir.mkdir(parents=True, exist_ok=True)  # state dir must exist for writing
     paths.store_file.parent.mkdir(parents=True, exist_ok=True)  # .kiln[/{agent}] for store + needs
     state = load_state(paths.needs_file)
@@ -517,24 +591,20 @@ def run(
                 pass
         return _dt.datetime.now()
 
-    birth = load_birth(canon)  # v0.9: from the canon natal line / AGENT_BIRTH
+    birth = load_birth(canon)  # v0.9: from the canon natal line / AGENT_BIRTH (canon is per-agent)
     session_bio = biorhythm(
-        _now(), birth
-    )  # the day's biorhythm — computed ONCE, static all session
+        _now(), birth, mood_cfg
+    )  # the day's biorhythm — computed ONCE, static all session (per-agent periods via mood_cfg)
 
     def _system() -> str:
         # v0.8 world + v0.9 mood + v0.10 thoughts, composed PER TURN — the clock, needs (incl. the
         # v0.11 curiosity cue in ## Настрій), and latest thoughts stay live; the prior-session
         # timeline and the day's biorhythm are static. All off -> the static base.
-        world = (
-            world_block(_now(), USER_LOCATION, prev_turns, RECENT_MESSAGES)
-            if WORLD_AWARENESS
-            else ""
-        )
-        mood = mood_block(state.needs, session_bio if BIORHYTHM else None) if MOOD_AWARENESS else ""
+        world = world_block(_now(), USER_LOCATION, prev_turns, recent_messages) if world_on else ""
+        mood = mood_block(state.needs, session_bio if bio_on else None, mood_cfg) if mood_on else ""
         thoughts = (
-            thoughts_block(store["thoughts"], THOUGHTS_IN_PROMPT, {h["text"] for h in history})
-            if THOUGHTS_ENABLED
+            thoughts_block(store["thoughts"], thoughts_in_prompt, {h["text"] for h in history})
+            if thoughts_on
             else ""
         )
         if not world and not mood and not thoughts:
@@ -544,7 +614,9 @@ def run(
     def _turn(prompt: str, force: str | None = None, agent: str | None = None) -> dict:
         # One model turn, timed; folds tokens + latency into the session stats.
         t0 = time.monotonic()
-        out = respond(prompt, state, history, _system(), brain, force=force, agent=agent)
+        out = respond(
+            prompt, state, history, _system(), brain, force=force, agent=agent, config=config
+        )
         # v0.11 curiosity monitor: post-process the reply — only while the monitor is ON (armed by a
         # threshold crossing, update_curiosity_monitor), a "?" reply fires the SATIATION "asked"
         # event that discharges curiosity (curious -> asks -> sated -> curious). A statement, or a
@@ -552,7 +624,7 @@ def run(
         asked = tg.curiosity_monitor and is_curiosity_reply(out["reply"])
         out["curiosity"] = asked
         if asked:
-            apply_satiation(state, "asked")
+            apply_satiation(state, "asked", config)
         stats.record(out["class"], out.get("usage"), time.monotonic() - t0)
         return out
 
@@ -567,10 +639,10 @@ def run(
         text, usage = brain.chat(ephemeral, _system())
         stats.record("thought", usage, time.monotonic() - t0)
         text = strip_leading_name(text).strip()
-        apply_satiation(state, "thought")  # the thought discharges «незібраність»
+        apply_satiation(state, "thought", config)  # the thought discharges «незібраність»
         if not text:
             return None
-        shown = _thought_visible(THOUGHT_VISIBLE_EVERY)  # ~1/M -> surface it in the chat
+        shown = _thought_visible(thought_every)  # ~1/M -> surface it in the chat
         thought = add_thought(
             store, text, started, _now().isoformat(timespec="seconds"), shown=shown
         )
@@ -634,7 +706,7 @@ def run(
     branch: str | None = None  # last turn's class (chat/think/tools) for the status snapshot
     resting = False  # rest gate: too tired to answer (recovers on idle; hysteresis vs REST_WAKE)
     reached_out = False  # she self-initiated and the user hasn't replied since (anti-repeat)
-    rest_threshold = NEED_TRIGGERS.get("rest", {}).get("threshold", 1.1)  # >1 -> never sleeps
+    rest_threshold = triggers.get("rest", {}).get("threshold", 1.1)  # >1 -> never sleeps
     last_tick = time.monotonic()  # for catch-up drift over real time
     session_start_wall = last_tick  # for auto-rotation (ROTATE_EVERY_HOURS); reset on rotate
     try:
@@ -645,10 +717,10 @@ def run(
             now = time.monotonic()
             elapsed = now - last_tick
             last_tick = now
-            steps = max(1, round(elapsed / TICK_SECONDS)) if (live and TICK_SECONDS > 0) else 1
-            drift(state, steps)  # catch-up drift over real time (silent)
+            steps = max(1, round(elapsed / tick_seconds)) if (live and tick_seconds > 0) else 1
+            drift(state, steps, config)  # catch-up drift over real time (silent)
             total_ticks += steps  # the tick counter tracks real elapsed ticks, not loop iterations
-            update_curiosity_monitor(state, tg)  # v0.11: arm/disarm the curiosity monitor by level
+            update_curiosity_monitor(state, tg, config)  # v0.11: arm/disarm curiosity monitor
             # Apply finished rotations (summary/facts computed off-thread) HERE on the agent thread,
             # so the store is only written here, never racing the worker. Refresh memory so the new
             # session's prompt includes the just-summarized one, and notify completion.
@@ -659,7 +731,7 @@ def run(
                         {"session_id": r["id"], "stamp": r["stamp"], "text": r["summary"]}
                     )
                 added = add_facts(store, r["facts"], r["id"], r["stamp"])
-                if USAGE_REPORT:
+                if usage_report_on:
                     append_session(
                         _ledger_entry(r["id"], r["started_at"], r["ended"], r["turns"], r["stats"]),
                         paths.usage_ledger,
@@ -674,9 +746,9 @@ def run(
             # Auto-rotation: every ROTATE_EVERY_HOURS of real time, rotate the session (only when it
             # has content worth summarizing). 0 = off. The /rotate command sets this flag too.
             do_rotate = (
-                ROTATE_EVERY_HOURS > 0
+                rotate_hours > 0
                 and bool(history)
-                and (time.monotonic() - session_start_wall) >= ROTATE_EVERY_HOURS * 3600
+                and (time.monotonic() - session_start_wall) >= rotate_hours * 3600
             )
             # Rest gate (hysteresis): when fatigue (rest) reaches its threshold Agnika stops
             # answering and only recovers (idle) until rest falls back to REST_WAKE. The band
@@ -686,7 +758,7 @@ def run(
             rest = state.needs.get("rest", 0.0)
             entered_rest = False
             if resting:
-                if rest <= REST_WAKE:
+                if rest <= rest_wake:
                     resting = False
             elif rest >= rest_threshold:
                 resting, entered_rest = True, True
@@ -699,10 +771,10 @@ def run(
             if user_msg is None and not resting:
                 if state.self_messages:
                     fired = select_self_trigger(
-                        state, tg
+                        state, tg, config
                     )  # connection reach-out (need name or None)
-                if fired is None and THOUGHTS_ENABLED:
-                    thought_fired = select_thought_trigger(state, tg)  # inner monologue (v0.10)
+                if fired is None and thoughts_on:
+                    thought_fired = select_thought_trigger(state, tg, config)  # inner monologue
 
             status_label = "idle"
             if user_msg is not None:
@@ -730,7 +802,7 @@ def run(
                     output.user(user_msg)
                     if entered_rest:
                         output.agent(REST_MESSAGE, is_self=True)
-                    apply_satiation(state, "idle")
+                    apply_satiation(state, "idle", config)
                     status_label = "resting"
                     reached_out = False  # the user replied (even while she rests)
                 elif isinstance(action, tuple):  # ("ask", text) -> forced deep
@@ -758,14 +830,14 @@ def run(
             elif resting:
                 if entered_rest:
                     output.agent(REST_MESSAGE, is_self=True)  # announce once on entering rest
-                apply_satiation(state, "idle")
+                apply_satiation(state, "idle", config)
                 status_label = "resting"
             elif fired is not None:
                 # connection fired the reach-out; her other needs choose which brain answers
                 # (intensity -> deep/opus, novelty -> session-wiki, else chat). If she already
                 # reached out and got no reply, the prompt tells her not to repeat (reached_out).
                 prompt = _self_prompt(prompts, fired, reached_out)
-                faction, agent = reach_out_branch(state)
+                faction, agent = reach_out_branch(state, config)
                 out = _turn(prompt, force=faction, agent=agent)
                 output.agent(
                     out["reply"],
@@ -780,7 +852,7 @@ def run(
                 _think()  # private inner thought (Haiku) — stored hidden, discharges reflection
                 status_label = "thinking"  # nothing displayed (KILN-043 surfaces ~1/M)
             else:
-                apply_satiation(state, "idle")  # silence: rest + cooling down
+                apply_satiation(state, "idle", config)  # silence: rest + cooling down
                 # a silent tick isn't printed — check state via /status
 
             if do_rotate:
@@ -814,9 +886,11 @@ def run(
             if len(history) != hlen:
                 _save_session_live()  # real-time: a turn was added this tick -> persist it now
             # Per-tick status snapshot (needs + thresholds + stats) for live clients.
-            output.status(_status_snapshot(status_label, state, tg, stats, branch, total_ticks))
+            output.status(
+                _status_snapshot(status_label, state, tg, stats, branch, total_ticks, config)
+            )
 
-            time.sleep(TICK_SECONDS if live else 0)
+            time.sleep(tick_seconds if live else 0)
             t += 1
     finally:
         save_state(state, paths.needs_file)
@@ -847,7 +921,7 @@ def run(
                 save_store(store, paths.store_file)
             # KILN-028/029/030: append one usage-ledger line + regenerate the report, unless
             # usage reporting is disabled (USAGE_REPORT=0).
-            if USAGE_REPORT:
+            if usage_report_on:
                 append_session(
                     _ledger_entry(started, started, ended, len(cleaned), stats), paths.usage_ledger
                 )
