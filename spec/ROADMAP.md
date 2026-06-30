@@ -611,10 +611,17 @@ strategy:
 - **MicroRTS** — real-time **strategy**: multi-unit planning under a clock, the stress test for the
   seam (and a bridge toward a real opponent/agent driving the other side).
 
-Then integrate **clay** (voxel) / **silt** (Lenia) as world-bodies. Specs in `lumi/.../games/`.
+Then integrate the **world-bodies** (a living world the brain inhabits, not a game it wins):
+- **mote** (`~/development/mote`) — a needs-driven ASCII creature whose **perception→intent** interface
+  *already is* this seam (body on fast ticks; the LLM mind consulted on a separate thread only when
+  something matters; `goto`/`build`/`rest`/`wander` + a `say` line). It mirrors kiln's own design, so
+  it's the **natural first world-body** — adapt its brain port to kiln's engine.
+- **clay** (voxel) / **silt** (Lenia) — richer world-bodies on the same seam.
+
+Specs in `lumi/.../games/`.
 **DoD:** Agnika plays a full **turn-based** game (tic-tac-toe, then checkers) **and** drives at least
 one **real-time** body (snake or pong) in the TUI — both through the same brain↔body seam; the same
-brain also drives a world-body (clay/silt). **MicroRTS** is the strategy stretch goal.
+brain also drives a **world-body** (mote, then clay/silt). **MicroRTS** is the strategy stretch goal.
 
 ## v2 — Web & multi-agent hub
 

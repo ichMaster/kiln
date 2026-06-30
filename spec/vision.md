@@ -34,7 +34,8 @@ pieces over inventing. kiln's own contribution is the cheap tick-server core.
 | **clay** | `~/development/clay` | voxel-world *body* on fast ticks; swappable stub→Lili brain | Games (1.5) |
 | **silt** | `~/development/silt` | always-on server, 2D life world (cellular automata → Lenia), web + API client | Games (1.5) + server pattern (1.1/3.x) |
 | **checkers** | `~/development/claude-code-test/russian-checkers` | russian checkers (Node) | Games (1.5) |
-| **mote**, **pip** | — | specced in `lumi/specification/features/ukrainian/games/` (`mote.md`, `pip.md`); no repo found | Games (1.5) |
+| **mote** | `~/development/mote` | needs-driven ASCII creature; body on fast ticks + LLM mind on a separate thread — the brain↔body seam Games builds on | Games (1.5) |
+| **pip** | — | specced in `lumi/specification/features/ukrainian/games/pip.md`; no repo found | Games (1.5) |
 
 Key principle to copy from Lumi: **the core is built first and never depends on
 an interface.** Lumi's `tui/bridge.py` is an **echo-free file-bus** (inbox/outbox
