@@ -495,20 +495,49 @@ on one **never** touches the other's needs/store; a TUI attaches over WS to Pash
 
 ### 1.3 FSM core (explicit, table-driven) — ⬜
 **Goal:** make the agent's behaviour an **explicit, table-driven** state machine instead of `run()`'s
-implicit `if/elif` priority — the foundation for a per-agent declarative FSM (1.6) and tool-actions
-(1.5). (Concept: [features/fsm.md](features/fsm.md).)
-**Tasks:** name the **states** (`idle`/`thinking`/`responding`/`cooling`/`resting`) and drive them from
-a **transition table** — `(state, event, guard) → (action, next_state)` — whose *default* table
-reproduces today's behaviour, so 1.3 is **behaviour-preserving**; a unified **event queue** (typed:
-`user.message`, `command`, `self_trigger:<need>`, `tick`, `rotate.request`; reserved `peer.message` /
-`room.message` / `tool.result`) consumed one at a time, folding the inbox + `rotate_results` into one
-and making "input > self-trigger > idle" a **queue policy**; an **action-registry seam** where the
-built-in actions (`chat`/`deep`/`reach_out`/`think`/`idle`/`rotate`) are **registered as built-in
-tools**, so 1.5 extends the *same* vocabulary; surface `cooling` as a real post-turn state. The model
-call still **blocks** within the agent (non-blocking execution is 1.7).
+implicit `if/elif` priority — the foundation for a per-agent declarative FSM (1.7) and tool-actions
+(1.5). Behaviour-preserving: no user-visible change; the value is *enabling* 1.7/1.8/1.9. (Concept:
+[features/fsm.md](features/fsm.md).)
+**Implementation tasks** (ordered; 1–3 are pure, independently-testable gates, 4 is the risky
+behaviour-preserving rewire):
+1. **States + transition table + `advance` (the gate).** A `State` enum
+   (`idle`/`thinking`/`responding`/`cooling`/`resting`) + the transition **table as data** —
+   `(state, event, guard) → (action, next_state)` — whose **default table** encodes v1.2's exact
+   priority + rest-gate (guards are Python predicates over needs/flags for now; the YAML grammar is
+   1.7); a pure `advance(state, event, ctx) → (action, next_state)`. *Unit-test every transition +
+   guard; no `run()` change yet.*
+2. **Typed events + the event queue.** The `Event` kinds (`user.message`, `command`,
+   `self_trigger:<need>`, `tick`, `rotate.request`; **reserved** `peer.message`/`room.message`/
+   `tool.result`) + one queue **drained one event per tick** in priority order (preserving today's
+   one-action-per-tick cadence); **producers** that wrap today's sources (`channel.poll` → input;
+   `select_self_trigger`/`select_thought_trigger` → a self-trigger event **when** a crossing fires; the
+   timer / `/rotate` → `rotate.request`), folding the inbox + `rotate_results` into the one queue.
+   Priority becomes the **drain policy**. *Unit-test the producers + that drain order == today's
+   `input > self-trigger > idle`.*
+3. **Action-registry seam.** A registry `action-name → callable`; the built-ins
+   (`chat`/`deep`/`reach_out`/`think`/`idle`/`rotate`/`enter_rest`/`cool`) **registered as built-in
+   tools** and fired by name — the same seam 1.5 extends with user tools. *Unit-test each built-in maps
+   to today's behaviour.*
+4. **Rewire `run()` as a thin FSM driver (behaviour-preserving).** Replace the `if/elif` with: gather
+   events → enqueue → drain one → `advance` → fire the action via the registry → set the next state →
+   emit `status`. Leave drift / satiation / persistence / rotation / the rest-gate untouched. **Agnika
+   byte-for-byte; all v1.2 tests green** — the whole existing suite is the behavioural pin. The
+   substantive, risky step. *Add an integration test that a scripted turn drives the expected state
+   path.*
+5. **`cooling` as a real state.** Surface `cooling` post-turn (cooldowns tick down → `idle`); it becomes
+   the snapshot's `status`. *Update the status-snapshot contract + its test.*
+6. **Tracing + contracts + ARCHITECTURE.** Emit a structured **trace** of every
+   `state → event → guard → action → state` (+ tick + needs) — the log **1.8 simulation** consumes; pin
+   the FSM as a contract (the `advance` table + the unchanged WS event protocol), with the ARCHITECTURE
+   update in the same step.
+
+**Out of scope (later phases):** the **YAML** guard grammar + per-agent `fsm.yaml` loader → **1.7**;
+simulation / analytics → **1.8**; **non-blocking** execution (the model call still blocks within the
+agent) → **1.9**; `peer.message` / `room.message` / `tool.result` stay **reserved** until **1.6 / 1.11 /
+1.5**.
 **DoD:** the loop is an FSM over a queued transition table; `advance(state, event)` is unit-tested; the
-default table reproduces v1.2 behaviour (Agnika byte-for-byte, all tests green); the server emits the
-same events.
+default table reproduces v1.2 behaviour (Agnika byte-for-byte, all tests green); `cooling` is a real
+state; every transition is traced; the server emits the same events.
 
 ### 1.4 RAG — ⬜
 **Goal:** exact recall over past conversations.
