@@ -225,15 +225,16 @@ the last tick did. `resting` is the one genuinely distinct state (the rest gate)
 | `idle` | The awake-but-quiet default: needs drift, nothing is said. | `idle` action (a quiet `tick`), `wake` from resting, and after `command` / `rotate`. | the next event — input, a self-trigger, or the rest-crossing. | transient; the resting-hand position of the machine. |
 | `responding` | She produced a turn this tick — a user answer (`respond`) or a reach-out where she spoke first (`reach_out`). | `user.message`, or a reach-out `self_trigger`. | the next quiet `tick` (`idle`), or another turn. | transient (one tick); her reply appears. |
 | `thinking` | She formed a private inner thought (`think`), discharging `reflection`. | a reflection `self_trigger`. | the next quiet `tick` (`idle`). | transient (one tick); usually nothing shown (~1/M surfaced). |
-| `cooling` | A post-turn settling state where per-need cooldowns tick down before returning to `idle`. | (not yet — a turn currently returns straight to `idle`). | a `tick` once cooldowns clear. | **defined but unused until KILN-065**; behaves as an active state today. |
+| `cooling` | A post-turn settling state where per-need cooldowns tick down before returning to `idle`. | a turn (`respond` / `reach_out` / `think` → `cooling`). | a `tick` once cooldowns clear (`idle`). | live as of KILN-065; surfaced as status `cooling`; recovers (idle satiation) while cooling. |
 | `resting` | The rest gate: `rest` hit its enter threshold, so she stops engaging and only recovers. | `enter_rest` (a `tick` with `rest ≥ 0.90`). | `wake` (a `tick` with `rest ≤ 0.85`). | **persistent** — holds across ticks; a user line gets `rest_ack` (heard, no brain call), commands still work. |
 
-The key split is transient vs persistent. `idle`/`responding`/`thinking`/`cooling` are transient
-labels — each is just "what the last tick did," and the machine drops back toward `idle` on the next
-quiet tick, so they share one row in the matrix (§5). `resting` is the only state that genuinely
-*holds*: it persists across ticks and carries the hysteresis latch itself (enter at 0.90, wake at
-0.85), which is why it needs no external trigger (see §3, Path B). `cooling` exists in the enum so the
-post-turn cooldown window can become an observable state, but until KILN-065 lands it is never entered.
+The key split is transient vs persistent. `responding` and `thinking` are transient status labels —
+each is just "what the last tick did," emitted on the turn tick before the machine moves to `cooling`.
+`idle` and `cooling` are the carried active states, and `resting` is the persistent one: it holds
+across ticks and carries the hysteresis latch itself (enter at 0.90, wake at 0.85), which is why it
+needs no external trigger (see §3, Path B). `cooling` (live as of KILN-065) also holds across ticks —
+for as long as the per-need cooldowns take to tick down — but unlike `resting` it doesn't gate
+engagement: input, commands, and self-triggers all still fire from it (see §5).
 
 **Events** (`fsm.EventKind`). The live set is `user.message`, `command`, `self_trigger` (payload = the
 need name), `tick`, and `rotate.request`. Three more are reserved and unused this phase: `peer.message`
@@ -250,12 +251,22 @@ user.message = command  (0)   >   self_trigger  (1)   >   rotate.request  (2)   
 
 Rows are the current state, columns are the incoming event (guard-qualified where a guard splits the
 outcome). Each cell is `action → next_state`. State abbreviations: `I` = idle, `RE` = responding,
-`TH` = thinking, `RS` = resting. "active" is any of idle / responding / thinking / cooling.
+`TH` = thinking, `CO` = cooling, `RS` = resting. "active" is any of idle / responding / thinking /
+cooling.
 
 | From \ Event | `user.message` | `command` | `self_trigger` (reach) | `self_trigger` (reflect) | `rotate.request` | `tick` [rest ≥ 0.90] | `tick` [rest ≤ 0.85] | `tick` [else] |
 |---|---|---|---|---|---|---|---|---|
-| **active** (I/RE/TH/cool) | `respond`→RE | `command`→I | `reach_out`→RE | `think`→TH | `rotate`→I | `enter_rest`→RS | `idle`→I | `idle`→I |
+| **active** (I/RE/TH/CO) | `respond`→CO | `command`→I | `reach_out`→CO | `think`→CO | `rotate`→I | `enter_rest`→RS | `idle`→I | `idle`→I † |
 | **resting** (RS) | `rest_ack`→RS | `command`→RS | — (not produced) | — (not produced) | `rotate`→RS | `enter_rest`→RS | `wake`→I | `enter_rest`→RS |
+
+**A turn goes to `CO` (cooling), not `RE`/`TH`** (KILN-065). The `responding`/`thinking` you *see* is
+the **status the turn action emits that tick**; the state entered for the *next* tick is `cooling`.
+So `RE`/`TH` are transient status labels, and the real carried active states are `idle` and `cooling`.
+
+**† the `tick [else]` cell is guard-split by state.** From `idle` it's `idle → I`. From `cooling` it
+is split by the per-need cooldowns: `cool → CO` while any cooldown is still ticking down, `idle → I`
+once they all clear. (Cooling is active-like for *every other* event — a `user.message` from cooling
+still `respond`s, etc.) `rest ≥ 0.90` still preempts, so cooling yields to the rest gate.
 
 Reading the matrix:
 
@@ -275,9 +286,12 @@ Reading the matrix:
 - **`self_trigger` is absent from the resting row** because the producer does not emit self-triggers
   while resting (`select_self_trigger` runs only when not resting). `advance` would fall through to its
   default `idle` if one ever arrived, but it never does.
-- **Every active state shares one row** because idle / responding / thinking / cooling are
-  behaviourally identical for the *next* event; the difference between them is only which action ran
-  last tick.
+- **The active states share one row for every event except `tick`.** `idle` / `responding` /
+  `thinking` / `cooling` react identically to input, commands, self-triggers, and rotation; they
+  diverge only on `tick`, where `cooling` runs its cooldown countdown (`cool`/`idle`) while `idle`
+  just stays `idle`. `responding`/`thinking` never persist to see a `tick` of their own (a turn goes
+  straight to `cooling`), so in practice the two carried active states that a `tick` distinguishes are
+  `idle` and `cooling`.
 
 ## 6. Worked example, traced against the matrix
 
@@ -289,7 +303,7 @@ so the reach-out and the `/ask`-style turn both route to the deep brain. Satiati
 | Tick | State before | Event (guard) | Matrix cell | Action | Needs after | State after |
 |---|---|---|---|---|---|---|
 | 1 | idle | `self_trigger`, need=`connection` (reach) | active × self_trigger(reach) | `reach_out` (deep) | conn 0.80→0.20, rest 0.30→0.70 | responding |
-| 2 | responding | `tick` (rest 0.695 < 0.90) | active × tick[else] | `idle` | rest 0.695→0.685 | idle |
+| 2 | cooling | `tick` (rest < 0.90, cooldown active) | cooling × tick[cooldown active] | `cool` | rest 0.695→0.685 | cooling |
 | 3 | idle | `user.message` "поясни рекурсію" | active × user.message | `respond` (deep) | rest 0.680→1.00 (clamped) | responding |
 | 4 | responding | `tick` (rest 0.995 ≥ 0.90) | active × tick[rest ≥ 0.90] | `enter_rest` | rest 0.995→0.985 (says rest line once) | resting |
 | 5 | resting | `tick` (rest 0.980 > 0.85) | resting × tick[else] | `enter_rest` | rest 0.980→0.970 | resting |
@@ -306,9 +320,13 @@ Step by step, in matrix terms:
   `reach_out_branch` picked the deep brain; its satiation dropped `connection` to 0.20 and, being work,
   raised `rest` to 0.70.
 - **Tick 2** — quiet, and `connection` (0.20) is far below threshold, so the trigger produced nothing
-  and re-armed. Only a `tick` reached the arbiter. `rest` is 0.695, below 0.90, so the active
-  `tick[else]` cell gives `idle → I`. That is the whole reason the machine "falls back" to idle: it is
-  the else-branch of the tick column.
+  and re-armed. Only a `tick` reached the arbiter. But the reach-out at tick 1 set a `connection`
+  cooldown (`SELF_COOLDOWN`), so she's in `cooling`: the `cooling × tick[cooldown active]` cell gives
+  `cool → CO` — she recovers (idle satiation, exactly the old post-turn idle tick) but surfaces as
+  status `cooling`. She stays cooling for as many ticks as the cooldown takes to reach zero, then the
+  `cooling × tick[cooldowns clear]` cell returns her to `idle`. (After a *plain user turn*, which sets
+  no cooldown, `cooling` clears on the very next tick — so you only see the cooling window after a
+  self-trigger.)
 - **Tick 3** — you typed. `user.message` (priority 0) is top, so the matrix sees `user.message`, not a
   tick. The active row gives `respond → RE`; `classify` routed "поясни…" to the deep brain, whose
   satiation pushed `rest` to the 1.0 clamp.
@@ -328,23 +346,23 @@ Step by step, in matrix terms:
 
 ## 7. The same machine as a state diagram
 
+A turn emits its status (`responding` / `thinking`) on the turn tick and settles into `COOLING`; a
+turn's action arrow is labelled with the status it emits.
+
 ```
-                    user.message / respond
-                  ┌───────────────────────────┐
-                  │                           ▼
-   self_trigger(reflect)/think          ┌────────────┐
-       ┌───────────────────────────────►│ RESPONDING │
-       │                                └─────┬──────┘
-  ┌────┴────┐  self_trigger(reach)/reach_out       │ tick[else] / idle
-  │  IDLE   │◄─────────────────────────────────────┘
-  │         │
-  │         │  tick[rest ≥ 0.90] / enter_rest        ┌──────────┐
-  │         │───────────────────────────────────────►│ RESTING  │
-  │         │                                        │          │  user.message / rest_ack (stays)
-  │         │◄───────────────────────────────────────│          │  command       / command   (stays)
-  └─────────┘  tick[rest ≤ 0.85] / wake              └──────────┘  tick[else]  / enter_rest  (stays)
-       ▲                                                              tick[rest>0.85] stays RESTING
-       └──────── THINKING ── tick[else] / idle ───────┘
+        user.message / respond,  self_trigger(reach) / reach_out,  self_trigger(reflect) / think
+  ┌────────┐ ───────────────────────────────────────────────────────────────► ┌──────────┐
+  │        │       (the turn tick emits status responding / thinking)          │ COOLING  │
+  │  IDLE  │◄───────────────────────────────────────────────────────────────── │          │
+  │        │                       tick [cooldowns clear] / idle                │          │◄─┐
+  │        │                                                                    └────┬─────┘  │
+  │        │  tick[rest ≥ 0.90] / enter_rest        ┌──────────┐   tick[cooldowns active] / cool
+  │        │───────────────────────────────────────►│ RESTING  │        (stays COOLING) ──────┘
+  │        │                                        │          │  user.message / rest_ack (stays)
+  │        │◄───────────────────────────────────────│          │  command      / command   (stays)
+  └────────┘  tick[rest ≤ 0.85] / wake              └──────────┘  tick[else] / enter_rest  (stays)
+       ▲  tick[else] / idle (self-loop)                             tick[rest > 0.85] stays RESTING
+       └── (COOLING also yields to the rest gate: tick[rest ≥ 0.90] / enter_rest → RESTING)
 ```
 
 Each edge is exactly one non-trivial cell of the matrix in §5. `advance(state, event, ctx)` is the

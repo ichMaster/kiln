@@ -30,6 +30,7 @@ class Rec:
 
     def __init__(self):
         self.statuses: list[str] = []
+        self.snaps: list[dict] = []
         self.agents: list[tuple[str, dict]] = []
         self.users: list[str] = []
         self.notices: list[str] = []
@@ -48,6 +49,7 @@ class Rec:
 
     def status(self, s):
         self.statuses.append(s["status"])
+        self.snaps.append(s)
 
 
 def _run(paths, rec, inputs=None, ticks=3):
@@ -99,6 +101,36 @@ def test_quiet_ticks_stay_idle(tmp_path):
     _run(_tmp_paths(tmp_path / "c"), rec, inputs={}, ticks=3)
     assert set(rec.statuses) == {"idle"}
     assert rec.agents == []  # a silent tick prints nothing
+
+
+# --- cooling: a real post-turn state (KILN-065) -------------------------------
+
+
+def test_reach_out_enters_cooling_then_idle(tmp_path):
+    paths = _tmp_paths(tmp_path / "cool")
+    paths.needs_file.parent.mkdir(parents=True, exist_ok=True)
+    save_state(State(needs={"connection": 0.9}), paths.needs_file)  # a reach-out this tick
+    rec = Rec()
+    _run(paths, rec, inputs={}, ticks=8)  # SELF_COOLDOWN=5 → a few cooling ticks, then idle
+    # the turn tick is responding; the cooldown window surfaces as 'cooling'; then back to idle
+    assert rec.statuses[0] == "responding"
+    assert "cooling" in rec.statuses
+    assert rec.statuses[-1] == "idle"
+    # cooling sits *between* the turn and idle — the first cooling precedes the first idle
+    assert rec.statuses.index("cooling") < rec.statuses.index("idle")
+
+
+def test_cooling_snapshot_keeps_the_same_keys(tmp_path):
+    # contract: the status VALUE gains "cooling", but the snapshot key set is unchanged (KILN-065)
+    paths = _tmp_paths(tmp_path / "coolkeys")
+    paths.needs_file.parent.mkdir(parents=True, exist_ok=True)
+    save_state(State(needs={"connection": 0.9}), paths.needs_file)
+    rec = Rec()
+    _run(paths, rec, inputs={}, ticks=8)
+    cooling = [s for s in rec.snaps if s["status"] == "cooling"]
+    assert cooling, "expected at least one cooling snapshot"
+    idle = next(s for s in rec.snaps if s["status"] == "idle")
+    assert set(cooling[0]) == set(idle)  # same keys whether cooling or idle
 
 
 # --- the driver actually drove the FSM (not the old if/elif) ------------------

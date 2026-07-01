@@ -622,6 +622,13 @@ def _act_wake(ctx: ActionContext) -> None:
     ctx.status = "idle"
 
 
+def _act_cool(ctx: ActionContext) -> None:
+    """Post-turn cooling (KILN-065): recover (idle satiation, exactly the old post-turn idle tick)
+    while the per-need cooldowns tick down; surfaced as status "cooling" until they clear."""
+    apply_satiation(ctx.state, "idle", ctx.config)
+    ctx.status = "cooling"
+
+
 def _act_rotate(ctx: ActionContext) -> None:
     """Request a session rotation; the driver's rotation block performs it (orthogonal, as v1.2)."""
     ctx.do_rotate = True
@@ -668,6 +675,7 @@ _BUILTIN_ACTIONS: dict[str, Callable[[ActionContext], object]] = {
     "enter_rest": _act_enter_rest,
     "rest_ack": _act_rest_ack,
     "wake": _act_wake,
+    "cool": _act_cool,
     "rotate": _act_rotate,
     "command": _act_command,
 }
@@ -904,6 +912,7 @@ def run(
     resting = False  # rest gate: too tired to answer (recovers on idle; hysteresis vs REST_WAKE)
     reached_out = False  # she self-initiated and the user hasn't replied since (anti-repeat)
     registry = default_registry()  # KILN-064: the FSM's action vocabulary (built-ins as tools)
+    fsm_state = fsm.State.IDLE  # KILN-065: the carried FSM state (idle / cooling; RESTING via flag)
     rest_threshold = triggers.get("rest", {}).get("threshold", 1.1)  # >1 -> never sleeps
     last_tick = time.monotonic()  # for catch-up drift over real time
     session_start_wall = last_tick  # for auto-rotation (ROTATE_EVERY_HOURS); reset on rotate
@@ -982,15 +991,16 @@ def run(
             # gate stays a flag, so RESTING is derived from it (waking already happened, above).
             evq = fsm.gather_events(fsm.EventQueue(), user_msg, fired, thought_fired, False)
             event = evq.drain_one()
-            fsm_state = fsm.State.RESTING if resting else fsm.State.IDLE
+            state_in = fsm.State.RESTING if resting else fsm_state  # rest gate stays a flag
             fctx = fsm.Ctx(
                 needs=state.needs,
                 rest_threshold=rest_threshold,
                 rest_wake=rest_wake,
                 reach_out_need=config.reach_out_need if config is not None else REACH_OUT_NEED,
                 reflect_need=config.reflect_need if config is not None else REFLECT_NEED,
+                cooldowns=dict(tg.cooldown),  # KILN-065: COOLING lasts while any cooldown is active
             )
-            action, _next = fsm.advance(fsm_state, event, fctx)
+            action, next_state = fsm.advance(state_in, event, fctx)
             actx = ActionContext(
                 state=state,
                 event=event,
@@ -1012,6 +1022,9 @@ def run(
             )
             registry.fire(action, actx)
             status_label, branch, reached_out = actx.status, actx.branch, actx.reached_out
+            # carry the next FSM state (KILN-065). The rest gate is the flag (above): while resting
+            # it owns the state, so hold IDLE — what to be on the wake tick, when the flag clears.
+            fsm_state = fsm.State.IDLE if resting else next_state
             if actx.do_rotate:
                 do_rotate = True
             if actx.control == "quit":

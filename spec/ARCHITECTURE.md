@@ -269,8 +269,11 @@ multi-agent is additive, not a rewrite:
   `{status, model, agent_name, branch, tick, needs, thresholds, actions, hottest, cooldowns, stats}`
   (`agent_name` v1.2 — the per-agent display name, so a remote TUI labels the right agent) where
   `stats = {turns, tokens_total, tokens_by_branch, last_tokens, last_latency,
-  avg_latency}` (`SessionStats`). It's the live data the TUI status bar + needs panel
-  render from; a precursor to the v1.1 WS `status` event.
+  avg_latency}` (`SessionStats`). The `status` value is an FSM state:
+  `idle | responding | thinking | cooling | resting` — **`cooling`** (v1.3, KILN-065) is the post-turn
+  state, surfaced while the per-need cooldowns tick down before `idle`; the snapshot **key set is
+  unchanged** (only the `status` value gained `cooling`). It's the live data the TUI status bar +
+  needs panel render from; a precursor to the v1.1 WS `status` event.
 - **Bridge bus (v0.3+):** `Bridge` carries typed-dict render events on the outbox
   (`{"kind": "user"|"agent"|"usage"|"notice"|"status", …}`, mirroring the `Output`
   methods) and typed lines on the inbox; both drained non-blocking. Echo-free: input

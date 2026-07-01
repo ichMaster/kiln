@@ -44,22 +44,40 @@ def test_event_kinds_include_the_live_five_and_reserved_three():
 
 
 def test_user_message_from_any_active_state_responds():
+    # a turn goes to COOLING (KILN-065); the "responding" status is emitted by the action, not `to`
     for s in ACTIVE_STATES:
-        assert advance(s, ev(EventKind.USER_MESSAGE, "hi"), ctx()) == ("respond", State.RESPONDING)
+        assert advance(s, ev(EventKind.USER_MESSAGE, "hi"), ctx()) == ("respond", State.COOLING)
 
 
 def test_connection_self_trigger_reaches_out():
     assert advance(State.IDLE, ev(EventKind.SELF_TRIGGER, "connection"), ctx()) == (
         "reach_out",
-        State.RESPONDING,
+        State.COOLING,
     )
 
 
 def test_reflection_self_trigger_thinks():
     assert advance(State.IDLE, ev(EventKind.SELF_TRIGGER, "reflection"), ctx()) == (
         "think",
-        State.THINKING,
+        State.COOLING,
     )
+
+
+def test_cooling_tick_stays_cooling_while_a_cooldown_is_active():
+    c = Ctx(needs={"rest": 0.2}, cooldowns={"connection": 3}, **RESTING_THRESHOLDS)
+    assert advance(State.COOLING, ev(EventKind.TICK), c) == ("cool", State.COOLING)
+
+
+def test_cooling_tick_returns_to_idle_once_cooldowns_clear():
+    c = Ctx(needs={"rest": 0.2}, cooldowns={"connection": 0}, **RESTING_THRESHOLDS)
+    assert advance(State.COOLING, ev(EventKind.TICK), c) == ("idle", State.IDLE)
+    # no cooldowns at all → also clear
+    assert advance(State.COOLING, ev(EventKind.TICK), ctx(rest=0.2)) == ("idle", State.IDLE)
+
+
+def test_cooling_still_yields_to_the_rest_gate():
+    c = Ctx(needs={"rest": 0.95}, cooldowns={"connection": 3}, **RESTING_THRESHOLDS)
+    assert advance(State.COOLING, ev(EventKind.TICK), c) == ("enter_rest", State.RESTING)
 
 
 def test_self_trigger_routes_by_configured_need_not_a_hardcoded_string():
@@ -144,6 +162,7 @@ def test_table_names_only_actions_the_registry_will_provide():
         "idle",
         "enter_rest",
         "wake",
+        "cool",
         "rotate",
         "command",
         "rest_ack",

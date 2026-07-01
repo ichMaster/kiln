@@ -71,6 +71,7 @@ class Ctx:
     rest_wake: float = 0.85  # REST_WAKE
     reach_out_need: str = "connection"  # REACH_OUT_NEED — its self_trigger → reach_out
     reflect_need: str = "reflection"  # REFLECT_NEED — its self_trigger → think
+    cooldowns: dict[str, int] = field(default_factory=dict)  # TriggerBook.cooldown (for COOLING)
 
     @property
     def rest(self) -> float:
@@ -111,15 +112,28 @@ def _is_reflect(e: Event, c: Ctx) -> bool:
     return e.payload == c.reflect_need  # the inner-thought need crossed
 
 
+def _cooldowns_clear(e: Event, c: Ctx) -> bool:
+    return all(v <= 0 for v in c.cooldowns.values())  # every per-need cooldown has ticked down
+
+
 # The DEFAULT transition table — encodes v1.2's behaviour. Order matters only within a (state, kind)
 # group: guarded rules precede the fall-through.
 DEFAULT_TABLE: tuple[Rule, ...] = (
     # --- from an ACTIVE state (idle / responding / thinking / cooling) ---
+    # A turn goes to COOLING (KILN-065): the turn tick still emits status "responding"/"thinking"
+    # (the action sets it), but the *next* state is cooling — the post-turn window where per-need
+    # cooldowns tick down before idle. The status the driver emits comes from the action, not `to`.
     Rule(ACTIVE_STATES, EventKind.COMMAND, "command", State.IDLE),
-    Rule(ACTIVE_STATES, EventKind.USER_MESSAGE, "respond", State.RESPONDING),
-    Rule(ACTIVE_STATES, EventKind.SELF_TRIGGER, "reach_out", State.RESPONDING, guard=_is_reach_out),
-    Rule(ACTIVE_STATES, EventKind.SELF_TRIGGER, "think", State.THINKING, guard=_is_reflect),
+    Rule(ACTIVE_STATES, EventKind.USER_MESSAGE, "respond", State.COOLING),
+    Rule(ACTIVE_STATES, EventKind.SELF_TRIGGER, "reach_out", State.COOLING, guard=_is_reach_out),
+    Rule(ACTIVE_STATES, EventKind.SELF_TRIGGER, "think", State.COOLING, guard=_is_reflect),
     Rule(ACTIVE_STATES, EventKind.ROTATE, "rotate", State.IDLE),
+    # tick from COOLING: recover while cooldowns are active (`cool`), then return to idle once they
+    # clear (KILN-065). These precede the generic active-tick rows below (first match wins); the
+    # other active states go to COOLING after a turn, so only IDLE reaches the generic rows.
+    Rule((State.COOLING,), EventKind.TICK, "enter_rest", State.RESTING, guard=_should_rest),
+    Rule((State.COOLING,), EventKind.TICK, "idle", State.IDLE, guard=_cooldowns_clear),
+    Rule((State.COOLING,), EventKind.TICK, "cool", State.COOLING),
     Rule(ACTIVE_STATES, EventKind.TICK, "enter_rest", State.RESTING, guard=_should_rest),
     Rule(ACTIVE_STATES, EventKind.TICK, "idle", State.IDLE),
     # --- from RESTING (the rest gate: heard-but-not-engaged; recover on idle) ---

@@ -77,8 +77,8 @@ table** that says, for a given state and event, which **action** to run and whic
 `idle`, `responding`, `thinking`, and `cooling` are the **active** states — from any of them the same
 things can happen next (answer, reach out, think, rest, or fall idle); they differ only in what the
 last tick did. `resting` is the one genuinely different state, because the rest gate changes how she
-reacts. (`cooling` is defined in the state set now and becomes a live post-turn state within v1.3;
-until then a turn returns straight to `idle`.)
+reacts. `cooling` (live as of v1.3) is the post-turn state: after a turn she settles into `cooling`
+and recovers while the per-need cooldowns tick down, then returns to `idle`.
 
 ### Events
 
@@ -119,19 +119,24 @@ this action and move to this state.*
 | From | Event | Guard | Action | To |
 |---|---|---|---|---|
 | active | `command` | — | `command` | `idle` |
-| active | `user.message` | — | `respond` | `responding` |
-| active | `self_trigger` | need is the reach-out need | `reach_out` | `responding` |
-| active | `self_trigger` | need is the reflect need | `think` | `thinking` |
+| active | `user.message` | — | `respond` | `cooling` |
+| active | `self_trigger` | need is the reach-out need | `reach_out` | `cooling` |
+| active | `self_trigger` | need is the reflect need | `think` | `cooling` |
 | active | `rotate.request` | — | `rotate` | `idle` |
 | active | `tick` | `rest ≥ threshold` | `enter_rest` | `resting` |
-| active | `tick` | otherwise | `idle` | `idle` |
+| `cooling` | `tick` | a cooldown is still active | `cool` | `cooling` |
+| `cooling` | `tick` | cooldowns clear | `idle` | `idle` |
+| `idle` | `tick` | otherwise | `idle` | `idle` |
 | `resting` | `command` | — | `command` | `resting` |
 | `resting` | `user.message` | — | `rest_ack` | `resting` |
 | `resting` | `rotate.request` | — | `rotate` | `resting` |
 | `resting` | `tick` | `rest ≤ REST_WAKE` | `wake` | `idle` |
 | `resting` | `tick` | otherwise | `enter_rest` | `resting` |
 
-"active" means any of `idle` / `responding` / `thinking` / `cooling`. `advance(state, event, ctx)` is
+A turn moves to `cooling`, not `responding`/`thinking`: the `responding`/`thinking` you see is the
+**status the turn emits that tick**, and `cooling` is the state it settles into for the following
+ticks (recovering while the per-need cooldowns tick down, then `idle`). "active" means any of `idle` /
+`responding` / `thinking` / `cooling`. `advance(state, event, ctx)` is
 the pure lookup: it walks the table in order and returns the first row whose state, event, and guard
 all match. It has no side effects — the loop is what runs the action.
 
