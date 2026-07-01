@@ -587,16 +587,25 @@ the other's needs/store; all on `MockBrain` (zero paid calls).
 ### 1.7 Declarative FSM (YAML per agent) — ⬜
 **Goal:** define an agent's **behaviour in YAML**, not Python — `state/{id}/fsm.yaml` (states +
 transitions + tool-actions) interpreted by the 1.3 engine. An agent then differs in its *logic*, not
-only its calibration (needs/mood/persona). (Concept: [features/fsm.md](features/fsm.md).)
+only its calibration (needs/mood/persona). Framed as an **Extended FSM (EFSM)**: the needs are the
+machine's **variables**, so `fsm.yaml` folds the need model (drift + satiation) in beside the states
+and transitions — **one machine definition**, not `fsm.py` + `needs_model.yaml` — and a trigger stops
+being a separate `action:` vocabulary and becomes an ordinary **guarded transition naming a registry
+action** (`connection >= 0.80 → reach_out`, brain as a param). (Concept + the EFSM formalism and the
+unified-file sketch: [features/fsm.md](features/fsm.md#the-formalism-an-extended-fsm-the-needs-are-the-machines-variables).)
 **Why here:** it needs the **table-driven FSM** (1.3, the interpreter) and the **tool registry** (1.5,
 the action vocabulary); coming after multi-agent conversation (1.6) means the full event vocabulary —
 incl. `peer.message` — is real and declarable. With those, this phase is a thin **loader**: `fsm.yaml`
 → the transition table the engine already runs.
 **Tasks:** a small **DSL** — states, `on: {event: {guard, action, to}}`, guards as a **constrained
 predicate** over needs/flags (`rest >= 0.9`, `self_messages`), actions referencing **tools** by name;
-a per-agent loader (`state/{id}/fsm.yaml` → table) that **heals to the default table** on a missing/bad
-file; **validation at load** (unreachable states, unknown events/actions/tools); **transition tracing**
-(`state → event → guard → action → state`). Spec the DSL first (event names, guard grammar, params).
+a **`variables:` block** that folds the need model (per-need `drift` + `satiation`) into the same file,
+so the needs are first-class machine variables (the EFSM datapath); **triggers as guarded transitions**
+that name a registry action with the brain as a param (retiring the separate `need_triggers.action`
+vocabulary); a per-agent loader (`state/{id}/fsm.yaml` → table) that **heals to the default table** on a
+missing/bad file; **validation at load** (unreachable states, unknown events/actions/tools);
+**transition tracing** (`state → event → guard → action → state`). Spec the DSL first (event names,
+guard grammar, params, the `variables` schema).
 **DoD:** Pashu runs a hand-written `fsm.yaml` (e.g. reaches out on her own guard) with **no Python**; a
 broken file heals to the default; a bad action/state is caught at load with a clear error; every
 transition is traceable; all on `MockBrain`.

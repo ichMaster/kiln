@@ -65,6 +65,75 @@ exactly what the four phases make explicit, unified, and (optionally) non-blocki
   expression, so the machine stays inspectable and safe.
 - **Transition** — `(state, event, guard) → (action, next_state)`.
 
+## The formalism: an Extended FSM (the needs are the machine's variables)
+
+What we are building is **not** a plain finite state machine (which has only discrete states and an
+input alphabet). It is an **Extended Finite State Machine (EFSM)** — the standard formalism for "a
+state machine that also carries data." An EFSM is a tuple of a finite set of **states**, a set of
+**variables**, and **transitions** of the form *guard(variables) ∧ event → action; update(variables);
+next state*. (Control engineers call the same object a *state machine with a datapath*; it is the
+discrete‑time cousin of a *hybrid automaton*.) Naming it matters, because it settles a recurring
+question: **the needs are not separate logic sitting next to the FSM — they are the machine's
+variables.** There is one machine; the discrete states and the continuous needs are two parts of the
+same object.
+
+Every piece the engine already has maps onto a part of the EFSM:
+
+| EFSM part | kiln |
+|---|---|
+| discrete states `S` | `idle` / `thinking` / `responding` / `cooling` / `resting` |
+| variables `V` | the **needs vector** — `connection`, `rest`, `novelty`, `intensity`, `reflection`, `curiosity`, each ∈ [0,1] |
+| variable dynamics | `drift` (every tick `V` rises/falls), optionally per state (e.g. `rest` recovers while `resting`) |
+| events (input) | `user.message`, `command`, `self_trigger:<need>`, `tick`, `rotate.request` |
+| guards `g(V)` | threshold predicates over needs — `connection ≥ 0.8`, `rest ≥ 0.9` |
+| actions (output) | the **registry** actions — `reach_out` / `think` / `enter_rest` / … |
+| variable update | `apply_satiation` — the action's write‑back into `V` (a `reach_out` discharges `connection`) |
+
+Read the tick loop as one EFSM step: `drift` advances `V`; a guard `g(V)` crossing (or a user/clock
+event) selects a transition; the transition fires an action and `apply_satiation` updates `V`; the
+state advances. `advance(state, event, ctx)` is the transition relation and `ctx` is the read‑view of
+`V`. So the "two pieces" feeling — `fsm.py` next to `needs_model.yaml` — is **file organization, not
+two models**; formally it is already a single EFSM. What 1.7 adds is making that one machine one
+*explicit artifact*, and removing the last seam where a trigger looked separate.
+
+**One definition (the 1.7 artifact).** The declarative machine folds the variable model in — the
+needs, their drift, their satiation — beside the states and transitions, so there is a single
+description instead of `fsm.py` + `needs_model.yaml`. A trigger then stops being a separate table with
+its own `action:` vocabulary and becomes an ordinary transition: its guard is a need threshold, and
+its action is a **registry action** (with the brain as a parameter).
+
+```yaml
+# ONE machine: variables (the needs) + states + transitions, in one file
+variables:                 # the needs = the EFSM's datapath
+  connection: { drift: +0.0010, satiation: { reach_out: -0.60, chat: -0.30 } }
+  rest:       { drift: -0.0050, satiation: { deep: +0.40, idle: -0.01 } }
+  reflection: { drift: +0.0010, satiation: { think: -0.70 } }
+  # …novelty / intensity / curiosity…
+
+initial: idle
+states:
+  idle:
+    on:
+      user.message: { action: respond, to: responding }
+      # a trigger IS a guarded transition → a registry action (brain is a param, not a rival action):
+      self_trigger:connection: { guard: "connection >= 0.80", action: reach_out, brain: chat, to: responding }
+      self_trigger:reflection: { guard: "reflection >= 0.60", action: think, to: thinking }
+      tick:
+        - { guard: "rest >= 0.90", action: enter_rest, to: resting }   # guarded first
+        - { action: idle, to: idle }                                   # fall-through
+  resting:
+    on:
+      tick: { guard: "rest <= 0.85", action: wake, to: idle }
+```
+
+Now the FSM connection is visible on the page: each `self_trigger:<need>` line reads *need crosses
+threshold → registry action → next state*, and the needs that drive it are declared in the **same
+file** with their drift and satiation. The brain choice (`deep` when `intensity` is high,
+`session-wiki` when `novelty` is high) is a **parameter or an extra guarded transition of `reach_out`**
+— not a competing `action:` field — so there is exactly one action namespace, owned by the registry.
+This is what makes it "one solid state machine where the needs are part of it," rather than two files
+wired together in Python.
+
 ## The transition table (the one key abstraction)
 
 The 1.3 engine interprets a **transition table as data**, not hardcoded `if/elif`. The *default* table
