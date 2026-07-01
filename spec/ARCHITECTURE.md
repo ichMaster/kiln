@@ -202,6 +202,17 @@ multi-agent is additive, not a rewrite:
   `classify` / `respond` / `_status_snapshot` / `mood_block` run on that agent's need model + tunables
   + mood. Each helper takes the same optional `config` (None → its module global, still monkeypatchable).
 - **Reply / route:** `respond(...) → {class, route, reply, usage}`.
+- **Action registry (v1.3, KILN-063):** the FSM fires actions through a `name -> callable(ctx)`
+  registry (`engine.ActionRegistry`; `default_registry()` seeded from the built-ins
+  `idle` / `respond` / `reach_out` / `think` / `enter_rest` / `rest_ack` / `wake` / `rotate` /
+  `command`) — `fire(action, ctx)` resolves and calls. `ctx` is an `ActionContext` bundling the
+  run-loop handles an action needs (the injected `turn` / `think` / `self_prompt` / `handle_command`
+  primitives + `state` / `output` / `stats` / `config`) and the outcome fields the driver reads back
+  (`status` / `branch` / `reached_out` / `resting` / `do_rotate` / `control`). The registered names
+  are exactly `fsm.table_actions()` (the FSM table names only actions the registry provides) —
+  **actions = tools**: **1.5 Tools** extends the same registry, and an agent's scope gates which it
+  may fire. (The FSM model — states, events, the transition table, `advance` — and the tick-loop
+  rewrite are pinned by KILN-064/066.)
 - **Model usage:** `{model, input, output, cache_read, cache_write, total, cost_usd}` captured by
   `usage_record` (SDK `msg.usage` / CLI `data.usage` + `total_cost_usd`). `total` = input+output
   (cache tracked separately, Lumi-style); `cost_usd` = the CLI's actual cost, or `None` for the
