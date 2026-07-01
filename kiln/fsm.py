@@ -150,6 +150,17 @@ DEFAULT_TABLE: tuple[Rule, ...] = (
 # (entered_rest → REST_MESSAGE) and every continuing one (idle satiation, status "resting").
 
 
+def match(
+    state: State, event: Event, ctx: Ctx, table: tuple[Rule, ...] = DEFAULT_TABLE
+) -> Rule | None:
+    """The rule `advance` selects — the first whose state + kind + guard all match, else None.
+    Exposed so the trace (KILN-066) can name the guard that fired without re-doing the lookup."""
+    for rule in table:
+        if state in rule.states and event.kind == rule.kind and rule.guard(event, ctx):
+            return rule
+    return None
+
+
 def advance(
     state: State, event: Event, ctx: Ctx, table: tuple[Rule, ...] = DEFAULT_TABLE
 ) -> tuple[Action, State]:
@@ -157,15 +168,52 @@ def advance(
     `(action, next_state)` from the first matching rule in `table`. **No side effects** — the driver
     (KILN-064) fires the action through the registry (KILN-063). Falls back to `(idle, state)` if no
     rule matches (defensive; the default table is total for the real event set)."""
-    for rule in table:
-        if state in rule.states and event.kind == rule.kind and rule.guard(event, ctx):
-            return rule.action, rule.to
-    return "idle", state
+    rule = match(state, event, ctx, table)
+    return ("idle", state) if rule is None else (rule.action, rule.to)
 
 
 def table_actions(table: tuple[Rule, ...] = DEFAULT_TABLE) -> set[Action]:
     """The set of action names a table references — what the registry (KILN-063) must provide."""
     return {rule.action for rule in table}
+
+
+# === Transition trace (KILN-066) =============================================
+# A structured record of every FSM step, emitted through a sink the driver is handed (off by
+# default; see engine.run's `trace`). The log **1.8 simulation** consumes (state histograms +
+# transition heatmaps), so the shape is a pinned contract. Cheap when on (a dict/tick); no effect.
+
+TRACE_KEYS = frozenset({"tick", "state", "event", "guard", "action", "next_state", "needs"})
+
+
+def guard_name(rule: Rule | None) -> str | None:
+    """The name of the guard that fired (`_should_rest`, `_is_reach_out`, …), or None for the
+    always-true default guard / an unmatched event — for the trace record."""
+    if rule is None:
+        return None
+    name = getattr(rule.guard, "__name__", None)
+    return None if name in (None, "<lambda>") else name
+
+
+def trace_record(
+    tick: int,
+    state: State,
+    event: Event,
+    action: Action,
+    next_state: State,
+    needs: dict[str, float],
+    guard: str | None = None,
+) -> dict:
+    """The canonical transition-trace record (keys = `TRACE_KEYS`): the from-state, event, guard,
+    action, and next_state, plus `tick` and a `needs` snapshot. One record per FSM step."""
+    return {
+        "tick": tick,
+        "state": state.value if isinstance(state, State) else state,
+        "event": event.kind.value if isinstance(event, Event) else event,
+        "guard": guard,
+        "action": action,
+        "next_state": next_state.value if isinstance(next_state, State) else next_state,
+        "needs": needs,
+    }
 
 
 # === Event queue + producers (KILN-062) ======================================

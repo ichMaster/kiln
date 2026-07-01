@@ -721,6 +721,7 @@ def run(
     paths: AgentPaths | None = None,
     stop_event: threading.Event | None = None,
     config: AgentConfig | None = None,
+    trace: Callable[[dict], object] | None = None,
 ) -> None:
     """
     The tick loop. `channel.poll()` yields the next user message or None.
@@ -734,6 +735,8 @@ def run(
     `config` (v1.2): the per-agent calibration (need model / tunables / mood). None = the agnika
     default, which reads the module globals at each point — still monkeypatchable in tests; the host
     (KILN-059) passes a per-agent `AgentConfig` so two agents drift/route/sound on their own model.
+    `trace` (v1.3, KILN-066): an optional sink called once per tick with a `fsm.trace_record` of the
+    FSM step (state/event/guard/action/next_state + needs). None = off (no records, cheap).
     """
     if channel is None:
         channel = ScriptedChannel()
@@ -1001,6 +1004,18 @@ def run(
                 cooldowns=dict(tg.cooldown),  # KILN-065: COOLING lasts while any cooldown is active
             )
             action, next_state = fsm.advance(state_in, event, fctx)
+            if trace is not None:  # KILN-066: off by default; one record per tick when a sink is on
+                trace(
+                    fsm.trace_record(
+                        total_ticks,
+                        state_in,
+                        event,
+                        action,
+                        next_state,
+                        {k: round(v, 4) for k, v in state.needs.items()},
+                        guard=fsm.guard_name(fsm.match(state_in, event, fctx)),
+                    )
+                )
             actx = ActionContext(
                 state=state,
                 event=event,

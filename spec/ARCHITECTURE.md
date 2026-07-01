@@ -221,8 +221,20 @@ multi-agent is additive, not a rewrite:
   (`status` / `branch` / `reached_out` / `resting` / `do_rotate` / `control`). The registered names
   are exactly `fsm.table_actions()` (the FSM table names only actions the registry provides) —
   **actions = tools**: **1.5 Tools** extends the same registry, and an agent's scope gates which it
-  may fire. (The FSM model — states, events, the transition table, `advance` — and the tick-loop
-  rewrite are pinned by KILN-064/066.)
+  may fire.
+- **FSM (v1.3, `kiln/fsm.py`):** the loop's behaviour is a table-driven finite state machine. The
+  seam is: **states** `idle | responding | thinking | cooling | resting`; **event kinds**
+  `user.message | command | self_trigger | tick | rotate.request` (+ reserved `peer.message` 1.6 /
+  `room.message` 1.11 / `tool.result` 1.5); a **transition table** (`DEFAULT_TABLE`, tuple of `Rule`s)
+  with **guards** as Python predicates over needs/flags; the pure **`advance(state, event, ctx) →
+  (action, next_state)`** (and `match` → the selected `Rule`); the per-tick **`EventQueue`** drained
+  by `EVENT_PRIORITY` (`input > self-trigger > rotate > tick`); and the **trace record** (KILN-066):
+  `{tick, state, event, guard, action, next_state, needs}` = `fsm.TRACE_KEYS`, emitted through the
+  optional `engine.run(trace=…)` sink (off by default) — the log **1.8 simulation** consumes. The
+  **default table reproduces v1.2 byte-for-byte** (the whole suite + the deterministic dry-run pin
+  it); the WS **event protocol is unchanged** by the FSM (the v1.1 server tests stay green). Guards
+  stay Python here; the per-agent **YAML grammar / `fsm.yaml`** and folding the need model in as the
+  machine's variables (an EFSM) are **1.7**.
 - **Model usage:** `{model, input, output, cache_read, cache_write, total, cost_usd}` captured by
   `usage_record` (SDK `msg.usage` / CLI `data.usage` + `total_cost_usd`). `total` = input+output
   (cache tracked separately, Lumi-style); `cost_usd` = the CLI's actual cost, or `None` for the
