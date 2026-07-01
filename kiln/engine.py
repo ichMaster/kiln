@@ -23,48 +23,38 @@ commands (slash commands).
 from __future__ import annotations
 
 import datetime as _dt
-import json
 import queue
-import random
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import fsm
+from .actions import ActionContext, ActionRegistry, default_registry  # noqa: F401
 from .brain import Brain, LiveBrain, MockBrain
-from .channels import ScriptedChannel, StdinChannel  # noqa: F401  (StdinChannel re-exported)
+from .channels import ScriptedChannel, StdinChannel  # noqa: F401
 from .commands import handle_command
 from .config import (
     AGENT_NAME,
     BIORHYTHM,
     CHAT_MODEL,
     DEEP_MODEL,
-    DRIFT,
+    DRIFT,  # noqa: F401 (re-exported for tests: eng.DRIFT)
     MOOD_AWARENESS,
     NEED_TRIGGERS,
-    NEEDS_LEVELS_FILE,
-    REACH_OUT_MODELS,
     REACH_OUT_NEED,
     RECENT_MESSAGES,
     REFLECT_NEED,
-    REST_MESSAGE,
     REST_WAKE,
     ROTATE_EVERY_HOURS,
-    SATIATION,
-    SELF_COOLDOWN,
+    SATIATION,  # noqa: F401 (re-exported for tests: eng.SATIATION)
     SELF_SILENCE_NOTE,
     STORE_FILE,
-    THINK_HINTS,
-    THINK_THRESHOLD,
-    THOUGHT_COOLDOWN,
     THOUGHT_VISIBLE_EVERY,
     THOUGHTS_ENABLED,
     THOUGHTS_IN_PROMPT,
     TICK_SECONDS,
     TIMEZONE,
-    TOOL_HINTS,
     USAGE_REPORT,
     USER_LOCATION,
     WORLD_AWARENESS,
@@ -87,325 +77,32 @@ from .memory import (
     thoughts_block,
 )
 from .mood import biorhythm, mood_block
+from .needs import (
+    State,
+    TriggerBook,
+    _thought_visible,
+    apply_satiation,
+    drift,
+    load_state,
+    reach_out_branch,  # noqa: F401 (re-exported for tests)
+    save_state,
+    select_self_trigger,
+    select_thought_trigger,
+    update_curiosity_monitor,
+)
 from .output import ConsoleOutput, Output
 from .report import write_report
+from .routing import (  # noqa: F401 (classify + turn_weight re-exported for tests)
+    classify,
+    is_curiosity_reply,
+    respond,
+    turn_weight,
+)
 from .stats import SessionStats
 from .store import add_facts, add_thought, load_store, remove_session, save_store, upsert_session
 from .world import world_block
 
-# === State ==================================================================
-
-
-@dataclass
-class State:
-    needs: dict[str, float] = field(default_factory=dict)
-    self_messages: bool = True  # proactive reach-outs on? (/self toggle; per-session, not saved)
-
-    @property
-    def intensity(self) -> float:
-        return self.needs.get("intensity", 0.0)
-
-    @property
-    def connection(self) -> float:
-        return self.needs.get("connection", 0.0)
-
-    def hottest_need(self) -> tuple[str, float]:
-        if not self.needs:
-            return ("", 0.0)
-        k = max(self.needs, key=self.needs.get)
-        return (k, self.needs[k])
-
-
-def load_state(path: Path = NEEDS_LEVELS_FILE) -> State:
-    """Reads the live need LEVELS from .kiln/needs.json ({need: level}); empty state if the file is
-    missing. Any configured need (a `DRIFT` key) absent from the file is healed in at 0.0 — so a new
-    need (e.g. v0.10 `reflection`, v0.11 `curiosity`) appears in the TUI/commands and drifts, no
-    re-seed. (The need MODEL — drift/satiation/triggers — is separate: state/needs_model.yaml.)"""
-    if not path.exists():
-        return State()
-    data = json.loads(path.read_text(encoding="utf-8"))
-    needs = {str(k): float(v) for k, v in data.items() if isinstance(v, (int, float))}
-    for need in DRIFT:  # heal: a configured need missing from the file starts at 0.0
-        needs.setdefault(need, 0.0)
-    return State(needs=needs)
-
-
-def save_state(state: State, path: Path = NEEDS_LEVELS_FILE) -> None:
-    """Writes the live need LEVELS to .kiln/needs.json ({need: level}, rounded to 3 decimals)."""
-    data = {k: round(v, 3) for k, v in state.needs.items()}
-    path.parent.mkdir(parents=True, exist_ok=True)  # .kiln[/{id}] may not exist on a fresh run
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-
-
-# === Tick ===================================================================
-
-
-def drift(state: State, ticks: int = 1, config: AgentConfig | None = None) -> None:
-    """Each need grows by DRIFT[k] × ticks (clamped to 1.0).
-    ticks > 1 — "catch-up" drift for real time that elapsed during a
-    blocking model call (see the loop in run).
-    `config` (v1.2): the per-agent need model; None → the module global DRIFT (the agnika default,
-    still monkeypatchable in tests). run() threads its config; direct callers omit it."""
-    dmap = config.drift if config is not None else DRIFT
-    for k in state.needs:
-        state.needs[k] = min(1.0, state.needs[k] + dmap.get(k, 0.0) * ticks)
-
-
-def apply_satiation(state: State, event: str, config: AgentConfig | None = None) -> None:
-    """Closes needs per the event ('chat' | 'deep' | 'idle'), clamping at 0.
-    `config` (v1.2): the per-agent satiation map; None → the module global SATIATION."""
-    sat = config.satiation if config is not None else SATIATION
-    for k, delta in sat.get(event, {}).items():
-        if k in state.needs:
-            state.needs[k] = max(0.0, state.needs[k] + delta)
-
-
-@dataclass
-class TriggerBook:
-    """Runtime trigger state (not persisted): hysteresis + per-need cooldown."""
-
-    armed: dict[str, bool] = field(default_factory=dict)  # ready to fire?
-    cooldown: dict[str, int] = field(default_factory=dict)  # silent ticks remaining
-    curiosity_monitor: bool = False  # v0.11: ON between a curiosity crossing and falling below it
-
-
-def _crossing_trigger(
-    state: State, tg: TriggerBook, name: str, cooldown: int, config: AgentConfig | None = None
-) -> str | None:
-    """Fire `name` on an UPWARD threshold crossing (`NEED_TRIGGERS`) with hysteresis — fires only on
-    the up-crossing, re-arms once it falls back below — and a `cooldown` of silent ticks after.
-    Returns the need name when it fires this tick, else None.
-    `config` (v1.2): the per-agent triggers; None → the module global NEED_TRIGGERS."""
-    triggers = config.need_triggers if config is not None else NEED_TRIGGERS
-    cfg = triggers.get(name)
-    if cfg is None:
-        return None
-    if tg.cooldown.get(name, 0) > 0:
-        tg.cooldown[name] -= 1
-    if state.needs.get(name, 0.0) < cfg["threshold"]:
-        tg.armed[name] = True  # re-arm below threshold
-        return None
-    if not tg.armed.get(name, True) or tg.cooldown.get(name, 0) != 0:
-        return None  # already discharged this crossing, or still cooling down
-    tg.armed[name] = False  # discharge hysteresis
-    tg.cooldown[name] = cooldown  # start cooldown
-    return name
-
-
-def select_self_trigger(
-    state: State, tg: TriggerBook, config: AgentConfig | None = None
-) -> str | None:
-    """The proactive reach-out fires ONLY on REACH_OUT_NEED (connection = loneliness): returns that
-    need name when it crosses its threshold this tick, else None. WHICH brain answers is a separate
-    choice (reach_out_branch). Hysteresis + SELF_COOLDOWN silent ticks after firing.
-    `config` (v1.2): the per-agent reach-out need + cooldown; None → the module globals."""
-    reach = config.reach_out_need if config is not None else REACH_OUT_NEED
-    cooldown = config.self_cooldown if config is not None else SELF_COOLDOWN
-    return _crossing_trigger(state, tg, reach, cooldown, config)
-
-
-def _thought_visible(every: int) -> bool:
-    """Whether a freshly formed thought surfaces in the chat — ~1/`every` via the stdlib RNG
-    (seedable / monkeypatchable in tests). `every <= 0` → never shown."""
-    return every > 0 and random.random() < (1.0 / every)
-
-
-def select_thought_trigger(
-    state: State, tg: TriggerBook, config: AgentConfig | None = None
-) -> str | None:
-    """The inner monologue fires on REFLECT_NEED (reflection = незібраність): returns it on an
-    upward crossing this tick (else None), with the same hysteresis + THOUGHT_COOLDOWN as the
-    reach-out. The thought itself (KILN-042) is generated separately — this only decides WHEN.
-    `config` (v1.2): the per-agent reflect need + cooldown; None → the module globals."""
-    reflect = config.reflect_need if config is not None else REFLECT_NEED
-    cooldown = config.thought_cooldown if config is not None else THOUGHT_COOLDOWN
-    return _crossing_trigger(state, tg, reflect, cooldown, config)
-
-
-def update_curiosity_monitor(
-    state: State, tg: TriggerBook, config: AgentConfig | None = None
-) -> bool:
-    """v0.11: curiosity's "trigger" — an upward crossing of its threshold **enables the monitor**
-    (`tg.curiosity_monitor`); falling back below disables it. Unlike a reach-out/thought it sends
-    nothing — it just gates whether a `?` reply discharges curiosity (the monitor, in `_turn`).
-    Run every tick (after drift). Returns the monitor state. No `NEED_TRIGGERS` entry → off.
-    `config` (v1.2): the per-agent triggers; None → the module global NEED_TRIGGERS."""
-    triggers = config.need_triggers if config is not None else NEED_TRIGGERS
-    cfg = triggers.get("curiosity")
-    if cfg is None:
-        tg.curiosity_monitor = False
-        return False
-    if _crossing_trigger(
-        state, tg, "curiosity", 0, config
-    ):  # an upward crossing -> arm the monitor
-        tg.curiosity_monitor = True
-    elif state.needs.get("curiosity", 0.0) < cfg["threshold"]:  # fell below -> disarm
-        tg.curiosity_monitor = False
-    return tg.curiosity_monitor
-
-
-def reach_out_branch(state: State, config: AgentConfig | None = None) -> tuple[str, str | None]:
-    """
-    WHICH brain answers a connection reach-out, shaped by her OTHER needs at fire time:
-    the first REACH_OUT_MODELS need over its threshold wins (intensity -> deep/opus, novelty
-    -> session-wiki), else the reach-out need's baseline (chat). So opus/session-wiki never
-    self-INITIATE — they only shape a connection-driven message. Returns (action, agent).
-    `config` (v1.2): the per-agent reach-out models/triggers/need; None → the module globals.
-    """
-    models = config.reach_out_models if config is not None else REACH_OUT_MODELS
-    triggers = config.need_triggers if config is not None else NEED_TRIGGERS
-    reach = config.reach_out_need if config is not None else REACH_OUT_NEED
-    for name in models:
-        cfg = triggers.get(name, {})
-        if state.needs.get(name, 0.0) >= cfg.get("threshold", 2.0):
-            return cfg.get("action", "chat"), cfg.get("agent")
-    base = triggers.get(reach, {})
-    return base.get("action", "chat"), base.get("agent")
-
-
-# === Turn classification ====================================================
-
-
-def turn_weight(state: State) -> float:
-    """Turn weight ~0..1 from state. Higher -> closer to deep reasoning."""
-    return max(0.0, min(1.0, 0.55 * state.intensity + 0.45 * state.connection))
-
-
-def classify(
-    prompt: str, state: State, config: AgentConfig | None = None
-) -> tuple[str, str | None]:
-    """
-    Route a USER turn to (class, agent), class ∈ 'chat'|'think'|'tools'|'tool'.
-
-    Priority:
-      1. explicit tool markers -> 'tools' (deep + --allowedTools);
-      2. explicit reasoning markers -> 'think';
-      3. ambient HIGH NEEDS pick the model the same way a self-trigger does
-         (reach_out_branch / REACH_OUT_MODELS): intensity over its threshold -> 'deep'
-         (opus); else novelty over its -> 'tool' (session-wiki). So when she's intense or
-         curious, even a plain user turn gets the deeper brain, not cheap chat;
-      4. a high state weight -> 'think';
-      5. otherwise -> 'chat'.
-
-    `config` (v1.2): the per-agent reach-out models / triggers / think-threshold; None → the module
-    globals. The TOOL_HINTS / THINK_HINTS markers stay global (persona-layer Ukrainian words).
-    """
-    models = config.reach_out_models if config is not None else REACH_OUT_MODELS
-    triggers = config.need_triggers if config is not None else NEED_TRIGGERS
-    threshold = config.think_threshold if config is not None else THINK_THRESHOLD
-    low = prompt.lower()
-    if any(h in low for h in TOOL_HINTS):
-        return "tools", None
-    if any(h in low for h in THINK_HINTS):
-        return "think", None
-    for name in models:  # high need -> deeper brain (same map as reach_out_branch)
-        cfg = triggers.get(name, {})
-        if state.needs.get(name, 0.0) >= cfg.get("threshold", 2.0):
-            return cfg.get("action", "chat"), cfg.get("agent")
-    if turn_weight(state) >= threshold:
-        return "think", None
-    return "chat", None
-
-
 # === Engine (loop) ==========================================================
-
-
-# v0.11 curiosity: she "asks" when the reply carries a question — a `?` or a leading Ukrainian
-# interrogative as its first word. Pure heuristic (a model judge may refine it later); it gates the
-# curiosity discharge (she acted on the nudge -> sated).
-_QUESTION_WORDS = frozenset(
-    {
-        "чому",
-        "що",
-        "як",
-        "коли",
-        "де",
-        "хто",
-        "навіщо",
-        "чи",
-        "чим",
-        "кого",
-        "кому",
-        "який",
-        "яка",
-        "яке",
-        "які",
-        "скільки",
-        "куди",
-        "звідки",
-    }
-)
-
-
-def is_curiosity_reply(text: str) -> bool:
-    """True when a reply actually ASKS — it contains a question mark, or its first word is a
-    Ukrainian interrogative. Pure; used to discharge curiosity (KILN-047)."""
-    if "?" in text:
-        return True
-    words = text.lstrip().lower().split(maxsplit=1)
-    first = words[0].strip(".,!?;:—-«»\"'") if words else ""
-    return first in _QUESTION_WORDS
-
-
-def respond(
-    prompt: str,
-    state: State,
-    history: list[dict],
-    system: str,
-    brain: Brain,
-    force: str | None = None,
-    agent: str | None = None,
-    config: AgentConfig | None = None,
-) -> dict:
-    # force ("chat"|"deep"|"tool") picks the branch directly (for self-triggers and /ask),
-    # otherwise classify() routes the user turn (and may name the "tool" sub-agent). We call
-    # the model ONLY through brain (seam): the core knows nothing about the SDK or the CLI.
-    # `config` (v1.2): the per-agent models + satiation; None → the module globals.
-    chat_model = config.chat_model if config is not None else CHAT_MODEL
-    deep_model = config.deep_model if config is not None else DEEP_MODEL
-    sat = config.satiation if config is not None else SATIATION
-    name = (
-        config.agent_name if config is not None else AGENT_NAME
-    )  # strip THIS agent's echoed label
-    if force:
-        cls = force
-    else:
-        cls, agent = classify(prompt, state, config)
-
-    # The user's current turn goes into the shared history before the call (timestamped, v0.8).
-    history.append(turn(ROLE_USER, prompt))
-
-    if cls == "chat":
-        reply, usage = brain.chat(history, system)
-        route = f"CHAT/{chat_model.split('-')[1]}"  # e.g. CHAT/haiku
-        event = "chat"
-    elif cls == "tool":
-        # A "tool" self-trigger runs a named Claude Code sub-agent (e.g. novelty ->
-        # session-wiki, an external Wikipedia fact). Satiation is PER-AGENT: if SATIATION has
-        # an entry keyed by the agent name it's used (so session-wiki drops novelty on its
-        # own terms), else it falls back to a deep "filling meal". NB: distinct from the
-        # "tools" class below (deep + --allowedTools); here the whole turn is a sub-agent.
-        reply, usage = brain.tool(agent or "", history, system)
-        route = f"TOOL/{agent}"  # e.g. TOOL/session-wiki (the agent IS the trace label)
-        event = agent if agent in sat else "deep"
-    elif cls in ("think", "deep"):
-        reply, usage = brain.deep(prompt, history, system, with_tools=False)
-        route = f"THINK/{deep_model.split('-')[1]}"  # e.g. THINK/opus
-        event = "deep"
-    else:  # tools
-        reply, usage = brain.deep(prompt, history, system, with_tools=True)
-        route = f"TOOLS/{deep_model.split('-')[1]}"
-        event = "deep"
-
-    # Strip a leading name the model echoed (it mirrors the timeline's "Name:" labels) — clean
-    # for both display and storage, so it never shows and never compounds in the next timeline.
-    reply = strip_leading_name(reply, name)
-    # The reply goes into the history too (timestamped, v0.8).
-    history.append(turn(ROLE_BOT, reply))
-
-    # The branch determines which needs were closed.
-    apply_satiation(state, event, config)
-    return {"class": cls, "route": route, "reply": reply, "usage": usage}
 
 
 def _status_snapshot(
@@ -474,197 +171,6 @@ def _previous_session_turns(
             continue
         turns.extend(store.get("messages", {}).get(session.get("id"), []))
     return turns
-
-
-# === Action registry (KILN-063) =============================================
-# The seam the FSM fires actions through: `name -> callable(ctx)`, with `fire(action, ctx)`. The
-# built-ins wrap today's inline `run()` branches; each reads/writes an `ActionContext` — the run
-# loop's handles it needs. The turn / think / self-prompt / command primitives are INJECTED as calls
-# (run-loop closures over history/prompts/brain), so the built-ins stay thin and testable; the
-# module-level engine functions (`apply_satiation`, `reach_out_branch`) are called directly. This is
-# the exact seam **1.5 Tools** extends with user tools (an agent's scope gates which it may fire).
-# Added here; `run()` drives it in KILN-064.
-
-
-@dataclass
-class ActionContext:
-    """What an FSM action reads and writes for one tick. Injected primitives keep the built-ins
-    thin; the outcome fields (`status` / `branch` / `reached_out` / `resting` / `do_rotate` /
-    `control`) are set by the action and read back by the driver (KILN-064)."""
-
-    state: State
-    event: fsm.Event
-    output: Output
-    stats: SessionStats
-    turn: Callable[..., dict]  # _turn(prompt, force=None, agent=None) -> out
-    think: Callable[[], object] = lambda: None  # _think()
-    self_prompt: Callable[[str, bool], str] = lambda need, reached: ""  # _self_prompt(...)
-    handle_command: Callable[[], object] = lambda: None  # dispatch the current user_msg
-    config: AgentConfig | None = None
-    reached_out: bool = False  # she self-initiated and awaits a reply (anti-repeat)
-    entered_rest: bool = False  # first tick of a rest spell → say REST_MESSAGE once
-    resting: bool = False  # the rest-gate flag this tick (so a command action can defer to rest)
-    # --- outcome (set by the action, read back by the driver) ---
-    status: str = "idle"
-    branch: str | None = None
-    do_rotate: bool = False
-    resting: bool | None = None  # wake/enter_rest flip it; None = leave the driver's flag as-is
-    control: str | None = None  # "quit" | "reload" | None (loop control from a command)
-
-
-def _act_idle(ctx: ActionContext) -> None:
-    """A silent tick: rest + cool down (v1.2's `else` branch). Not printed — check via `/status`."""
-    apply_satiation(ctx.state, "idle", ctx.config)
-    ctx.status = "idle"
-
-
-def _act_respond(ctx: ActionContext) -> dict:
-    """A normal user turn: run the brain, echo the user + the reply, fold usage, mark responding."""
-    msg = ctx.event.payload
-    out = ctx.turn(msg)
-    ctx.output.user(msg)
-    ctx.output.agent(out["reply"], model=out["route"].split("/")[-1], is_curiosity=out["curiosity"])
-    ctx.output.usage(out.get("usage"), ctx.stats.last_latency)
-    ctx.status, ctx.branch = "responding", out["class"]
-    ctx.reached_out = False  # the user replied
-    return out
-
-
-def _act_reach_out(ctx: ActionContext) -> dict:
-    """A connection reach-out: her other needs pick the brain (`reach_out_branch`); she speaks first
-    (`is_self`), and `reached_out` arms the anti-repeat for the next one."""
-    prompt = ctx.self_prompt(ctx.event.payload, ctx.reached_out)
-    faction, agent = reach_out_branch(ctx.state, ctx.config)
-    out = ctx.turn(prompt, force=faction, agent=agent)
-    ctx.output.agent(
-        out["reply"], is_self=True, model=out["route"].split("/")[-1], is_curiosity=out["curiosity"]
-    )
-    ctx.output.usage(out.get("usage"), ctx.stats.last_latency)
-    ctx.status, ctx.branch = "responding", out["class"]
-    ctx.reached_out = True  # awaiting a reply; the next reach-out acknowledges the silence
-    return out
-
-
-def _act_think(ctx: ActionContext) -> None:
-    """A private inner thought (Haiku) — stored hidden, discharges reflection; nothing displayed."""
-    ctx.think()
-    ctx.status = "thinking"
-
-
-def _act_enter_rest(ctx: ActionContext) -> None:
-    """Too tired to engage: recover (idle satiation); announce REST_MESSAGE once on entering."""
-    if ctx.entered_rest:
-        ctx.output.agent(REST_MESSAGE, is_self=True)
-    apply_satiation(ctx.state, "idle", ctx.config)
-    ctx.status = "resting"
-
-
-def _act_rest_ack(ctx: ActionContext) -> None:
-    """Someone wrote while she rests: heard, but don't call the brain — echo them, rest line once.
-    (v1.2's `elif resting` input path.)"""
-    ctx.output.user(ctx.event.payload)
-    if ctx.entered_rest:
-        ctx.output.agent(REST_MESSAGE, is_self=True)
-    apply_satiation(ctx.state, "idle", ctx.config)
-    ctx.status = "resting"
-    ctx.reached_out = False  # the user replied (even while she rests)
-
-
-def _act_wake(ctx: ActionContext) -> None:
-    """Rest fell back to REST_WAKE: leave the rest gate and recover this tick (idle satiation)."""
-    ctx.resting = False
-    apply_satiation(ctx.state, "idle", ctx.config)
-    ctx.status = "idle"
-
-
-def _act_cool(ctx: ActionContext) -> None:
-    """Post-turn cooling (KILN-065): recover (idle satiation, exactly the old post-turn idle tick)
-    while the per-need cooldowns tick down; surfaced as status "cooling" until they clear."""
-    apply_satiation(ctx.state, "idle", ctx.config)
-    ctx.status = "cooling"
-
-
-def _act_rotate(ctx: ActionContext) -> None:
-    """Request a session rotation; the driver's rotation block performs it (orthogonal, as v1.2)."""
-    ctx.do_rotate = True
-    ctx.status = "idle"
-
-
-def _act_command(ctx: ActionContext) -> None:
-    """A slash command: dispatch it and translate the code into the outcome the driver reads back —
-    quit/reload → `control`, rotate → `do_rotate`, `("ask", text)` → a forced-deep turn."""
-    ctx.status = "idle"
-    code = ctx.handle_command()
-    if code == "quit":
-        ctx.output.notice("[exit] exit by command")
-        ctx.control = "quit"
-    elif code == "reload":
-        ctx.control = "reload"
-    elif code == "rotate":
-        ctx.do_rotate = True
-    elif code == "handled":
-        pass
-    elif isinstance(code, tuple):  # ("ask", text) -> forced deep
-        if ctx.resting:
-            _act_rest_ack(ctx)  # too tired to engage even /ask: heard, no brain call (v1.2)
-            return
-        out = ctx.turn(code[1], force="deep")
-        ctx.output.agent(
-            out["reply"],
-            lead=True,
-            model=out["route"].split("/")[-1],
-            is_curiosity=out["curiosity"],
-        )
-        ctx.output.usage(out.get("usage"), ctx.stats.last_latency)
-        ctx.status, ctx.branch = "responding", out["class"]
-        ctx.reached_out = False
-
-
-# Built-in action name -> callable. The keys are exactly `fsm.table_actions()` (pinned by a contract
-# test); 1.5 adds user tools to a registry seeded from this map.
-_BUILTIN_ACTIONS: dict[str, Callable[[ActionContext], object]] = {
-    "idle": _act_idle,
-    "respond": _act_respond,
-    "reach_out": _act_reach_out,
-    "think": _act_think,
-    "enter_rest": _act_enter_rest,
-    "rest_ack": _act_rest_ack,
-    "wake": _act_wake,
-    "cool": _act_cool,
-    "rotate": _act_rotate,
-    "command": _act_command,
-}
-
-
-class ActionRegistry:
-    """`name -> callable(ctx)` + `fire(action, ctx)`. The FSM fires actions = tools through this
-    seam; 1.5 Tools extends the same registry (an agent's scope gates which actions it may fire)."""
-
-    def __init__(self) -> None:
-        self._actions: dict[str, Callable[[ActionContext], object]] = {}
-
-    def register(self, name: str, fn: Callable[[ActionContext], object]) -> None:
-        self._actions[name] = fn
-
-    def resolve(self, name: str) -> Callable[[ActionContext], object] | None:
-        return self._actions.get(name)
-
-    def fire(self, action: str, ctx: ActionContext) -> object:
-        fn = self._actions.get(action)
-        if fn is None:
-            raise KeyError(f"no action registered: {action!r}")
-        return fn(ctx)
-
-    def actions(self) -> set[str]:
-        return set(self._actions)
-
-
-def default_registry() -> ActionRegistry:
-    """A registry with every built-in action registered — covers `fsm.table_actions()`."""
-    reg = ActionRegistry()
-    for name, fn in _BUILTIN_ACTIONS.items():
-        reg.register(name, fn)
-    return reg
 
 
 def run(

@@ -61,9 +61,9 @@ def test_classify_explicit_hint_beats_high_need():
 
 
 def test_classify_state_weight_routes_think_without_hints(monkeypatch):
-    import kiln.engine as eng
+    import kiln.routing as routing  # classify lives here now; patch the threshold where it's read
 
-    monkeypatch.setattr(eng, "THINK_THRESHOLD", 0.40)
+    monkeypatch.setattr(routing, "THINK_THRESHOLD", 0.40)
     st = State(needs={"intensity": 0.5, "connection": 0.7})  # no high need; weight 0.59 >= 0.40
     assert turn_weight(st) >= 0.40
     assert classify("привіт", st) == ("think", None)

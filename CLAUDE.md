@@ -19,11 +19,18 @@ anything that shapes it for the model: `DEFAULT_CANON` and `state/canon.md`, `st
 Ukrainian; write everything else in English.
 
 The modules live in the `kiln/` package and form a clean DAG —
-`config`/`history`/`usage` (leaves) → `memory` → `commands` → `engine`:
+`config`/`history`/`usage`/`fsm`/`channels` (leaves) → `needs` → `routing`/`actions` → `memory` →
+`commands` → `engine`:
 `kiln/config.py` (paths, `.env`, tunables), `kiln/history.py` (session-transcript helpers),
-`kiln/usage.py` (model token logging + chat colors), `kiln/memory.py` (cross-session memory,
-prompts/canon, RAG transcripts), `kiln/commands.py` (slash commands), `kiln/engine.py`
-(`State`, ticks, the two brains, the loop — **no `__main__`**). The console entry is
+`kiln/usage.py` (model token logging + chat colors), `kiln/fsm.py` (the FSM: states, events, the
+transition table, `advance`, the event queue, the trace), `kiln/channels.py` (input channels),
+`kiln/needs.py` (the need substrate: `State`, `drift`/`apply_satiation`, `TriggerBook` + the trigger
+selectors, `reach_out_branch`), `kiln/routing.py` (`classify` + `respond` — the two brains + cost
+routing), `kiln/actions.py` (the action registry — the FSM's `name -> callable(ctx)` seam),
+`kiln/memory.py` (cross-session memory, prompts/canon, RAG transcripts), `kiln/commands.py` (slash
+commands), `kiln/engine.py` (the tick loop `run()` — an FSM driver over the queue + `advance` +
+the registry — plus `_status_snapshot`; **no `__main__`**; re-exports the moved names so
+`from kiln.engine import State/respond/…` still works). The console entry is
 `kiln/__main__.py` (`main()`: live mode + the dry-run demo), wired as the `kiln` command.
 **`engine.py` carries no `__main__`, so it can be imported freely** (incl. by tests) — that's
 why constants live in `config.py` and `/ask` does its deep call back in `run()` rather than in
