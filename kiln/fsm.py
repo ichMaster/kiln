@@ -147,3 +147,93 @@ def advance(
 def table_actions(table: tuple[Rule, ...] = DEFAULT_TABLE) -> set[Action]:
     """The set of action names a table references — what the registry (KILN-063) must provide."""
     return {rule.action for rule in table}
+
+
+# === Event queue + producers (KILN-062) ======================================
+# The runtime event side. Producers turn today's sources into `Event`s (pure — they take the
+# already-computed poll result / crossed need / rotate flag, not the engine objects); the queue
+# drains ONE event per tick in the priority the table expects. The driver (KILN-064) calls these:
+# it folds the `ServerChannel` inbox (via `channel.poll`) and the `rotate_results` queue into this
+# one queue. Added alongside the loop — it does not yet drive it.
+
+# Drain priority — reproduces v1.2's `if/elif`: input > self-trigger > rotate > tick. Lower wins.
+EVENT_PRIORITY: dict[EventKind, int] = {
+    EventKind.USER_MESSAGE: 0,
+    EventKind.COMMAND: 0,  # input tier (a slash line still preempts a self-trigger, as today)
+    EventKind.SELF_TRIGGER: 1,
+    EventKind.ROTATE: 2,  # orthogonal in v1.2; only wins an otherwise-idle tick
+    EventKind.TICK: 3,
+}
+
+
+class EventQueue:
+    """The per-run event queue. Each tick the producers enqueue this tick's candidate events;
+    `drain_one` pops the single highest-priority event (input > self-trigger > rotate > tick) —
+    reproducing v1.2's one-action-per-tick selection. Non-winning per-tick candidates are dropped
+    and recomputed next tick (the inbox / `rotate_results` remain the persistent async backing), so
+    a self-trigger that loses to input is re-evaluated next tick, exactly as today."""
+
+    def __init__(self) -> None:
+        self._events: list[Event] = []
+
+    def put(self, event: Event | None) -> None:
+        """Enqueue a candidate (a `None` producer result is a no-op — a source that didn't fire)."""
+        if event is not None:
+            self._events.append(event)
+
+    def drain_one(self) -> Event:
+        """Pop the highest-priority event and clear the rest. Stable within a tier (insertion
+        order). Defensive: an empty queue yields a `tick` — a tick always exists conceptually."""
+        if not self._events:
+            return Event(EventKind.TICK)
+        # stable sort keeps insertion order within a priority tier
+        self._events.sort(key=lambda e: EVENT_PRIORITY.get(e.kind, 99))
+        winner = self._events[0]
+        self._events.clear()
+        return winner
+
+    def pending(self) -> int:
+        return len(self._events)
+
+
+def input_event(user_msg: str | None) -> Event | None:
+    """`channel.poll()` → a COMMAND event for a slash line, else a USER_MESSAGE (None if no input).
+    `handle_command` still does the real dispatch; the kind only lets the table put input first."""
+    if user_msg is None:
+        return None
+    kind = EventKind.COMMAND if user_msg.startswith("/") else EventKind.USER_MESSAGE
+    return Event(kind, user_msg)
+
+
+def self_trigger_event(reach_out_need: str | None, thought_need: str | None) -> Event | None:
+    """The reach-out (`select_self_trigger`) or inner-thought (`select_thought_trigger`) crossing →
+    a `self_trigger` event carrying the need. Reach-out precedes the thought (as v1.2 computes them:
+    the thought only runs when no reach-out fired), so at most one self-trigger per tick."""
+    need = reach_out_need if reach_out_need is not None else thought_need
+    return Event(EventKind.SELF_TRIGGER, need) if need is not None else None
+
+
+def rotate_event(do_rotate: bool) -> Event | None:
+    """The auto-rotate timer or `/rotate` → a `rotate.request` (None when no rotation is due)."""
+    return Event(EventKind.ROTATE) if do_rotate else None
+
+
+def tick_event() -> Event:
+    """The heartbeat — emitted every tick, the lowest-priority fall-through (v1.2's idle branch)."""
+    return Event(EventKind.TICK)
+
+
+def gather_events(
+    queue: EventQueue,
+    user_msg: str | None,
+    reach_out_need: str | None,
+    thought_need: str | None,
+    do_rotate: bool,
+) -> EventQueue:
+    """Enqueue this tick's candidate events from today's sources (input, self-trigger, rotate, and
+    always a tick). Draining the result yields the single event v1.2's `if/elif` would act on."""
+    queue.put(input_event(user_msg))
+    queue.put(self_trigger_event(reach_out_need, thought_need))
+    queue.put(rotate_event(do_rotate))
+    queue.put(tick_event())
+    return queue
