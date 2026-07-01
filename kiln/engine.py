@@ -26,7 +26,6 @@ import datetime as _dt
 import json
 import queue
 import random
-import sys
 import threading
 import time
 from collections.abc import Callable
@@ -35,6 +34,7 @@ from pathlib import Path
 
 from . import fsm
 from .brain import Brain, LiveBrain, MockBrain
+from .channels import ScriptedChannel, StdinChannel  # noqa: F401  (StdinChannel re-exported)
 from .commands import handle_command
 from .config import (
     AGENT_NAME,
@@ -305,51 +305,6 @@ def classify(
     if turn_weight(state) >= threshold:
         return "think", None
     return "chat", None
-
-
-# === Input channel ==========================================================
-# Simple input channel: ticks run continuously, while user messages arrive
-# asynchronously and are picked up on the next tick.
-
-
-class ScriptedChannel:
-    """Deterministic channel for tests: input is keyed to tick numbers."""
-
-    def __init__(self, inputs: dict[int, str] | None = None):
-        self._inputs = inputs or {}
-        self._tick = -1
-
-    def poll(self) -> str | None:
-        self._tick += 1
-        return self._inputs.get(self._tick)
-
-
-class StdinChannel:
-    """
-    Live channel: a background daemon thread reads stdin and queues lines.
-    `poll()` non-blockingly pulls the next line (or None if empty), so the
-    tick loop never stalls waiting for input.
-    """
-
-    def __init__(self):
-        self._q: queue.Queue[str] = queue.Queue()
-        self._t = threading.Thread(target=self._reader, daemon=True)
-        self._t.start()
-
-    def _reader(self) -> None:
-        while True:
-            line = sys.stdin.readline()
-            if line == "":  # EOF
-                break
-            line = line.strip()
-            if line:
-                self._q.put(line)
-
-    def poll(self) -> str | None:
-        try:
-            return self._q.get_nowait()
-        except queue.Empty:
-            return None
 
 
 # === Engine (loop) ==========================================================
