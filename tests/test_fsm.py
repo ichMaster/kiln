@@ -101,8 +101,12 @@ def test_resting_tick_wakes_when_rest_at_or_below_wake():
 
 
 def test_resting_tick_stays_resting_inside_the_hysteresis_band():
-    # between wake (0.85) and threshold (0.90): stays resting (won't re-wake, won't re-enter)
-    assert advance(State.RESTING, ev(EventKind.TICK), ctx(rest=0.88)) == ("idle", State.RESTING)
+    # between wake (0.85) and threshold (0.90): stays resting via enter_rest (the "stay resting"
+    # action — recovers + keeps status "resting"; announces only on the entering tick). KILN-064.
+    assert advance(State.RESTING, ev(EventKind.TICK), ctx(rest=0.88)) == (
+        "enter_rest",
+        State.RESTING,
+    )
 
 
 def test_resting_user_message_is_heard_not_engaged():

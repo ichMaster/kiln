@@ -63,19 +63,29 @@ self-trigger.
 
 ## The tick loop (the central abstraction)
 
-`run()` iterates short ticks. Each tick:
+`run()` is an **explicit finite state machine** over a transition table (v1.3, KILN-064): the loop no
+longer picks the action with an inline `if/elif` — it drains one event and looks the action up. Each
+tick:
 
 1. **Catch-up drift** — measure real elapsed time (`time.monotonic`) and apply
    that many ticks of drift, so a blocking model call ages needs by the time it
    really took (live only; dry-run = exactly 1 tick).
-2. **Poll input** (`channel.poll()`), non-blocking.
-3. **Pick one action**, priority **input > self-trigger > idle**:
-   input → slash command or `respond()`; else a self-trigger may fire →
-   `respond(force=…)`; else idle → `apply_satiation("idle")`.
+2. **Poll input** (`channel.poll()`), non-blocking; compute this tick's self-triggers (unchanged) and
+   the rest-gate flag (hysteresis, kept as-is).
+3. **Drive the FSM**: turn the sources into events (`fsm.gather_events` → `EventQueue`), **drain the
+   single highest-priority one** (`drain_one`, priority `input > self-trigger > rotate > tick`), look
+   up the transition (`fsm.advance(state, event, ctx) → (action, next_state)`), and **fire the action
+   through the registry** (`ActionRegistry.fire`, the built-ins wrapping `respond`/`reach_out`/`think`/
+   `idle`/`enter_rest`/`rest_ack`/`command`). The **default table encodes exactly the old priority**,
+   so behaviour is byte-for-byte (the whole suite + the dry-run are the pin).
 
-The loop runs with no client attached (the agent keeps living). Model calls are
-**synchronous today** (they freeze the loop); v1.1/1.2 move them to tasks behind
-an FSM so the loop never blocks.
+`advance` is pure; the driver reads back the action's outcome (status, branch, reached_out, do_rotate,
+control) and sets the next state. The rest gate stays a flag (RESTING is derived from it; the FSM's
+`wake`/active-`enter_rest` transitions are shadowed by the flag until it becomes fully FSM-owned in
+1.7). Rotation stays orthogonal (applied alongside the action). The loop runs with no client attached
+(the agent keeps living). Model calls are **synchronous today** (they freeze the loop); **1.9** moves
+them behind the FSM (a `response.ready` event) so the loop never blocks. See
+[features/fsm.md](features/fsm.md) and the FSM seam under **Contracts** below.
 
 ## Two brains and cost routing
 

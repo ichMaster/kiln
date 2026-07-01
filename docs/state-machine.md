@@ -255,7 +255,7 @@ outcome). Each cell is `action → next_state`. State abbreviations: `I` = idle,
 | From \ Event | `user.message` | `command` | `self_trigger` (reach) | `self_trigger` (reflect) | `rotate.request` | `tick` [rest ≥ 0.90] | `tick` [rest ≤ 0.85] | `tick` [else] |
 |---|---|---|---|---|---|---|---|---|
 | **active** (I/RE/TH/cool) | `respond`→RE | `command`→I | `reach_out`→RE | `think`→TH | `rotate`→I | `enter_rest`→RS | `idle`→I | `idle`→I |
-| **resting** (RS) | `rest_ack`→RS | `command`→RS | — (not produced) | — (not produced) | `rotate`→RS | `idle`→RS | `wake`→I | `idle`→RS |
+| **resting** (RS) | `rest_ack`→RS | `command`→RS | — (not produced) | — (not produced) | `rotate`→RS | `enter_rest`→RS | `wake`→I | `enter_rest`→RS |
 
 Reading the matrix:
 
@@ -265,8 +265,13 @@ Reading the matrix:
 - **The `tick` column is split by guard** because the same `(state, tick)` pair has different outcomes
   depending on the rest level. For an **active** state the only guarded outcome is `rest ≥ 0.90 →
   enter_rest`; anything else is `idle`. For **resting** the only guarded outcome is `rest ≤ 0.85 →
-  wake`; anything above 0.85 stays `resting`. That split (enter at 0.90, wake at 0.85) is the
-  hysteresis band.
+  wake`; anything above 0.85 fires `enter_rest` again — the "stay resting" action (recovers + keeps
+  status `resting`; it only speaks the rest line on the *entering* tick). That split (enter at 0.90,
+  wake at 0.85) is the hysteresis band.
+- **In the shipped v1.3 driver (KILN-064) the rest gate is kept as a flag**, which flips out of
+  `resting` *before* `advance` sees a wake-eligible tick — so `wake` and the active `enter_rest` cells
+  are shadowed by the flag (the flag does the entering/waking) and `enter_rest` is what runs on every
+  resting tick. The cells stay in the table for when the gate becomes fully FSM-owned (1.7).
 - **`self_trigger` is absent from the resting row** because the producer does not emit self-triggers
   while resting (`select_self_trigger` runs only when not resting). `advance` would fall through to its
   default `idle` if one ever arrived, but it never does.
@@ -287,10 +292,10 @@ so the reach-out and the `/ask`-style turn both route to the deep brain. Satiati
 | 2 | responding | `tick` (rest 0.695 < 0.90) | active × tick[else] | `idle` | rest 0.695→0.685 | idle |
 | 3 | idle | `user.message` "поясни рекурсію" | active × user.message | `respond` (deep) | rest 0.680→1.00 (clamped) | responding |
 | 4 | responding | `tick` (rest 0.995 ≥ 0.90) | active × tick[rest ≥ 0.90] | `enter_rest` | rest 0.995→0.985 (says rest line once) | resting |
-| 5 | resting | `tick` (rest 0.980 > 0.85) | resting × tick[else] | `idle` | rest 0.980→0.970 | resting |
+| 5 | resting | `tick` (rest 0.980 > 0.85) | resting × tick[else] | `enter_rest` | rest 0.980→0.970 | resting |
 | 6 | resting | `command` "/status" | resting × command | `command` | (status printed; rest drifts to 0.960) | resting |
 | 7 | resting | `user.message` "привіт" | resting × user.message | `rest_ack` | rest 0.955→0.945 (heard, no brain call) | resting |
-| 8–13 | resting | `tick` ×6 (0.85 < rest ≤ 0.90) | resting × tick[else] | `idle` | rest decays ≈0.015/tick: 0.945→0.855 | resting |
+| 8–13 | resting | `tick` ×6 (0.85 < rest ≤ 0.90) | resting × tick[else] | `enter_rest` | rest decays ≈0.015/tick: 0.945→0.855 | resting |
 | 14 | resting | `tick` (rest 0.840 ≤ 0.85) | resting × tick[rest ≤ 0.85] | `wake` | rest recovering | idle |
 
 Step by step, in matrix terms:
@@ -311,10 +316,11 @@ Step by step, in matrix terms:
   `rest ≥ 0.90` selects `enter_rest → RS`. This is Path B: no trigger was involved; the guard
   `_should_rest` read `ctx.rest` directly inside `advance`. The rest line is announced once here.
 - **Ticks 5–13** — she is in the resting row now. Every `tick` while `rest` stays above 0.85 lands in
-  the resting `tick[else]` cell, `idle → RS`: she recovers but stays resting. Tick 6 shows a `command`
-  still works from resting (`command → RS`), and tick 7 shows a `user.message` from resting hitting
-  `rest_ack → RS` — heard, echoed, but no brain call. Each idle/rest_ack tick discharges `rest` by
-  ≈0.015 (idle satiation −0.01 plus drift −0.005).
+  the resting `tick[else]` cell, `enter_rest → RS` (the "stay resting" action — recovers, keeps status
+  `resting`, and stays quiet since the rest line was already said on the entering tick). Tick 6 shows a
+  `command` still works from resting (`command → RS`), and tick 7 shows a `user.message` from resting
+  hitting `rest_ack → RS` — heard, echoed, but no brain call. Each enter_rest/rest_ack tick discharges
+  `rest` by ≈0.015 (idle satiation −0.01 plus drift −0.005).
 - **Tick 14** — `rest` finally reaches 0.840, at or below the wake threshold. Now the resting
   `tick[rest ≤ 0.85]` cell selects `wake → I`, and she is back in the active idle state. Note the
   hysteresis: she entered resting at 0.90 (tick 4) but only leaves at 0.85 (tick 14); the 0.05 band is
@@ -336,7 +342,7 @@ Step by step, in matrix terms:
   │         │───────────────────────────────────────►│ RESTING  │
   │         │                                        │          │  user.message / rest_ack (stays)
   │         │◄───────────────────────────────────────│          │  command       / command   (stays)
-  └─────────┘  tick[rest ≤ 0.85] / wake              └──────────┘  tick[else]     / idle      (stays)
+  └─────────┘  tick[rest ≤ 0.85] / wake              └──────────┘  tick[else]  / enter_rest  (stays)
        ▲                                                              tick[rest>0.85] stays RESTING
        └──────── THINKING ── tick[else] / idle ───────┘
 ```

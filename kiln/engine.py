@@ -548,6 +548,7 @@ class ActionContext:
     config: AgentConfig | None = None
     reached_out: bool = False  # she self-initiated and awaits a reply (anti-repeat)
     entered_rest: bool = False  # first tick of a rest spell → say REST_MESSAGE once
+    resting: bool = False  # the rest-gate flag this tick (so a command action can defer to rest)
     # --- outcome (set by the action, read back by the driver) ---
     status: str = "idle"
     branch: str | None = None
@@ -642,6 +643,9 @@ def _act_command(ctx: ActionContext) -> None:
     elif code == "handled":
         pass
     elif isinstance(code, tuple):  # ("ask", text) -> forced deep
+        if ctx.resting:
+            _act_rest_ack(ctx)  # too tired to engage even /ask: heard, no brain call (v1.2)
+            return
         out = ctx.turn(code[1], force="deep")
         ctx.output.agent(
             out["reply"],
@@ -899,6 +903,7 @@ def run(
     branch: str | None = None  # last turn's class (chat/think/tools) for the status snapshot
     resting = False  # rest gate: too tired to answer (recovers on idle; hysteresis vs REST_WAKE)
     reached_out = False  # she self-initiated and the user hasn't replied since (anti-repeat)
+    registry = default_registry()  # KILN-064: the FSM's action vocabulary (built-ins as tools)
     rest_threshold = triggers.get("rest", {}).get("threshold", 1.1)  # >1 -> never sleeps
     last_tick = time.monotonic()  # for catch-up drift over real time
     session_start_wall = last_tick  # for auto-rotation (ROTATE_EVERY_HOURS); reset on rotate
@@ -969,84 +974,58 @@ def run(
                 if fired is None and thoughts_on:
                     thought_fired = select_thought_trigger(state, tg, config)  # inner monologue
 
-            status_label = "idle"
-            if user_msg is not None:
-                action = handle_command(user_msg, state, history, _system(), live, output, stats)
-                if action == "quit":
-                    output.notice("[exit] exit by command")
-                    break
-                elif action == "reload":
-                    # Re-read the file-backed prompt sources mid-session (no session drop).
-                    # config.yaml knobs are module constants -> still need a restart; the canon
-                    # birthday/biorhythm is session-static -> a /rotate or restart picks it up.
-                    canon = load_canon(paths.canon_file)
-                    prompts = load_prompts(paths.prompts_file)
-                    memory = load_memory(paths.store_file)
-                    base_system = build_system(canon, memory, facts)
-                    prev_turns = _previous_session_turns(paths.store_file, started)
-                    output.notice("[reload] canon, prompts, and memory reloaded")
-                elif action == "rotate":
-                    do_rotate = True  # rotated after this tick's input is handled (below)
-                elif action == "handled":
-                    pass  # command handled (commands work even while resting)
-                elif resting:
-                    # too tired to engage: heard, but don't call the brain. Say the rest
-                    # line only ONCE (when she enters rest), not to every message.
-                    output.user(user_msg)
-                    if entered_rest:
-                        output.agent(REST_MESSAGE, is_self=True)
-                    apply_satiation(state, "idle", config)
-                    status_label = "resting"
-                    reached_out = False  # the user replied (even while she rests)
-                elif isinstance(action, tuple):  # ("ask", text) -> forced deep
-                    out = _turn(action[1], force="deep")
-                    output.agent(
-                        out["reply"],
-                        lead=True,
-                        model=out["route"].split("/")[-1],
-                        is_curiosity=out["curiosity"],
-                    )
-                    output.usage(out.get("usage"), stats.last_latency)
-                    status_label, branch = "responding", out["class"]
-                    reached_out = False  # the user engaged
-                else:  # None -> normal turn
-                    out = _turn(user_msg)
-                    output.user(user_msg)
-                    output.agent(
-                        out["reply"],
-                        model=out["route"].split("/")[-1],
-                        is_curiosity=out["curiosity"],
-                    )
-                    output.usage(out.get("usage"), stats.last_latency)
-                    status_label, branch = "responding", out["class"]
-                    reached_out = False  # the user replied
-            elif resting:
-                if entered_rest:
-                    output.agent(REST_MESSAGE, is_self=True)  # announce once on entering rest
-                apply_satiation(state, "idle", config)
-                status_label = "resting"
-            elif fired is not None:
-                # connection fired the reach-out; her other needs choose which brain answers
-                # (intensity -> deep/opus, novelty -> session-wiki, else chat). If she already
-                # reached out and got no reply, the prompt tells her not to repeat (reached_out).
-                prompt = _self_prompt(prompts, fired, reached_out)
-                faction, agent = reach_out_branch(state, config)
-                out = _turn(prompt, force=faction, agent=agent)
-                output.agent(
-                    out["reply"],
-                    is_self=True,
-                    model=out["route"].split("/")[-1],
-                    is_curiosity=out["curiosity"],
-                )
-                output.usage(out.get("usage"), stats.last_latency)
-                status_label, branch = "responding", out["class"]
-                reached_out = True  # awaiting a reply; next reach-out acknowledges the silence
-            elif thought_fired is not None:
-                _think()  # private inner thought (Haiku) — stored hidden, discharges reflection
-                status_label = "thinking"  # nothing displayed (KILN-043 surfaces ~1/M)
-            else:
-                apply_satiation(state, "idle", config)  # silence: rest + cooling down
-                # a silent tick isn't printed — check state via /status
+            # --- FSM driver (KILN-064): this tick's ONE action, from the transition table ---
+            # The rest-gate flag + self-triggers above are unchanged (v1.2). We turn the sources
+            # into events, drain the top-priority one (input > self-trigger > tick), look it up via
+            # `advance`, and fire the action through the registry — the old if/elif, byte-for-byte
+            # (suite + dry-run are the pin). Rotation stays orthogonal (do_rotate below); the rest
+            # gate stays a flag, so RESTING is derived from it (waking already happened, above).
+            evq = fsm.gather_events(fsm.EventQueue(), user_msg, fired, thought_fired, False)
+            event = evq.drain_one()
+            fsm_state = fsm.State.RESTING if resting else fsm.State.IDLE
+            fctx = fsm.Ctx(
+                needs=state.needs,
+                rest_threshold=rest_threshold,
+                rest_wake=rest_wake,
+                reach_out_need=config.reach_out_need if config is not None else REACH_OUT_NEED,
+                reflect_need=config.reflect_need if config is not None else REFLECT_NEED,
+            )
+            action, _next = fsm.advance(fsm_state, event, fctx)
+            actx = ActionContext(
+                state=state,
+                event=event,
+                output=output,
+                stats=stats,
+                turn=_turn,
+                think=_think,
+                # bind the loop-reassigned locals (prompts/user_msg/stats) at creation — the actions
+                # fire immediately this tick, but the explicit bind keeps it correct and lint-clean.
+                self_prompt=lambda need, ro, _p=prompts: _self_prompt(_p, need, ro),
+                handle_command=lambda _m=user_msg, _st=stats: handle_command(
+                    _m, state, history, _system(), live, output, _st
+                ),
+                config=config,
+                reached_out=reached_out,
+                entered_rest=entered_rest,
+                resting=resting,
+                branch=branch,
+            )
+            registry.fire(action, actx)
+            status_label, branch, reached_out = actx.status, actx.branch, actx.reached_out
+            if actx.do_rotate:
+                do_rotate = True
+            if actx.control == "quit":
+                break
+            if actx.control == "reload":
+                # Re-read the file-backed prompt sources mid-session (no session drop). config.yaml
+                # knobs are module constants -> still need a restart; the canon birthday/biorhythm
+                # is session-static -> a /rotate or restart picks it up.
+                canon = load_canon(paths.canon_file)
+                prompts = load_prompts(paths.prompts_file)
+                memory = load_memory(paths.store_file)
+                base_system = build_system(canon, memory, facts)
+                prev_turns = _previous_session_turns(paths.store_file, started)
+                output.notice("[reload] canon, prompts, and memory reloaded")
 
             if do_rotate:
                 # Non-blocking rotation (from /rotate or the timer): cut to a fresh session now,

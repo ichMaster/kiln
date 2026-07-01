@@ -129,7 +129,7 @@ this action and move to this state.*
 | `resting` | `user.message` | — | `rest_ack` | `resting` |
 | `resting` | `rotate.request` | — | `rotate` | `resting` |
 | `resting` | `tick` | `rest ≤ REST_WAKE` | `wake` | `idle` |
-| `resting` | `tick` | otherwise | `idle` | `resting` |
+| `resting` | `tick` | otherwise | `enter_rest` | `resting` |
 
 "active" means any of `idle` / `responding` / `thinking` / `cooling`. `advance(state, event, ctx)` is
 the pure lookup: it walks the table in order and returns the first row whose state, event, and guard

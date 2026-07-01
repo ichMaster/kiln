@@ -127,8 +127,13 @@ DEFAULT_TABLE: tuple[Rule, ...] = (
     Rule((State.RESTING,), EventKind.USER_MESSAGE, "rest_ack", State.RESTING),
     Rule((State.RESTING,), EventKind.ROTATE, "rotate", State.RESTING),
     Rule((State.RESTING,), EventKind.TICK, "wake", State.IDLE, guard=_can_wake),
-    Rule((State.RESTING,), EventKind.TICK, "idle", State.RESTING),
+    Rule((State.RESTING,), EventKind.TICK, "enter_rest", State.RESTING),
 )
+# NB (KILN-064): the v1.2 rest gate is kept as a flag in run(), which flips out of RESTING before
+# `advance` sees a wake-eligible tick — so `enter_rest` is the action that *stays* resting (it
+# announces once on entering, then just recovers), and the `wake` row above is shadowed by the flag
+# until the rest gate becomes fully FSM-owned (1.7). `enter_rest` handles both the entering tick
+# (entered_rest → REST_MESSAGE) and every continuing one (idle satiation, status "resting").
 
 
 def advance(
