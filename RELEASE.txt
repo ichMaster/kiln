@@ -1,6 +1,23 @@
 kiln — Release Notes
 ====================
 
+Version 1.3.0 (2026-07-02)
+--------------------------
+- FSM core (v1.3 phase; KILN-061..066): the tick loop is now an explicit, table-driven finite state
+  machine (kiln/fsm.py) — states, event kinds, a transition table, and a pure advance(); run() drives
+  it via a per-tick event queue and an action registry. Behaviour-preserving: Agnika is byte-for-byte
+  (the whole suite + the deterministic dry-run pin it).
+- cooling is a real, observable post-turn state — per-need cooldowns tick down before idle; surfaced
+  in the status snapshot (the snapshot key set is unchanged; the status value gains "cooling").
+- Every FSM transition is traceable via an optional engine.run(trace=...) sink (off by default) — the
+  structured log the 1.8 simulation phase will consume.
+- The action registry (name -> callable; actions = tools) is the seam 1.5 Tools extends; the full FSM
+  seam (states, events, table, advance, trace) is pinned in spec/ARCHITECTURE.md.
+- Docs: how-it-works.md rewritten to v1.3 (+ Ukrainian translation, how-it-works.uk.md), a new
+  engineering deep-dive docs/state-machine.md, and the EFSM framing (needs as machine variables) in
+  spec/features/fsm.md + ROADMAP 1.7.
+- Test suite 381 -> 452; no behaviour change (byte-for-byte).
+
 Version 1.2.0 (2026-06-30)
 --------------------------
 - Companion agent — Pashu (v1.2 phase; KILN-056..060): a real second agent hosted beside Agnika with
