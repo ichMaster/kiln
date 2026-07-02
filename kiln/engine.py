@@ -201,12 +201,25 @@ def run(
     """
     if channel is None:
         channel = ScriptedChannel()
-    if brain is None:
-        brain = LiveBrain() if live else MockBrain()
     if output is None:
         output = ConsoleOutput()
     if paths is None:
         paths = AgentPaths.for_agent()  # v1.1: default agent -> today's flat global paths
+    if brain is None:
+        if live:
+            # v1.4: the live brain carries this agent's security profile + workspace, so every
+            # `claude -p` sub-agent spawn is built + gated by it. The default agent (config=None)
+            # loads its committed state/security.yaml; a companion carries config.security.
+            from .security import load_security
+
+            profile = (
+                config.security
+                if config is not None
+                else load_security(paths.state_dir / "security.yaml")
+            )
+            brain = LiveBrain(profile=profile, paths=paths)
+        else:
+            brain = MockBrain()
     # v1.2: resolve each calibration scalar from `config`, falling back to the module global (read
     # here, so a test monkeypatching e.g. eng.TICK_SECONDS before run() still wins on the None path.
     tick_seconds = config.tick_seconds if config is not None else TICK_SECONDS

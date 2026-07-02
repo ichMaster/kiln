@@ -96,15 +96,19 @@ behind the **`Brain` seam** (`brain.py`), each method returning `(text, usage)`:
   SDK; `anthropic` imported lazily so dry-run is dependency-free). Cheap, fast,
   no tools.
 - **deep** → **Opus** via `claude -p` (`LiveBrain.deep`, subprocess,
-  `--output-format json` for text + token usage). Reasoning and tools
-  (`--allowedTools`).
-- **tool** → a **named Claude Code sub-agent** via `claude -p --agent <agent>`
-  (`LiveBrain.tool`; the agent's `.claude/agents/<agent>.md` supplies its system prompt,
-  model, and tools — kiln reads the frontmatter only for `--allowedTools` + usage labeling).
-  A `NEED_TRIGGERS` entry with `action: "tool"` names the agent — **`session-wiki`**, chosen by
-  `reach_out_branch` when a connection reach-out fires with high `novelty`. It reads the recent
-  session, fetches an external Wikipedia fact, and returns one Ukrainian paragraph; satiation is
-  **per-agent** (`SATIATION["session-wiki"]` drops `novelty`), falling back to `deep` otherwise.
+  `--output-format json` for text + token usage). Reasoning only — **tool-less** (v1.4: the old
+  `--allowedTools Read,Write,Bash` armed branch is retired; `DEEP_TOOLS` is gone). KILN-070 folds
+  this raw call into the `deep` sub-agent through the builder.
+- **tool** → a **named Claude Code sub-agent** via `claude -p --agent <agent>`, built by the
+  **security builder** (`security.claude_cmd`, v1.4): cwd = the agent's `.kiln/{id}/workspace/`, the
+  profile's `agents:` materialized into it, a minimal env allowlist, generated `--settings` deny
+  rules + `--setting-sources ""` + `--strict-mcp-config` (operator settings/MCP excluded), and the
+  tool grant = the agent's frontmatter `tools:` ∩ the profile. A sub-agent not in the profile's
+  `agents:` is **refused before any spawn**. The **`tools` class** (an action-marked user turn) now
+  fires the **`hands`** sub-agent here instead of arming the deep prompt; **`session-wiki`** (a
+  `NEED_TRIGGERS` `action: "tool"`, chosen by `reach_out_branch` on high `novelty`) fetches a
+  Wikipedia fact and returns one Ukrainian paragraph. Satiation is **per-agent**
+  (`SATIATION["session-wiki"]` drops `novelty`), falling back to `deep` (`hands` closes like deep).
 - **mock** → `MockBrain` returns deterministic canned text + a synthetic usage
   record (no network, no subprocess); the dry-run demo and the whole test suite run
   on it — **zero paid calls**.
@@ -217,8 +221,12 @@ multi-agent is additive, not a rewrite:
   `AgentConfig.security`. It is the **one loader that fails closed** — a missing / unparsable /
   structurally-invalid file (or a bad `write`/`bash` enum) heals to the deny-first
   `DEFAULT_SECURITY`, never to anything broader; `KILN_SEC_*` env vars override the scalars.
-  `GET /agents` surfaces `profile.summary()`. The profile gates every `claude -p` spawn (the
-  builder + enforcement are KILN-069).
+  `GET /agents` surfaces `profile.summary()`. The **builder** `security.claude_cmd(profile, agent,
+  …) → (argv, env, cwd)` (KILN-069) turns a profile into one `claude -p --agent <agent>` call —
+  the single `claude -p` shape kiln spawns for conversation — refusing an agent outside the
+  profile's `agents:` (`PermissionError`). `LiveBrain(profile, paths)` carries it; the tool grant is
+  `effective_tools` (frontmatter ∩ profile) and the read/write boundary is `deny_rules`
+  (`Read(//**)` etc.).
 - **Reply / route:** `respond(...) → {class, route, reply, usage}`.
 - **Action registry (v1.3, KILN-063):** the FSM fires actions through a `name -> callable(ctx)`
   registry (`engine.ActionRegistry`; `default_registry()` seeded from the built-ins

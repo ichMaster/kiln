@@ -18,8 +18,9 @@ import json
 import subprocess
 from typing import Protocol, runtime_checkable
 
-from .config import AGENTS_DIR, CHAT_MODEL, DEEP_MODEL, DEEP_TOOLS, claude_env
+from .config import AGENTS_DIR, CHAT_MODEL, DEEP_MODEL, THINKING_TOKENS, claude_env
 from .history import to_messages, to_transcript
+from .security import SecurityProfile, _agent_meta, _default_profile, claude_cmd
 from .usage import _cli_error_detail, usage_record
 
 # usage: {model, input, output, total} or None
@@ -31,27 +32,11 @@ def _is_opus(model: str) -> bool:
     return "opus" in model.lower()
 
 
-def _agent_meta(agent: str) -> dict:
-    """Parse a Claude Code agent file's YAML frontmatter (top-level `key: value` lines only).
-
-    Used by `claude -p --agent <agent>`: kiln reads the agent's `.claude/agents/<agent>.md`
-    frontmatter to learn its `model` and `tools` (the agent file is the single source of
-    truth). Indented continuation lines (e.g. a folded `description: >-`) are skipped.
-    """
-    meta: dict[str, str] = {}
-    try:
-        text = (AGENTS_DIR / f"{agent}.md").read_text(encoding="utf-8")
-    except OSError:
-        return meta
-    if not text.startswith("---"):
-        return meta
-    block = text.partition("---")[2].partition("---")[0]  # between the two fences
-    for line in block.splitlines():
-        if not line[:1].strip() or ":" not in line:  # skip indented/continuation lines
-            continue
-        key, _, val = line.partition(":")
-        meta[key.strip()] = val.strip()
-    return meta
+def _meta(agent: str) -> dict:
+    """Frontmatter (`model`/`tools`) of `.claude/agents/<agent>.md`. Thin wrapper over
+    `security._agent_meta` bound to the repo's AGENTS_DIR (used for usage-label `model`; the
+    builder reads tools itself). Kept so MockBrain can label usage without the builder."""
+    return _agent_meta(agent, AGENTS_DIR)
 
 
 @runtime_checkable
@@ -74,8 +59,45 @@ class Brain(Protocol):
         ...
 
 
+# Sub-agents whose output is a standalone deliverable (session-wiki's Wikipedia paragraph), vs the
+# conversational ones (hands, and deep in KILN-070) that answer the dialogue in the persona's voice.
+_DELIVERABLE_AGENTS = {"session-wiki"}
+
+
+def _agent_prompt(agent: str, history: list[dict]) -> str:
+    """The stdin prompt for a sub-agent call: the recent conversation + an instruction shaped by
+    whether the agent produces a deliverable or answers the dialogue."""
+    convo = to_transcript(history) if history else "(no conversation yet)"
+    if agent in _DELIVERABLE_AGENTS:
+        return (
+            "Recent conversation (your source material):\n"
+            + convo
+            + "\n\nRun your agent instructions over this conversation. Output ONLY your "
+            "final deliverable — no preamble, no narration, no description of your steps, "
+            "no commentary before or after it."
+        )
+    return (
+        "Розмова:\n"
+        + convo
+        + "\n\nВиконай прохання з останнього повідомлення і дай коротку відповідь у голосі "
+        "персони, українською. Тільки відповідь — без опису кроків, без преамбул."
+    )
+
+
 class LiveBrain:
-    """The real brain: Haiku via the SDK (chat) + Opus via `claude -p` (think/tools)."""
+    """The real brain: Haiku via the SDK (chat) + `claude -p` sub-agents (deep/tools) built by the
+    security builder. Per-agent: `profile` (the capability profile) + `paths` (its workspace)."""
+
+    def __init__(self, profile: SecurityProfile | None = None, paths=None) -> None:
+        # No-arg LiveBrain() (the CLI default + the contract tests) resolves the deny-first default
+        # profile + the default agent's paths; the host passes the per-agent profile/paths.
+        from .config import AgentPaths
+
+        self._profile = profile if profile is not None else _default_profile()
+        self._paths = paths if paths is not None else AgentPaths.for_agent()
+        kiln_dir = self._paths.store_file.parent  # .kiln[/{id}]
+        self._workspace = kiln_dir / "workspace"  # cwd of every claude -p call
+        self._security = kiln_dir / "security"  # generated settings / mcp configs (kiln-owned)
 
     def chat(self, history: list[dict], system: str) -> tuple[str, Usage]:
         # Invariant: the API-key (SDK) path is for the CHEAP model only. Opus must NEVER be
@@ -118,7 +140,9 @@ class LiveBrain:
                 + prompt
             )
 
-        # --output-format json: we get both the text (result) and usage in one call.
+        # v1.4: deep is TOOL-LESS (the armed "tools" class now fires the `hands` sub-agent via
+        # `tool()`; DEEP_TOOLS is retired). `with_tools` is kept for signature stability and
+        # ignored. KILN-070 converts this raw call into the `deep` sub-agent through the builder.
         cmd = [
             "claude",
             "-p",
@@ -129,11 +153,8 @@ class LiveBrain:
             "--append-system-prompt",
             system,
         ]
-        if with_tools and DEEP_TOOLS:
-            cmd += ["--allowedTools", ",".join(DEEP_TOOLS)]
-        # --allowedTools is variadic (<tools...>), so a trailing positional prompt would be
-        # swallowed as another tool name. Pass the prompt via stdin to avoid that. claude_env()
-        # turns on extended thinking and strips the API key (Opus bills via the CLI login).
+        # The prompt goes via stdin (not a positional arg). claude_env() turns on extended thinking
+        # and strips the API key (Opus bills via the CLI login).
         try:
             result = subprocess.run(
                 cmd,
@@ -160,33 +181,35 @@ class LiveBrain:
         return (data.get("result") or "").strip(), rec
 
     def tool(self, agent: str, history: list[dict], system: str) -> tuple[str, Usage]:
-        # Run the named sub-agent via `claude -p --agent <agent>`: Claude Code loads
-        # .claude/agents/<agent>.md (its body IS the system prompt). We read that file's
-        # frontmatter only to pass --allowedTools (headless permission) and to label usage
-        # with its model. The recent conversation goes in as a transcript; canon/memory ride
-        # on --append-system-prompt. Degrades to "(<agent> error: …)" — never crashes the loop.
-        meta = _agent_meta(agent)
-        model = meta.get("model", "sonnet")
-        tools = [t.strip() for t in meta.get("tools", "").split(",") if t.strip()]
-        convo = to_transcript(history) if history else "(no conversation yet)"
-        prompt = (
-            "Recent conversation (your source material):\n"
-            + convo
-            + "\n\nRun your agent instructions over this conversation. Output ONLY your "
-            "final deliverable — no preamble, no narration, no description of your steps, "
-            "no commentary before or after it."
-        )
-        cmd = ["claude", "-p", "--agent", agent, "--output-format", "json"]
-        if system:
-            cmd += ["--append-system-prompt", system]
-        if tools:
-            cmd += ["--allowedTools", ",".join(tools)]
-        # --allowedTools is variadic (<tools...>), so a trailing positional prompt would be
-        # swallowed as another tool name. Pass the prompt via stdin to avoid that. claude_env()
-        # turns on extended thinking and strips the API key (sub-agent bills via the CLI login).
+        # Run a named sub-agent via the SECURITY BUILDER (KILN-069): `claude -p --agent <agent>`
+        # under this agent's capability profile — cwd = its workspace, the profile's agents
+        # materialized in, a minimal env, generated settings (deny rules) + MCP isolation, and the
+        # tool grant = frontmatter ∩ profile. The agent file's body IS its system prompt;
+        # canon/memory ride on --append-system-prompt. An agent not in the profile's `agents:`
+        # list is refused before a spawn. Degrades to "(<agent> error: …)" — never crashes.
+        model = _meta(agent).get("model", "sonnet")  # usage label only (builder reads tools itself)
+        prompt = _agent_prompt(agent, history)
+        try:
+            argv, env, cwd = claude_cmd(
+                self._profile,
+                agent,
+                system=system,
+                workspace_dir=self._workspace,
+                security_dir=self._security,
+                thinking_tokens=THINKING_TOKENS,
+                source_agents_dir=AGENTS_DIR,
+            )
+        except PermissionError as e:
+            return f"({agent} error: {e})", None
         try:
             result = subprocess.run(
-                cmd, input=prompt, capture_output=True, text=True, timeout=180, env=claude_env()
+                argv,
+                input=prompt,
+                capture_output=True,
+                text=True,
+                timeout=self._profile.timeout_seconds,
+                cwd=str(cwd),
+                env=env,
             )
         except Exception as e:  # timeout / process failed to start
             return f"({agent} error: {e})", None
@@ -223,5 +246,5 @@ class MockBrain:
 
     def tool(self, agent: str, history: list[dict], system: str) -> tuple[str, Usage]:
         text = f"(dry-run tool[{agent}]: turns={len(history)})"
-        model = _agent_meta(agent).get("model", "sonnet")
+        model = _meta(agent).get("model", "sonnet")
         return text, usage_record(model, {"input_tokens": 16, "output_tokens": 24})

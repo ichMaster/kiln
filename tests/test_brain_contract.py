@@ -199,6 +199,7 @@ def _capture_run(monkeypatch):
         seen["cmd"] = cmd
         seen["input"] = kwargs.get("input")
         seen["env"] = kwargs.get("env")
+        seen["cwd"] = kwargs.get("cwd")
         return _FakeProc()
 
     monkeypatch.setattr(brainmod.subprocess, "run", _run)
@@ -206,25 +207,58 @@ def _capture_run(monkeypatch):
     return seen
 
 
-def test_livebrain_deep_tools_passes_prompt_via_stdin(monkeypatch):
+def test_livebrain_deep_is_toolless_and_uses_stdin(monkeypatch):
+    """v1.4: the deep branch is TOOL-LESS — no --allowedTools (the armed 'tools' class fires the
+    `hands` sub-agent instead). Prompt still on stdin; Opus never on the API key."""
     seen = _capture_run(monkeypatch)
-    LiveBrain().deep("ПРОМПТ", [], "sys", with_tools=True)
+    LiveBrain().deep("ПРОМПТ", [], "sys", with_tools=True)  # with_tools ignored now
     assert seen["input"] == "ПРОМПТ"  # prompt on stdin
     assert "ПРОМПТ" not in seen["cmd"]  # never a positional arg
-    assert "--allowedTools" in seen["cmd"]  # the variadic flag that would have eaten it
+    assert "--allowedTools" not in seen["cmd"]  # tool-less deep (v1.4)
     assert "ANTHROPIC_API_KEY" not in seen["env"]  # Opus never bills via the API key
     assert "MAX_THINKING_TOKENS" in seen["env"]  # extended thinking ON
-    assert "PATH" in seen["env"]  # but the rest of the env is preserved (CLI login etc.)
 
 
-def test_livebrain_tool_passes_prompt_via_stdin(monkeypatch):
+def test_livebrain_tool_built_by_the_security_builder(monkeypatch):
+    """A sub-agent call goes through the builder: --agent, prompt on stdin, workspace cwd, the
+    isolation flags, and no API key in the minimal env allowlist."""
     seen = _capture_run(monkeypatch)
     LiveBrain().tool("session-wiki", [{"role": "user", "text": "привіт"}], "sys")
     assert seen["input"] and "привіт" in seen["input"]  # transcript+prompt on stdin
     assert "--agent" in seen["cmd"] and "session-wiki" in seen["cmd"]
     assert seen["input"] not in seen["cmd"]  # the prompt is not a positional arg
+    # v1.4 isolation flags from the builder:
+    assert "--strict-mcp-config" in seen["cmd"]  # operator MCP servers ignored
+    assert (
+        "--setting-sources" in seen["cmd"] and "--settings" in seen["cmd"]
+    )  # operator settings out
+    assert seen["cwd"] and seen["cwd"].endswith("workspace")  # runs in the agent workspace
     assert "ANTHROPIC_API_KEY" not in seen["env"]  # claude -p uses its own login, not the key
     assert "MAX_THINKING_TOKENS" in seen["env"]  # extended thinking ON
+    assert (
+        "PATH" in seen["env"] and "HOME" in seen["env"]
+    )  # minimal allowlist keeps the login working
+
+
+def test_livebrain_tool_refuses_agent_outside_profile():
+    """A sub-agent not in the profile's `agents:` list is refused before any spawn (fail closed)."""
+    text, usage = LiveBrain().tool("rm-rf-everything", [{"role": "user", "text": "hi"}], "sys")
+    assert usage is None
+    assert "rm-rf-everything" in text and "error" in text.lower()
+
+
+def test_tools_class_routes_to_hands(monkeypatch):
+    """The 'tools' class no longer arms the deep prompt — respond() fires the `hands` sub-agent."""
+    calls = {}
+
+    class _Spy(MockBrain):
+        def tool(self, agent, history, system):
+            calls["agent"] = agent
+            return super().tool(agent, history, system)
+
+    out = respond("збережи це у файл", State(needs={}), [], "sys", _Spy(), force="tools")
+    assert calls.get("agent") == "hands"
+    assert out["route"] == "TOOLS/hands"
 
 
 def test_livebrain_chat_refuses_opus_on_the_api_key(monkeypatch):

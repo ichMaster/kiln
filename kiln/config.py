@@ -393,9 +393,9 @@ def agent_scope(agent_id: str | None) -> str:
     return AGENT_BROAD_SCOPE if (not agent_id or agent_id == DEFAULT_AGENT) else AGENT_NARROW_SCOPE
 
 
-# Tools/skills allowed on the reasoning branch (example).
-DEEP_TOOLS = ["Read", "Write", "Bash"]
-DEEP_SKILLS: list[str] = []  # e.g. ["search", "summarize"]
+# (v1.4) The old DEEP_TOOLS ["Read","Write","Bash"] on the raw deep branch is RETIRED — tool work
+# now runs only through the `hands` sub-agent, gated by the per-agent security profile
+# (state/{id}/security.yaml → kiln.security). The deep branch is tool-less.
 
 
 def claude_env(**extra: str) -> dict:

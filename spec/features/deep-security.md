@@ -140,3 +140,10 @@ the behaviours the KILN-069 builder relies on — with two corrections to the ph
    concern (the sandbox/`defaultMode` keys in the generated `--settings`), not a command-line
    flag. The v1.4 default is `bash: off`, so this is deferred detail; the OS-layer task documents
    it as settings-driven when an agent opts in.
+4. **The env allowlist can't be PATH+HOME-only (KILN-069).** The subscription login needs more
+   than `PATH`+`HOME`: with only those two the CLI fell back to API-key auth and failed
+   (`Invalid API key · Please run /login`). The verified minimal working set is
+   **`PATH, HOME, USER, LOGNAME, SHELL, TERM, TMPDIR, LANG`** (+ `LC_ALL`/`LC_CTYPE` when present,
+   + `MAX_THINKING_TOKENS`). The builder allowlists exactly this — enough for the OAuth login, but
+   dropping every other shell secret (`AWS_*`, `GITHUB_TOKEN`, …) that "everything minus one key"
+   used to leak into the subprocess.

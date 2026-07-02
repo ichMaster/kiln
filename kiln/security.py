@@ -18,7 +18,9 @@ operator's environment can never silently widen an agent's capabilities.
 
 from __future__ import annotations
 
+import json
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -150,3 +152,209 @@ def load_security(path: Path) -> SecurityProfile:
         return _build(merged)
     except (KeyError, TypeError, ValueError):
         return _default_profile()  # structurally malformed → the deny-first default
+
+
+# --- The builder (KILN-069): profile → the argv/env/cwd of one `claude -p` sub-agent call ------
+# Every `claude -p` kiln spawns is constructed here from the calling agent's profile — there is one
+# shape, a sub-agent call (`--agent <name>`). The four layers of ROADMAP §1.4 land as:
+#   capability → --allowedTools (frontmatter ∩ profile) + --disallowedTools (hard blocks);
+#   settings   → a generated --settings file (permission deny rules) + --setting-sources "" (the
+#                operator's own user/project/local settings excluded);
+#   process    → cwd = the per-agent workspace, the profile's agents materialized into it, a minimal
+#                env allowlist (verified in KILN-067: PATH+HOME alone breaks the CLI login);
+#   MCP        → --strict-mcp-config (+ a generated --mcp-config for the profile's servers only).
+
+# The subprocess env allowlist. PATH+HOME alone makes the CLI fall back to (absent) API-key auth;
+# this is the verified-minimal set that keeps the subscription login working (KILN-067 correction 4)
+# while dropping every other shell secret the old "everything minus the key" env used to leak.
+_ENV_KEEP = (
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "TERM",
+    "TMPDIR",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+)
+
+
+def _agent_meta(agent: str, agents_dir: Path) -> dict:
+    """Parse a Claude Code agent file's YAML frontmatter (top-level `key: value` lines only) —
+    kiln reads `model` and `tools` from `<agents_dir>/<agent>.md`. Indented continuation lines
+    (e.g. a folded `description: >-`) are skipped. Missing/malformed → {}."""
+    meta: dict[str, str] = {}
+    try:
+        text = (agents_dir / f"{agent}.md").read_text(encoding="utf-8")
+    except OSError:
+        return meta
+    if not text.startswith("---"):
+        return meta
+    block = text.partition("---")[2].partition("---")[0]  # between the two fences
+    for line in block.splitlines():
+        if not line[:1].strip() or ":" not in line:  # skip indented/continuation lines
+            continue
+        key, _, val = line.partition(":")
+        meta[key.strip()] = val.strip()
+    return meta
+
+
+def _frontmatter_tools(agent: str, agents_dir: Path) -> list[str]:
+    return [
+        t.strip() for t in _agent_meta(agent, agents_dir).get("tools", "").split(",") if t.strip()
+    ]
+
+
+def effective_tools(profile: SecurityProfile, frontmatter_tools: list[str]) -> list[str]:
+    """The grant a sub-agent actually gets: its declared `tools:` ∩ the profile ceiling. The ceiling
+    is `profile.tools` widened by the capability switches (web → WebFetch/WebSearch; write →
+    Write/Edit; bash → Bash). `Task` is always stripped (a sub-agent can't spawn further agents).
+    An agent that declares no tools gets nothing — tool-less by construction (e.g. `deep`)."""
+    ceiling = set(profile.tools)
+    if profile.web:
+        ceiling |= {"WebFetch", "WebSearch"}
+    if profile.write == "workspace":
+        ceiling |= {"Write", "Edit"}
+    if profile.bash != "off":
+        ceiling |= {"Bash"}
+    granted = set(frontmatter_tools) & ceiling
+    granted.discard("Task")
+    return sorted(granted)
+
+
+def deny_rules(profile: SecurityProfile) -> list[str]:
+    """Permission `deny` rules for the generated settings file. `Read(//**)` is the load-bearing
+    read boundary (KILN-067: cwd does NOT auto-confine Read); the cwd-relative tree stays readable.
+    Writes/Bash/recursion are hard-blocked unless the profile grants them."""
+    rules = [
+        "Read(//**)",  # deny absolute-path reads (outside the workspace cwd); relative reads stay
+        "Read(~/.ssh/**)",
+        "Read(**/.env)",
+        "Task",  # no agent recursion
+    ]
+    if profile.bash == "off":
+        rules.append("Bash")
+    if profile.write == "workspace":
+        rules += ["Write(//**)", "Edit(//**)"]  # writes confined to the cwd (relative) tree
+    elif profile.write == "off":
+        rules += ["Write", "Edit"]
+    if not profile.web:
+        rules += ["WebFetch", "WebSearch"]
+    return rules
+
+
+def _env_allowlist(thinking_tokens: int) -> dict:
+    env = {k: os.environ[k] for k in _ENV_KEEP if k in os.environ}
+    env["MAX_THINKING_TOKENS"] = str(thinking_tokens)  # extended thinking ON (never the API key)
+    return env
+
+
+def _materialize_agents(profile: SecurityProfile, workspace: Path, source_agents_dir: Path) -> None:
+    """Copy the profile's allowed sub-agent definitions into `<workspace>/.claude/agents/` so the
+    call resolves ONLY kiln-owned agents (never the repo's `.claude/`). Missing sources are skipped
+    (e.g. `deep.md` before KILN-070) rather than crashing."""
+    dest = workspace / ".claude" / "agents"
+    dest.mkdir(parents=True, exist_ok=True)
+    for agent in profile.agents:
+        src = source_agents_dir / f"{agent}.md"
+        if src.exists():
+            shutil.copyfile(src, dest / f"{agent}.md")
+
+
+def _write_json(path: Path, data: dict) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def claude_cmd(
+    profile: SecurityProfile,
+    agent: str,
+    *,
+    system: str,
+    workspace_dir: Path,
+    security_dir: Path,
+    thinking_tokens: int,
+    source_agents_dir: Path,
+) -> tuple[list[str], dict, Path]:
+    """Build `(argv, env, cwd)` for one `claude -p --agent <agent>` call under `profile`.
+
+    Raises `PermissionError` if the profile does not list `agent` (the gate — refused before any
+    spawn). Side effects: mkdir the workspace, materialize the profile's agents into it, and write
+    the generated settings (+ MCP config) under `security_dir`.
+    """
+    if not profile.allows_agent(agent):
+        raise PermissionError(
+            f"agent {agent!r} is not in this profile's agents: {list(profile.agents)}"
+        )
+
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    _materialize_agents(profile, workspace_dir, source_agents_dir)
+
+    granted = effective_tools(profile, _frontmatter_tools(agent, source_agents_dir))
+    settings = {"permissions": {"deny": deny_rules(profile)}}
+    settings_path = _write_json(security_dir / f"{agent}.settings.json", settings)
+
+    argv = [
+        "claude",
+        "-p",
+        "--agent",
+        agent,
+        "--output-format",
+        "json",
+        "--append-system-prompt",
+        system,
+        "--setting-sources",
+        "",  # exclude the operator's user/project/local settings
+        "--settings",
+        str(settings_path),
+        "--strict-mcp-config",  # ignore the operator's MCP servers
+        "--permission-mode",
+        "default",  # in -p mode, unpermitted tools are denied (never a prompt)
+    ]
+    if granted:
+        argv += ["--allowedTools", " ".join(granted)]
+    hard_block = [
+        r
+        for r in ("Bash", "Write", "Edit", "WebFetch", "WebSearch", "Task")
+        if _is_blocked(profile, r)
+    ]
+    if hard_block:
+        argv += ["--disallowedTools", " ".join(hard_block)]
+    if profile.mcp:
+        mcp = {"mcpServers": _resolve_mcp(profile, source_agents_dir.parent.parent)}
+        argv += ["--mcp-config", str(_write_json(security_dir / f"{agent}.mcp.json", mcp))]
+    if profile.add_dirs:
+        for d in profile.add_dirs:
+            argv += ["--add-dir", d]
+
+    return argv, _env_allowlist(thinking_tokens), workspace_dir
+
+
+def _is_blocked(profile: SecurityProfile, tool: str) -> bool:
+    """Whether a tool is hard-blocked for this profile (belt-and-suspenders vs allowedTools)."""
+    if tool == "Task":
+        return True  # recursion always denied
+    if tool == "Bash":
+        return profile.bash == "off"
+    if tool in ("Write", "Edit"):
+        return profile.write == "off"
+    if tool in ("WebFetch", "WebSearch"):
+        return not profile.web
+    return False
+
+
+def _resolve_mcp(profile: SecurityProfile, project_root: Path) -> dict:
+    """Load the profile's named servers from the kiln-owned `state/mcp.yaml` registry (only these,
+    never the operator's). Unknown names are skipped. Empty/absent registry → {}."""
+    registry_path = project_root / "state" / "mcp.yaml"
+    try:
+        import yaml
+
+        registry = yaml.safe_load(registry_path.read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001 — any failure → no servers (fail closed)
+        return {}
+    servers = registry.get("servers", {}) if isinstance(registry, dict) else {}
+    return {name: servers[name] for name in profile.mcp if name in servers}

@@ -150,10 +150,11 @@ def respond(
         reply, usage = brain.deep(prompt, history, system, with_tools=False)
         route = f"THINK/{deep_model.split('-')[1]}"  # e.g. THINK/opus
         event = "deep"
-    else:  # tools
-        reply, usage = brain.deep(prompt, history, system, with_tools=True)
-        route = f"TOOLS/{deep_model.split('-')[1]}"
-        event = "deep"
+    else:  # tools (v1.4): the armed branch is retired — fire the `hands` sub-agent (workspace-
+        # jailed, gated by the agent's profile) instead of arming the main prompt with tools.
+        reply, usage = brain.tool("hands", history, system)
+        route = "TOOLS/hands"
+        event = "deep"  # hands is a "filling meal" like deep — closes novelty/rest/intensity
 
     # Strip a leading name the model echoed (it mirrors the timeline's "Name:" labels) — clean
     # for both display and storage, so it never shows and never compounds in the next timeline.
