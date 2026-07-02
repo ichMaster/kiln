@@ -83,6 +83,60 @@ for the SDK, so **`claude -p` keeps exactly one shape: `--agent <name>`**. Per c
 | 3 — sub-agent | Same shape, gated: the agent must be listed in the profile's `agents:`, its definition is materialized into the workspace (kiln-owned), and web/MCP access comes from the profile clamp. |
 | 4/5 — facts extract & digest | **Leave `claude -p` entirely** — both move to the Anthropic SDK on a new `facts_model` tunable (default Sonnet), API-billed like the chat branch and the session summary. No subprocess, so the positional-argv exposure disappears; tool-less by construction; faster session close/start (no CLI spin-up, no thinking budget). The Opus-refusal guard extends to `facts_model` — Opus stays subscription-only, never on the API key. |
 
-And across all of them: `--max-turns` from the profile, the generated `--mcp-config` +
-`--strict-mcp-config` pair (only the profile's servers from the kiln-owned `state/mcp.yaml`
-registry), and one audit line per spawn in `.kiln/{id}/claude-audit.jsonl`.
+And across all of them: the generated `--mcp-config` + `--strict-mcp-config` pair (only the
+profile's servers from the kiln-owned `state/mcp.yaml` registry), and one audit line per spawn
+in `.kiln/{id}/claude-audit.jsonl`.
+
+## Verified flag semantics (KILN-067)
+
+Probed against **Claude Code v2.1.29** (macOS, `claude -p` headless), 2026-07-02. These are
+the behaviours the KILN-069 builder relies on — with two corrections to the phase design.
+
+**Confirmed as designed:**
+
+- **Settings isolation — `--setting-sources ""`.** Passing an empty (or restricted) source list
+  loads none of the operator's `user` / `project` / `local` settings; the CLI login still works.
+  This is how an agent's headless call is cut off from the operator's own permission allow-rules,
+  hooks, and settings. Probe: a trivial call with `--setting-sources ""` ran clean.
+- **MCP isolation — `--strict-mcp-config` (+ `--mcp-config`).** `--strict-mcp-config` ignores
+  every operator-configured MCP server; `--mcp-config <file|json>` supplies the replacement set.
+  So the builder emits both: strict + a generated config carrying only the profile's servers.
+- **Generated permission rules — `--settings <file-or-json>`.** A settings file with a
+  `permissions.deny` list is honoured. Probe: `deny: ["Read(//**)", "Bash", "Write"]` blocked an
+  outside read that had succeeded without it (see correction 1).
+- **Tool gating in `-p` is a hard deny, not a prompt.** A tool that is disallowed / not in
+  `--allowedTools` simply cannot run — the CLI neither prompts nor hangs; the model proceeds
+  without it. Decisive probe: with `--disallowedTools Bash`, a request to `echo` into a file
+  produced **no file** (the model's "executed successfully" text was a fabrication — always
+  verify effects, not narration). `--allowedTools` / `--disallowedTools` accept comma- **or**
+  space-separated names.
+- **Sub-agent resolution — `--agent <name>`** loads `<cwd>/.claude/agents/<name>.md` (frontmatter
+  `tools:` / `model:` honoured), which is why the builder materializes the profile's `agents:`
+  into the workspace and runs with cwd there. An inline **`--agents <json>`** alternative also
+  exists (a fallback if materialization is ever undesirable).
+- **`--append-system-prompt`** (kiln already uses it) and **`--no-session-persistence`** (headless
+  hygiene — no session written to disk) both exist and apply.
+- **Agent-recursion denial:** deny the `Task` tool (`--disallowedTools Task` / a deny rule) so a
+  sub-agent cannot spawn further agents.
+
+**Corrections to the phase design:**
+
+1. **cwd does NOT auto-confine `Read`.** With `Read` allowed and `--permission-mode default`, a
+   sub-agent whose cwd is the workspace still read an **absolute path outside it**
+   (`/tmp/…` while cwd was `/tmp/kiln_ws_probe`). Confinement is **not** a free consequence of the
+   workspace cwd — the builder MUST emit explicit `permissions.deny` read rules (e.g.
+   `Read(//**)` to deny absolute-path reads, leaving the cwd-relative tree readable; plus the
+   targeted `Read(~/.ssh/**)`, `Read(**/.env)` rules). With `Read(//**)` present the same read was
+   denied and the model reported its allowed dirs as the workspace only. **This makes the
+   settings-layer deny rules load-bearing, not defence-in-depth — KILN-069 treats them as the
+   primary read boundary.**
+2. **`--max-turns` does not exist in v2.1.29.** The phase text assumed a `--max-turns` flag; the
+   installed CLI has no such option. The `max_turns` profile key is therefore **not** enforceable
+   via a CLI flag today — options: drop it, or enforce a turn/'cost ceiling out-of-band (the
+   existing subprocess `timeout` already bounds wall-clock). KILN-068 keeps `max_turns` in the
+   schema as a documented no-op placeholder; KILN-069 relies on the subprocess `timeout` +
+   `permissions` for bounding, and the profile's `timeout_seconds` is the real limiter.
+3. **No `--sandbox` CLI flag.** OS-level Bash sandboxing (`bash: sandbox`) is a **settings**
+   concern (the sandbox/`defaultMode` keys in the generated `--settings`), not a command-line
+   flag. The v1.4 default is `bash: off`, so this is deferred detail; the OS-layer task documents
+   it as settings-driven when an agent opts in.
