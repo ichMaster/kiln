@@ -13,17 +13,16 @@ import datetime as _dt
 import json
 import random
 import re
-import subprocess
 from pathlib import Path
 
 from .config import (
     AGENT_BIRTH,
     CANON_FILE,
     CHAT_MODEL,
-    DEEP_MODEL,
     DEFAULT_CANON,
     FACTS_DIGEST_LINES,
     FACTS_ENABLED,
+    FACTS_MODEL,
     HISTORY_DIR,
     MAX_FACTS,
     MEMORY_FILE,
@@ -32,11 +31,9 @@ from .config import (
     REST_MESSAGE,
     STORE_FILE,
     SUMMARY_SENTENCES,
-    claude_env,
 )
 from .history import to_transcript
 from .store import load_store, save_store
-from .usage import _cli_error_detail
 
 
 def load_prompts(path: Path = PROMPTS_FILE) -> dict[str, list[str]]:
@@ -161,33 +158,50 @@ def summarize(history: list[dict], live: bool) -> str:
     return next((b.text for b in msg.content if b.type == "text"), "").strip()
 
 
-def _parse_facts(stdout: str) -> list[str]:
-    """Pull the fact list from `claude -p` JSON output: its `result` is a JSON array of strings
-    (tolerating a code fence / surrounding prose); falls back to a bullet/line list."""
+def _facts_call(prompt: str, model: str, label: str) -> str | None:
+    """One Anthropic Messages API call for the facts layer (v1.4). Like `summarize`, this runs on
+    the **SDK** (API-key billed), NOT `claude -p` — so it spawns no subprocess and leaks no
+    positional-argv prompt. Guards Opus (the API key must never bill Opus) and degrades to None on
+    any error, so the caller (close/start) never crashes. Returns the reply text on success."""
+    if "opus" in model.lower():
+        print(f"[{label}] skipped: facts_model '{model}' is Opus (the API key must not bill Opus)")
+        return None
+    from anthropic import Anthropic  # local: dry-run/tests need no anthropic package
+
     try:
-        result = json.loads(stdout).get("result", "")
-    except json.JSONDecodeError:
-        result = stdout
-    result = (result or "").strip()
-    if not result:
+        msg = Anthropic().messages.create(
+            model=model, max_tokens=1024, messages=[{"role": "user", "content": prompt}]
+        )
+    except Exception as e:  # network / limits / API error — never crash close/start
+        print(f"[{label}] failed: {e}")
+        return None
+    return next((b.text for b in msg.content if b.type == "text"), "")
+
+
+def _parse_facts(text: str) -> list[str]:
+    """Parse the model's fact list from its reply text: a JSON array of strings (tolerating a code
+    fence / surrounding prose); falls back to a bullet/line list."""
+    text = (text or "").strip()
+    if not text:
         return []
-    start, end = result.find("["), result.rfind("]")
+    start, end = text.find("["), text.rfind("]")
     if start != -1 and end > start:
         try:
-            arr = json.loads(result[start : end + 1])
+            arr = json.loads(text[start : end + 1])
             if isinstance(arr, list):
                 return [str(x).strip() for x in arr if str(x).strip()]
         except json.JSONDecodeError:
             pass
-    return [ln.strip().lstrip("-•*").strip() for ln in result.splitlines() if ln.strip()]
+    return [ln.strip().lstrip("-•*").strip() for ln in text.splitlines() if ln.strip()]
 
 
-def extract_facts(history: list[dict], existing_facts: list[str], live: bool) -> list[str]:
-    """Extract durable **facts about the user** from the cleaned session via `claude -p` on
-    DEEP_MODEL (Opus + extended thinking; API key stripped → subscription). The model is shown
-    the facts already known and asked for ONLY new ones. Returns a list of new fact strings.
-    Dry-run — a stub (`[]`). On CLI error — `[]` (the exit path must never crash). Off when
-    FACTS_ENABLED is false."""
+def extract_facts(
+    history: list[dict], existing_facts: list[str], live: bool, model: str | None = None
+) -> list[str]:
+    """Extract durable **facts about the user** from the cleaned session (v1.4: via the **SDK** on
+    `FACTS_MODEL` (Sonnet), API-key billed like the session summary — no `claude -p`). The model is
+    shown the facts already known and asked for ONLY new ones. Returns a list of new fact strings.
+    Dry-run / error / FACTS_ENABLED off — `[]` (the exit path never crashes)."""
     if not FACTS_ENABLED or not history:
         return []
     transcript = to_transcript(history)
@@ -200,30 +214,15 @@ def extract_facts(history: list[dict], existing_facts: list[str], live: bool) ->
     )
     if not live:
         return []  # dry-run stub — no model call
-    # Opus via claude -p; claude_env() turns on extended thinking and strips the API key (so it
-    # bills via the CLI login — Opus is never called via the API key). Distinct from the Haiku
-    # session summary: facts are the durable layer and warrant Opus.
-    cmd = ["claude", "-p", "--model", DEEP_MODEL, "--output-format", "json", prompt]
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180, env=claude_env())
-    except Exception as e:  # timeout / process failed to start
-        print(f"[exit] fact extraction failed: {e}")
-        return []
-    if result.returncode != 0:
-        # Don't crash the exit over facts — the transcript + summary are already saved.
-        print(
-            f"[exit] fact extraction failed (CLI {result.returncode}: {_cli_error_detail(result)})"
-        )
-        return []
-    return _parse_facts(result.stdout)
+    text = _facts_call(prompt, model or FACTS_MODEL, "exit — fact extraction")
+    return _parse_facts(text) if text is not None else []
 
 
-def digest_facts(live: bool, store_path: Path = STORE_FILE) -> str:
+def digest_facts(live: bool, store_path: Path = STORE_FILE, model: str | None = None) -> str:
     """Condense ALL stored user facts to a compact view of who the user is — at most
-    FACTS_DIGEST_LINES lines (Lumi's `facts_digests`) — via `claude -p` on DEEP_MODEL (Opus +
-    extended thinking; API key stripped → subscription). Read-only (no store writes). No facts
-    → "". Dry-run — a stub. On CLI error — "" (start must never crash). The line cap is enforced
-    defensively after the call. Off (→ "") when FACTS_ENABLED is false."""
+    FACTS_DIGEST_LINES lines (Lumi's `facts_digests`) — v1.4: via the **SDK** on `FACTS_MODEL`
+    (Sonnet), API-key billed, no `claude -p`. Read-only (no store writes). No facts / dry-run /
+    error / FACTS_ENABLED off → "". The line cap is enforced defensively after the call."""
     if not FACTS_ENABLED:
         return ""
     facts = [
@@ -243,19 +242,9 @@ def digest_facts(live: bool, store_path: Path = STORE_FILE) -> str:
     )
     if not live:
         return f"(dry-run facts digest: {len(facts)} facts)"
-    cmd = ["claude", "-p", "--model", DEEP_MODEL, "--output-format", "json", prompt]
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180, env=claude_env())
-    except Exception as e:  # timeout / process failed to start
-        print(f"[start] facts digest failed: {e}")
+    text = _facts_call(prompt, model or FACTS_MODEL, "start — facts digest")
+    if text is None:
         return ""
-    if result.returncode != 0:
-        print(f"[start] facts digest failed (CLI {result.returncode}: {_cli_error_detail(result)})")
-        return ""
-    try:
-        text = (json.loads(result.stdout).get("result") or "").strip()
-    except json.JSONDecodeError:
-        text = result.stdout.strip()
     lines = [ln for ln in text.splitlines() if ln.strip()]  # enforce the cap (model may overshoot)
     return "\n".join(lines[:FACTS_DIGEST_LINES])
 

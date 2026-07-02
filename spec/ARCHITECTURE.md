@@ -114,11 +114,12 @@ behind the **`Brain` seam** (`brain.py`), each method returning `(text, usage)`:
   record (no network, no subprocess); the dry-run demo and the whole test suite run
   on it — **zero paid calls**.
 
-**Cost/auth invariant: Opus never touches the API key.** The API-key (SDK) path is the
-cheap-Haiku `chat` branch only — `LiveBrain.chat` refuses to run an Opus model (`_is_opus`).
-Everything Opus/Sonnet goes through `claude -p`, which is spawned with `ANTHROPIC_API_KEY`
-**stripped from its environment** (`_claude_env`), so it bills via the CLI's own login
-(subscription/OAuth), never the API key.
+**Cost/auth invariant: Opus never touches the API key.** The API-key (SDK) path covers the cheap
+turns — `chat`/thoughts (Haiku) and the **session summary + user-facts extract/digest** (Sonnet,
+`FACTS_MODEL`, v1.4). Each refuses an Opus model before calling (`_is_opus` in `LiveBrain.chat`; the
+Opus guard in `memory._facts_call`). Everything Opus goes through `claude -p`, built by
+`security.claude_cmd` with a **minimal env allowlist that excludes `ANTHROPIC_API_KEY`** (v1.4;
+`claude_env` retired), so it bills via the CLI's own login (subscription/OAuth), never the API key.
 
 `classify(prompt, state)` → `(class, agent)`, class ∈ `chat | think | tools | tool`: explicit
 markers (`TOOL_HINTS`/`THINK_HINTS`) win, then **ambient high needs pick the deeper brain like a
@@ -188,7 +189,9 @@ Lumi-style sections:
 - **`facts`** (v0.6) — `{id, text, first_seen, last_seen, source_session}`, durable **facts about
   the user** (who they are, preferences, life), deduped by normalized text (`add_facts`).
   Extracted on close and digested into the system prompt (v0.6) — distinct from `summaries`
-  (what was *discussed*); these are stable facts carried forward indefinitely.
+  (what was *discussed*); these are stable facts carried forward indefinitely. **v1.4: extraction
+  + digest run on the SDK (`FACTS_MODEL`, Sonnet), API-key billed like the summary — no `claude -p`
+  and no positional-argv prompt.**
 
 (Legacy `state/memory.md` summaries + `history/session-*.json` transcripts are migrated into
 the store and retired across v0.5; the `state/` knobs — canon/prompts/needs — stay put.)

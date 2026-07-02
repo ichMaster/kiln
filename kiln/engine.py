@@ -233,6 +233,7 @@ def run(
     thoughts_in_prompt = config.thoughts_in_prompt if config is not None else THOUGHTS_IN_PROMPT
     thought_every = config.thought_visible_every if config is not None else THOUGHT_VISIBLE_EVERY
     usage_report_on = config.usage_report if config is not None else USAGE_REPORT
+    facts_model = config.facts_model if config is not None else None  # None → memory.FACTS_MODEL
     triggers = config.need_triggers if config is not None else NEED_TRIGGERS
     mood_cfg = (
         config.mood if config is not None else None
@@ -248,7 +249,7 @@ def run(
     session_mode = "live" if live else "dry"  # stored with the session (real-time persist + close)
     canon = load_canon(paths.canon_file)  # persona/voice from state/canon.md (re-read on /reload)
     memory = load_memory(paths.store_file)  # long-term memory: summaries of past sessions
-    facts = digest_facts(live, paths.store_file)  # v0.6: N-line digest of durable user facts
+    facts = digest_facts(live, paths.store_file, facts_model)  # v0.6: N-line digest of user facts
     base_system = build_system(canon, memory, facts)  # static: canon + memory summaries + facts
     prev_turns = _previous_session_turns(paths.store_file, started)  # v0.8: recent turns across ALL
     # prior sessions for the timeline (the live session is excluded — real-time persistence puts it
@@ -374,7 +375,7 @@ def run(
             {
                 "id": oid,
                 "summary": summarize(cleaned, live),
-                "facts": extract_facts(cleaned, existing_facts, live),
+                "facts": extract_facts(cleaned, existing_facts, live, facts_model),
                 "stats": ostats,
                 "started_at": ostart,
                 "ended": oended,
@@ -586,10 +587,10 @@ def run(
             if summary:
                 store["summaries"].append({"session_id": started, "stamp": stamp, "text": summary})
                 save_store(store, paths.store_file)
-            # KILN-023: extract durable user facts (Opus + thinking) and fold them in (deduped).
+            # KILN-023: extract durable user facts (v1.4: SDK/Sonnet) and fold them in (deduped).
             existing_facts = [f.get("text", "") for f in store.get("facts", [])]
             added_facts = add_facts(
-                store, extract_facts(cleaned, existing_facts, live), started, stamp
+                store, extract_facts(cleaned, existing_facts, live, facts_model), started, stamp
             )
             if added_facts:
                 save_store(store, paths.store_file)

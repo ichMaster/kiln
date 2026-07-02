@@ -1,15 +1,49 @@
-"""Unit: fact extraction + digest on Opus via `claude -p`, and the parser (KILN-023/024)."""
+"""Unit: fact extraction + digest on the SDK (v1.4 — FACTS_MODEL/Sonnet, no `claude -p`), and the
+parser (KILN-023/024, KILN-071)."""
 
 from __future__ import annotations
 
-import json
-
 import kiln.memory as mem
-from kiln.config import DEEP_MODEL, THINKING_TOKENS
+from kiln.config import FACTS_MODEL
 
 
-def _result(stdout, code=0):
-    return type("R", (), {"returncode": code, "stdout": stdout, "stderr": "boom"})()
+def _fake_anthropic(monkeypatch, reply_text, seen=None):
+    """Patch anthropic.Anthropic so the SDK call returns `reply_text`; records kwargs in `seen`."""
+
+    class _Block:
+        type = "text"
+        text = reply_text
+
+    class _Msg:
+        content = [_Block()]
+
+    class _Messages:
+        def create(self, **kwargs):
+            if seen is not None:
+                seen.update(kwargs)
+            return _Msg()
+
+    class _Client:
+        def __init__(self, *a, **k):
+            self.messages = _Messages()
+
+    import anthropic
+
+    monkeypatch.setattr(anthropic, "Anthropic", _Client)
+
+
+def _no_subprocess(monkeypatch):
+    """Guard: the facts layer must NOT spawn a subprocess (v1.4 SDK path)."""
+    import kiln.memory as memmod
+
+    # memory no longer imports subprocess; assert it's gone and trap the stdlib just in case.
+    assert not hasattr(memmod, "subprocess"), "memory.py must not use subprocess (SDK-only facts)"
+    import subprocess
+
+    def _boom(*a, **k):
+        raise AssertionError("facts must not spawn a subprocess")
+
+    monkeypatch.setattr(subprocess, "run", _boom)
 
 
 def _store_with_facts(texts):
@@ -24,6 +58,9 @@ def _store_with_facts(texts):
     }
 
 
+# --- extract_facts ----------------------------------------------------------
+
+
 def test_extract_facts_dry_run_is_stub():
     assert mem.extract_facts([{"role": "user", "text": "привіт"}], [], live=False) == []
 
@@ -32,57 +69,58 @@ def test_extract_facts_empty_history():
     assert mem.extract_facts([], [], live=True) == []
 
 
-def test_extract_facts_uses_opus_with_thinking_and_no_api_key(monkeypatch):
+def test_extract_facts_uses_the_sdk_no_subprocess(monkeypatch):
+    _no_subprocess(monkeypatch)
     seen = {}
-
-    class _R:
-        returncode = 0
-        stdout = '{"result": "[\\"Любить шахи\\", \\"Пише агентів\\"]"}'
-        stderr = ""
-
-    def _run(cmd, **kwargs):
-        seen["cmd"] = cmd
-        seen["env"] = kwargs.get("env")
-        return _R()
-
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-should-be-stripped")
-    monkeypatch.setattr(mem.subprocess, "run", _run)
+    _fake_anthropic(monkeypatch, '["Любить шахи", "Пише агентів"]', seen)
     out = mem.extract_facts([{"role": "user", "text": "привіт"}], ["вже відоме"], live=True)
     assert out == ["Любить шахи", "Пише агентів"]
-    assert "--model" in seen["cmd"] and DEEP_MODEL in seen["cmd"]  # Opus via claude -p
-    assert seen["env"]["MAX_THINKING_TOKENS"] == str(THINKING_TOKENS)  # thinking ON
-    assert "ANTHROPIC_API_KEY" not in seen["env"]  # Opus never billed via the API key
+    assert seen["model"] == FACTS_MODEL  # Sonnet via the Messages API (not claude -p)
+    assert seen["messages"][0]["role"] == "user"
 
 
-def test_extract_facts_cli_error_returns_empty(monkeypatch):
-    class _R:
-        returncode = 1
-        stdout = ""
-        stderr = "boom"
+def test_extract_facts_refuses_opus_model(monkeypatch):
+    """The SDK path must never bill Opus — an Opus facts_model is skipped (returns [])."""
+    _fake_anthropic(monkeypatch, '["x"]')  # would return a fact IF it were called
+    out = mem.extract_facts([{"role": "user", "text": "x"}], [], live=True, model="claude-opus-4-8")
+    assert out == []
 
-    monkeypatch.setattr(mem.subprocess, "run", lambda *a, **k: _R())
+
+def test_extract_facts_sdk_error_returns_empty(monkeypatch):
+    import anthropic
+
+    def _boom(*a, **k):
+        raise RuntimeError("network")
+
+    class _Client:
+        def __init__(self, *a, **k):
+            self.messages = type("M", (), {"create": staticmethod(_boom)})()
+
+    monkeypatch.setattr(anthropic, "Anthropic", _Client)
     assert mem.extract_facts([{"role": "user", "text": "x"}], [], live=True) == []
 
 
+# --- _parse_facts (now parses the model's reply TEXT, not CLI JSON) ---------
+
+
 def test_parse_facts_json_array():
-    assert mem._parse_facts('{"result": "[\\"a\\", \\"b\\"]"}') == ["a", "b"]
+    assert mem._parse_facts('["a", "b"]') == ["a", "b"]
 
 
 def test_parse_facts_fenced_and_prose():
-    out = mem._parse_facts('{"result": "ось факти:\\n```json\\n[\\"a\\", \\"b\\"]\\n```"}')
-    assert out == ["a", "b"]
+    assert mem._parse_facts('ось факти:\n```json\n["a", "b"]\n```') == ["a", "b"]
 
 
 def test_parse_facts_line_fallback():
-    assert mem._parse_facts('{"result": "- факт один\\n- факт два"}') == ["факт один", "факт два"]
+    assert mem._parse_facts("- факт один\n- факт два") == ["факт один", "факт два"]
 
 
 def test_parse_facts_empty():
-    assert mem._parse_facts('{"result": "[]"}') == []
-    assert mem._parse_facts('{"result": ""}') == []
+    assert mem._parse_facts("[]") == []
+    assert mem._parse_facts("") == []
 
 
-# --- digest_facts (KILN-024) ---
+# --- digest_facts -----------------------------------------------------------
 
 
 def test_digest_facts_empty_is_blank(monkeypatch):
@@ -95,43 +133,32 @@ def test_digest_facts_dry_run_is_stub(monkeypatch):
     assert mem.digest_facts(live=False).startswith("(dry-run facts digest")
 
 
-def test_digest_facts_opus_thinking_no_key_and_line_cap(monkeypatch):
+def test_digest_facts_uses_the_sdk_and_caps_lines(monkeypatch):
+    _no_subprocess(monkeypatch)
     seen = {}
     twelve = "\n".join(f"рядок {i}" for i in range(1, 13))  # 12 lines — over the cap
-
-    def _run(cmd, **kwargs):
-        seen["cmd"] = cmd
-        seen["env"] = kwargs.get("env")
-        return _result(json.dumps({"result": twelve}))
-
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-strip")
+    _fake_anthropic(monkeypatch, twelve, seen)
     monkeypatch.setattr(mem, "load_store", lambda *a, **k: _store_with_facts(["a", "b"]))
     monkeypatch.setattr(mem, "FACTS_DIGEST_LINES", 8)
-    monkeypatch.setattr(mem.subprocess, "run", _run)
     out = mem.digest_facts(live=True)
     assert len(out.splitlines()) == 8  # capped at FACTS_DIGEST_LINES
-    assert "--model" in seen["cmd"] and DEEP_MODEL in seen["cmd"]  # Opus via claude -p
-    assert seen["env"]["MAX_THINKING_TOKENS"] == str(THINKING_TOKENS)  # thinking ON
-    assert "ANTHROPIC_API_KEY" not in seen["env"]  # Opus never billed via the API key
+    assert seen["model"] == FACTS_MODEL  # Sonnet via the Messages API
 
 
 def test_digest_facts_respects_config_line_count(monkeypatch):
-    """The cap follows FACTS_DIGEST_LINES (overridable from .env)."""
+    _fake_anthropic(monkeypatch, "1\n2\n3\n4\n5")
     monkeypatch.setattr(mem, "load_store", lambda *a, **k: _store_with_facts(["a"]))
     monkeypatch.setattr(mem, "FACTS_DIGEST_LINES", 3)
-    monkeypatch.setattr(
-        mem.subprocess, "run", lambda *a, **k: _result(json.dumps({"result": "1\n2\n3\n4\n5"}))
-    )
     assert len(mem.digest_facts(live=True).splitlines()) == 3
 
 
-def test_digest_facts_cli_error_is_blank(monkeypatch):
+def test_digest_facts_refuses_opus_model(monkeypatch):
+    _fake_anthropic(monkeypatch, "portrait")
     monkeypatch.setattr(mem, "load_store", lambda *a, **k: _store_with_facts(["a"]))
-    monkeypatch.setattr(mem.subprocess, "run", lambda *a, **k: _result("", code=1))
-    assert mem.digest_facts(live=True) == ""
+    assert mem.digest_facts(live=True, model="claude-opus-4-8") == ""
 
 
-# --- MAX_FACTS + FACTS_ENABLED (KILN-024 follow-on knobs) ---
+# --- MAX_FACTS + FACTS_ENABLED ----------------------------------------------
 
 
 def test_digest_facts_caps_input_to_max_facts(monkeypatch):
@@ -141,15 +168,11 @@ def test_digest_facts_caps_input_to_max_facts(monkeypatch):
     )
     monkeypatch.setattr(mem, "MAX_FACTS", 2)
     seen = {}
-
-    def _run(cmd, **kwargs):
-        seen["prompt"] = cmd[-1]  # the prompt is the last positional arg
-        return _result(json.dumps({"result": "x"}))
-
-    monkeypatch.setattr(mem.subprocess, "run", _run)
+    _fake_anthropic(monkeypatch, "x", seen)
     mem.digest_facts(live=True)
-    assert "gamma" in seen["prompt"] and "delta" in seen["prompt"]  # the last 2
-    assert "alpha" not in seen["prompt"] and "beta" not in seen["prompt"]  # older dropped
+    prompt = seen["messages"][0]["content"]
+    assert "gamma" in prompt and "delta" in prompt  # the last 2
+    assert "alpha" not in prompt and "beta" not in prompt  # older dropped
 
 
 def test_facts_disabled_skips_extraction_and_digest(monkeypatch):
@@ -157,9 +180,11 @@ def test_facts_disabled_skips_extraction_and_digest(monkeypatch):
     monkeypatch.setattr(mem, "FACTS_ENABLED", False)
     monkeypatch.setattr(mem, "load_store", lambda *a, **k: _store_with_facts(["a", "b"]))
 
-    def _boom(*a, **k):  # must not reach the subprocess when disabled
-        raise AssertionError("claude -p called while FACTS_ENABLED is off")
+    def _boom(*a, **k):  # must not reach the model when disabled
+        raise AssertionError("the SDK was called while FACTS_ENABLED is off")
 
-    monkeypatch.setattr(mem.subprocess, "run", _boom)
+    import anthropic
+
+    monkeypatch.setattr(anthropic, "Anthropic", _boom)
     assert mem.extract_facts([{"role": "user", "text": "x"}], [], live=True) == []
     assert mem.digest_facts(live=True) == ""

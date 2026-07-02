@@ -3,18 +3,7 @@
 from __future__ import annotations
 
 import kiln.memory as mem
-from kiln.config import CHAT_MODEL, THINKING_TOKENS, claude_env
-
-
-def test_claude_env_strips_key_and_turns_on_thinking(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
-    monkeypatch.setenv("PATH", "/usr/bin")
-    env = claude_env()
-    assert "ANTHROPIC_API_KEY" not in env  # never billed via the API key
-    assert env["MAX_THINKING_TOKENS"] == str(THINKING_TOKENS)  # thinking ON for every claude -p
-    assert env.get("PATH") == "/usr/bin"  # the rest of the env is preserved
-    # an explicit extra overrides the default budget
-    assert claude_env(MAX_THINKING_TOKENS="1234")["MAX_THINKING_TOKENS"] == "1234"
+from kiln.config import CHAT_MODEL
 
 
 def test_summarize_dry_run_is_a_stub():

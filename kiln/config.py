@@ -111,6 +111,7 @@ DEFAULT_CONFIG = {
     "chat_model": "claude-haiku-4-5-20251001",
     "deep_model": "claude-opus-4-8",
     "thought_model": None,  # None -> use chat_model
+    "facts_model": "claude-sonnet-5",  # v1.4: facts extract/digest via the SDK (API-key billed)
     "tick_seconds": 0.5,
     "think_threshold": 0.45,
     "thinking_tokens": 8000,
@@ -290,6 +291,9 @@ THINK_THRESHOLD = _opt_float(_CONFIG, "think_threshold", "THINK_THRESHOLD", 0.45
 
 CHAT_MODEL = _opt_str(_CONFIG, "chat_model", "CHAT_MODEL", "claude-haiku-4-5-20251001")
 DEEP_MODEL = _opt_str(_CONFIG, "deep_model", "DEEP_MODEL", "claude-opus-4-8")
+# v1.4: the facts layer (extract/digest) runs on the SDK on this model (API-key billed like chat +
+# the session summary), NOT on `claude -p`. Must not be Opus (the API key never bills Opus).
+FACTS_MODEL = _opt_str(_CONFIG, "facts_model", "FACTS_MODEL", "claude-sonnet-5")
 
 # v0.10 inner monologue: the thought runs on the chat brain (Haiku). THOUGHTS_ENABLED is the master
 # switch; THOUGHT_MODEL is informational (= CHAT_MODEL — thoughts go through brain.chat).
@@ -301,8 +305,8 @@ THOUGHT_VISIBLE_EVERY = _opt_int(_CONFIG, "thought_visible_every", "THOUGHT_VISI
 # How many recent (cross-session) thoughts go into the `## Думки` prompt section. 0 = off.
 THOUGHTS_IN_PROMPT = _opt_int(_CONFIG, "thoughts_in_prompt", "THOUGHTS_IN_PROMPT", 8)
 
-# EVERY `claude -p` call (deep, tool, summarize) runs with extended thinking ON — this is the
-# budget passed as MAX_THINKING_TOKENS by claude_env(). Tune via .env; lower it for snappier
+# Every `claude -p` sub-agent runs with extended thinking ON — this is the budget the security
+# builder passes as MAX_THINKING_TOKENS (kiln/security.py). Tune via .env; lower it for snappier
 # interactive replies (thinking adds latency — it's a cap, the model uses up to this much).
 THINKING_TOKENS = _opt_int(_CONFIG, "thinking_tokens", "THINKING_TOKENS", 8000)
 
@@ -398,16 +402,9 @@ def agent_scope(agent_id: str | None) -> str:
 # (state/{id}/security.yaml → kiln.security). The deep branch is tool-less.
 
 
-def claude_env(**extra: str) -> dict:
-    """Environment for a `claude -p` subprocess. Two invariants for EVERY claude -p call:
-    ANTHROPIC_API_KEY is REMOVED (the CLI bills via its OWN login — Opus/Sonnet never run on the
-    API key), and extended thinking is ON (MAX_THINKING_TOKENS=THINKING_TOKENS). `extra` overrides
-    (e.g. a bigger MAX_THINKING_TOKENS for one call)."""
-    env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
-    env["MAX_THINKING_TOKENS"] = str(THINKING_TOKENS)
-    env.update(extra)
-    return env
-
+# (v1.4) `claude_env` is RETIRED — the "everything minus the API key" env is gone. Every `claude -p`
+# spawn now goes through `security.claude_cmd`, which builds a minimal env allowlist per call; the
+# facts layer left `claude -p` for the SDK (`FACTS_MODEL`). See kiln/security.py.
 
 # "tool" self-triggers run a named Claude Code sub-agent (see NEED_TRIGGERS and
 # brain.LiveBrain.tool): `claude -p --agent <agent>` loads .claude/agents/<agent>.md,
@@ -453,6 +450,7 @@ class AgentConfig:
     chat_model: str
     deep_model: str
     thought_model: str
+    facts_model: str
     tick_seconds: float
     think_threshold: float
     thinking_tokens: int
@@ -510,6 +508,7 @@ class AgentConfig:
             chat_model=chat,
             deep_model=_opt_str(cfg, "deep_model", "DEEP_MODEL", "claude-opus-4-8"),
             thought_model=_opt_str(cfg, "thought_model", "THOUGHT_MODEL", "") or chat,
+            facts_model=_opt_str(cfg, "facts_model", "FACTS_MODEL", "claude-sonnet-5"),
             tick_seconds=_opt_float(cfg, "tick_seconds", "TICK_SECONDS", 0.5),
             think_threshold=_opt_float(cfg, "think_threshold", "THINK_THRESHOLD", 0.45),
             thinking_tokens=_opt_int(cfg, "thinking_tokens", "THINKING_TOKENS", 8000),
