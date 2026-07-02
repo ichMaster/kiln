@@ -296,7 +296,7 @@ Reading the matrix:
 ## 6. Worked example, traced against the matrix
 
 A single run that exercises most cells. Tracking `connection` (conn) and `rest`. Assume a tense agent,
-so the reach-out and the `/ask`-style turn both route to the deep brain. Satiation used:
+so the reach-out and a reasoning turn both route to the deep sub-agent. Satiation used:
 `deep` → conn −0.60, rest +0.40; `chat` → conn −0.30, rest +0.20; `idle` → rest −0.01; drift moves
 `rest` −0.005 and `conn` +0.001 per tick. Numbers are representative, rounded for legibility.
 

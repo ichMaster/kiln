@@ -30,8 +30,9 @@ The logic is split into modules with a simple directed dependency (no cycles):
 | [`engine.py`](../engine.py) | core + loop + `__main__` | `State`, `drift`, `apply_satiation`, `classify`, `chat_reply`, `deep_reply`, `ScriptedChannel`/`StdinChannel`, `respond`, `run` |
 
 `engine.py` runs as `__main__`, so **no module imports it**: constants are moved
-out into `config.py`, and `/ask` does its deep turn back in `run()` (which is why
-`commands.py` doesn't depend on the core).
+out into `config.py`, so `commands.py` doesn't depend on the core. *(v1.4: `/ask` was removed —
+reasoning turns route to the `deep` sub-agent on their own; the deep branch and its sandboxing
+live in `kiln/security.py`; see [`../spec/features/deep-security.md`](../spec/features/deep-security.md).)*
 
 ## The two branches (the "two brains")
 
@@ -43,11 +44,13 @@ happened to the state**.
   SDK call (`anthropic`); the key comes from `ANTHROPIC_API_KEY`. The whole
   session history goes in as a `messages` array, the canon + memory go in
   `system`.
-- **REASONING / TOOLS → Claude as an external process** (`deep_reply`,
-  `claude -p`). Here the model (Opus), the allowed tools (`--allowedTools`), and
-  skills are specified. More expensive, but with reasoning and access to tools.
-  The subprocess holds no session between calls, so the history is embedded in
-  the prompt as a text transcript.
+- **REASONING / TOOLS → named `claude -p` sub-agents** (v1.4: `Brain.tool`). Reasoning is the
+  tool-less **`deep`** sub-agent (Opus), acting is **`hands`**, specialists are themselves
+  (`session-wiki`). Each is built by `kiln/security.py` from the agent's capability profile
+  (workspace cwd, minimal env, generated deny rules + MCP isolation, tool grant = frontmatter ∩
+  profile) — there is no raw armed `claude -p` anymore. The subprocess holds no session between
+  calls, so the history is embedded in the prompt as a text transcript. See
+  [`../spec/features/deep-security.md`](../spec/features/deep-security.md).
 
 Both branches receive the **same** system prompt (`build_system`) — the canon
 (persona) plus long-term memory — so the voice stays consistent regardless of

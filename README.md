@@ -36,9 +36,15 @@ and messages are picked up on the next tick:
 
 Live mode has two requirements (per branch):
 
-- **Chat (Haiku)** — the `ANTHROPIC_API_KEY` key in `.env` or in the environment.
-- **Reasoning / tools (Opus)** — an installed and logged-in **Claude Code CLI**
-  (`claude`), because this branch calls `claude -p`.
+- **Chat / facts / summary (Haiku + Sonnet)** — the `ANTHROPIC_API_KEY` key in `.env` or in the
+  environment (the cheap SDK turns).
+- **Reasoning / tools (Opus)** — an installed and logged-in **Claude Code CLI** (`claude`), because
+  these run as `claude -p` sub-agents (billed via the CLI login, never the API key).
+
+Since v1.4 those `claude -p` sub-agents are **sandboxed**: each runs in a per-agent workspace under
+a committed `state/{id}/security.yaml` capability profile (deny-first), so live mode no longer
+exposes the operator's account, repo, `.env`, or personal Claude Code settings/MCP servers to the
+agent. See [`spec/features/deep-security.md`](spec/features/deep-security.md).
 
 `KILN_LIVE=1` can also be set in `.env`, so you don't have to type it every time.
 
@@ -88,10 +94,12 @@ Lines starting with `/` are commands (they don't go to the model):
 | `/needs` | current need levels |
 | `/memory` | contents of long-term memory |
 | `/history` | the last turns of this session |
-| `/ask <text>` | force a query to Claude (the stronger model) |
 | `/clear` | clear the session history |
 | `/help` | list of commands |
 | `/quit` | exit |
+
+*(`/ask` was removed in v1.4 — reasoning turns already route to the deep sub-agent; set
+`THINK_THRESHOLD=0` to force every turn deep.)*
 
 ## Where things are stored
 

@@ -155,7 +155,7 @@ Each action name in the table resolves to a callable through an **action registr
 wrap what the loop has always done inline: `respond` (a user turn), `reach_out` (speak first — her
 other needs pick the brain), `think` (a private inner thought), `idle` (a silent, recovering tick),
 `enter_rest` / `rest_ack` / `wake` (the rest gate), `rotate` (request a session rotation), and
-`command` (dispatch a slash line: quit, reload, rotate, or a forced-deep `/ask`). An action reads and
+`command` (dispatch a slash line: quit, reload, rotate). An action reads and
 writes a small per-tick context — the turn/think primitives it needs, plus the outcome fields the
 loop reads back (the new state, whether she reached out, whether a rotation was requested, and so on).
 
@@ -401,12 +401,27 @@ the brain:
 | `/prompt` | the system prompt + the messages array sent to the model |
 | `/usage` | session tokens, `claude -p` call count, estimated cost, report path |
 | `/report` | regenerate `.kiln/usage-report.md` from the ledger |
-| `/ask <text>` | force a deep (Opus) turn, past the classifier |
 | `/reload` | re-read canon/prompts/memory and rebuild the system prompt, no session drop |
 | `/rotate` | close+summarize this session and start a fresh one, without pausing |
 | `/clear` | clear the session history |
 | `/help` | the list of commands |
 | `/quit` (`/exit`, `/q`) | exit (the session closes into the store) |
+
+*(`/ask` was removed in v1.4 — reasoning turns already route to the deep sub-agent on their own;
+set `THINK_THRESHOLD=0` to force every turn deep for calibration.)*
+
+## How the deep branch is sandboxed (v1.4)
+
+Every `claude -p` call kiln makes runs as a **named sub-agent** (`deep` for reasoning, `hands` for
+tool work, `session-wiki` for the Wikipedia fact), built by one place — `kiln/security.py` — from
+the agent's committed `state/{id}/security.yaml` capability profile. The call runs in a per-agent
+**workspace** (`.kiln/{id}/workspace/`), sees only the sub-agents kiln materializes there, gets a
+tool grant that is the sub-agent's frontmatter **intersected with** the profile's ceiling, and runs
+under a minimal environment with the operator's own Claude Code settings and MCP servers excluded.
+A missing or broken profile **fails closed** (the strictest default), an unlisted sub-agent is
+refused before it can start, and every call — and every refusal — is written to
+`.kiln/{id}/claude-audit.jsonl`. The cheap turns (chat, the session summary, user-facts) stay on the
+API-key SDK and never shell out. Full design: [`../spec/features/deep-security.md`](../spec/features/deep-security.md).
 
 ## Running more than one agent
 

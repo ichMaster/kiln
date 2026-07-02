@@ -19,8 +19,8 @@ anything that shapes it for the model: `DEFAULT_CANON` and `state/canon.md`, `st
 Ukrainian; write everything else in English.
 
 The modules live in the `kiln/` package and form a clean DAG —
-`config`/`history`/`usage`/`fsm`/`channels` (leaves) → `needs` → `routing`/`actions` → `memory` →
-`commands` → `engine`:
+`config`/`history`/`usage`/`fsm`/`channels`/`security` (leaves) → `needs` → `routing`/`actions` →
+`memory` → `commands` → `engine` (the `brain` seam sits over `security`):
 `kiln/config.py` (paths, `.env`, tunables), `kiln/history.py` (session-transcript helpers),
 `kiln/usage.py` (model token logging + chat colors), `kiln/fsm.py` (the FSM: states, events, the
 transition table, `advance`, the event queue, the trace), `kiln/channels.py` (input channels),
@@ -33,8 +33,8 @@ the registry — plus `_status_snapshot`; **no `__main__`**; re-exports the move
 `from kiln.engine import State/respond/…` still works). The console entry is
 `kiln/__main__.py` (`main()`: live mode + the dry-run demo), wired as the `kiln` command.
 **`engine.py` carries no `__main__`, so it can be imported freely** (incl. by tests) — that's
-why constants live in `config.py` and `/ask` does its deep call back in `run()` rather than in
-`commands.py`.
+why constants live in `config.py`. There's also `kiln/security.py` (v1.4 — the deep-branch
+security profile + the one `claude -p` builder + the audit log; see the security note below).
 
 Human-facing docs live in [`docs/`](docs/) — [`docs/architecture.md`](docs/architecture.md) (design)
 and [`docs/how-it-works.md`](docs/how-it-works.md) (runtime mechanics, tables). The root `README.md`
@@ -120,19 +120,23 @@ per tick with this priority: **user input > self-trigger > idle**. Input always 
 self-trigger waits for the next tick.
 
 **Two brains** (the core idea — *which branch answers decides which needs close*):
-- **Chat** (`chat_reply` in `engine.py`, `CHAT_MODEL` Haiku): cheap/fast small talk via a real
-  Anthropic Messages API call (`anthropic` imported lazily so dry-run stays dependency-free). Whole
-  session `history` goes in as a `messages` array; token usage is captured via `log_model` (`usage.py`).
-- **Deep** (`deep_reply`, `DEEP_MODEL` Opus): reasoning/tools via the `claude -p` subprocess with
-  `--output-format json` (so it returns both the text and token `usage`). The subprocess holds no
-  session, so prior history is flattened into the prompt as a text transcript (`to_transcript`);
-  long-term memory rides on `--append-system-prompt`; `tools` class adds `--allowedTools`. On a
-  nonzero exit it degrades to a `(deep error: …)` string instead of crashing the loop.
+- **Chat** (`Brain.chat`, `CHAT_MODEL` Haiku): cheap/fast small talk via a real Anthropic Messages
+  API call (`anthropic` imported lazily so dry-run stays dependency-free). Whole session `history`
+  goes in as a `messages` array; token usage is captured via `usage_record` (`usage.py`).
+- **Sub-agents** (`Brain.tool`, v1.4 — the ONLY `claude -p` shape): reasoning is the **`deep`**
+  sub-agent (Opus, tool-less), acting is **`hands`**, specialists are themselves (**`session-wiki`**).
+  Each runs `claude -p --agent <name> --output-format json`, built by **`kiln/security.py`** from
+  the calling agent's capability profile — cwd = its workspace, the profile's agents materialized
+  in, a minimal env allowlist, generated `--settings` deny rules + `--strict-mcp-config`, the tool
+  grant = the agent's frontmatter ∩ the profile. On a nonzero exit it degrades to a
+  `(<agent> error: …)` string instead of crashing the loop. (Facts extract/digest run on the SDK
+  on `FACTS_MODEL`/Sonnet, like the session summary — never `claude -p`.)
 
 **Routing** — when the brain fires on user input, `classify(prompt, state)` returns
-`chat | think | tools` from message markers (`TOOL_HINTS`/`THINK_HINTS`) **and** a state weight
-(`turn_weight = 0.55*intensity + 0.45*connection` vs `THINK_THRESHOLD`). `think`/`tools` → deep,
-else → chat. `respond` maps the class to a branch and a satiation event (`chat` | `deep` | `idle`).
+`chat | think | tools | tool` from message markers (`TOOL_HINTS`/`THINK_HINTS`) **and** a state
+weight (`turn_weight = 0.55*intensity + 0.45*connection` vs `THINK_THRESHOLD`). `think` → the
+`deep` sub-agent, `tools` → the `hands` sub-agent, `tool` → a named specialist, else → chat.
+`respond` maps the class to a branch and a satiation event (`chat` | `deep` | `idle` | `<agent>`).
 
 **Needs model** (`State`, `DRIFT`, `SATIATION`) — each need is `0..1`. `drift` raises every need
 each tick; `apply_satiation(state, event)` lowers needs per the event that occurred. `deep` is the
@@ -152,8 +156,9 @@ non-blocking `poll()` never stalls the tick loop).
 
 **Slash commands** (`handle_command`) — lines starting with `/` are intercepted **before**
 classification, so they never reach a brain (`/status`, `/needs`, `/mood` shows the `## Настрій`
-block from the prompt, `/self`, `/prompt`, `/usage`, `/report`, `/ask <text>` forces deep, `/clear`,
-`/help`, `/quit`).
+block from the prompt, `/thoughts`, `/self`, `/prompt`, `/usage`, `/report`, `/reload`, `/rotate`,
+`/clear`, `/help`, `/quit`). *(v1.4: `/ask` was removed — routing already sends reasoning turns to
+the `deep` sub-agent; `THINK_THRESHOLD=0` forces every turn deep for calibration.)*
 
 **Cross-session memory** — on exit (incl. Ctrl-C, via `finally`) the session is summarized through
 the Anthropic Messages API (Haiku — cheap/fast, like the chat branch, not `claude -p`/Opus;
@@ -174,6 +179,33 @@ The **need model** — `DRIFT`, `SATIATION`, `NEED_TRIGGERS` + the trigger-wirin
 (`SELF_COOLDOWN`, `THOUGHT_COOLDOWN`, `REST_WAKE`, `REACH_OUT_NEED`, `REACH_OUT_MODELS`,
 `REFLECT_NEED`) — lives in **`state/needs_model.yaml`** (`config.load_needs` → `DEFAULT_NEEDS` fallback);
 edit that to tune Agnika. The rest stays in module-level constants in `config.py`: `TICK_SECONDS`,
-`THINK_THRESHOLD`, `CHAT_MODEL`/`DEEP_MODEL`, `DEEP_TOOLS`/`DEEP_SKILLS`, `THINK_HINTS`/`TOOL_HINTS`,
-and the weights in `turn_weight`. The scalar ones (models, `TICK_SECONDS`, `THINK_THRESHOLD`) are
-overridable from `.env` (see above); the persona/canon lives in `state/canon.md`.
+`THINK_THRESHOLD`, `CHAT_MODEL`/`DEEP_MODEL`/`FACTS_MODEL`, `THINK_HINTS`/`TOOL_HINTS`, and the
+weights in `turn_weight`. The scalar ones (models, `TICK_SECONDS`, `THINK_THRESHOLD`) are
+overridable from `.env` (see above); the persona/canon lives in `state/canon.md`. The **deep-branch
+security profile** (which sub-agents an agent may fire, its tool ceiling, workspace, bash/web/MCP)
+lives in **`state/{id}/security.yaml`** (`config`→`security.load_security`, fail-closed).
+
+## Deep-branch security (v1.4)
+
+Every `claude -p` kiln spawns goes through **one builder** (`security.claude_cmd`) and has **one
+shape** — a named sub-agent call (`--agent deep | hands | session-wiki`). There is no raw armed
+`claude -p` anymore. Each call is gated by the calling agent's `state/{id}/security.yaml` profile:
+
+- **cwd = the agent workspace** (`.kiln/{id}/workspace/`), so the repo, `state/`, and `.env` are
+  out of default scope; the profile's sub-agents are **materialized into the workspace** (kiln-owned,
+  not inherited from the repo's `.claude/`), with the persona's `deep_model` injected into `deep.md`.
+- **tool grant = the sub-agent's frontmatter ∩ the profile** (`effective_tools`); the read/write
+  boundary is generated `--settings` deny rules (`Read(//**)` is load-bearing — cwd does NOT confine
+  reads on its own; verified in `spec/features/deep-security.md`).
+- **operator isolation:** `--setting-sources ""` drops the operator's own settings/hooks;
+  `--strict-mcp-config` + a generated `--mcp-config` load only the profile's `mcp:` servers (from a
+  kiln-owned `state/mcp.yaml`); the env is a **minimal allowlist** (enough for the CLI login, no
+  other shell secrets — `claude_env` is retired).
+- **fail-closed:** a missing/broken `security.yaml` heals to the deny-first `DEFAULT_SECURITY`; a
+  sub-agent not in the profile's `agents:` is refused before any spawn. Every spawn (and every
+  refusal) is appended to `.kiln/{id}/claude-audit.jsonl`.
+
+The cheap turns stay on the SDK/API key (never `claude -p`): `chat`/thoughts (Haiku), the session
+summary and user-facts extract/digest (`FACTS_MODEL`, Sonnet). Opus is subscription-only (the CLI
+login), guarded on every SDK path. Full design + the CLI-flag findings + the manual canary:
+[`spec/features/deep-security.md`](spec/features/deep-security.md).
