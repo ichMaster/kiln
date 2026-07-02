@@ -1,0 +1,19 @@
+# Deep-branch security profile — Agnika (v1.4).
+#
+# Gates every `claude -p` subprocess kiln spawns for this agent: the workspace it runs in, the
+# tool ceiling a sub-agent may draw from, and which sub-agents the persona may fire at all.
+# A companion agent has its own state/{id}/security.yaml; a missing or broken file heals to the
+# built-in DEFAULT_SECURITY (deny-first) — never to anything broader. Scalars are overridable from
+# the environment with the KILN_SEC_ prefix (e.g. KILN_SEC_BASH=on), namespaced on purpose so a
+# stray BASH/WEB in the shell can't widen capabilities.
+
+workspace: auto            # .kiln/{id}/workspace — the cwd of every claude -p call
+tools: [Read, Glob, Grep]  # the tool CEILING — a sub-agent gets its frontmatter ∩ this
+write: workspace           # off | workspace — Write/Edit confined to the workspace
+bash: off                  # off | sandbox | on (on = explicit operator opt-in)
+web: on                    # WebFetch/WebSearch — on by default (session-wiki / novelty need it)
+mcp: []                    # kiln-owned MCP servers (state/mcp.yaml) this persona may load
+add_dirs: []               # extra readable dirs (--add-dir), granted deliberately
+agents: [deep, hands, session-wiki]  # the ONLY sub-agents this persona may fire
+max_turns: 10              # placeholder — the CLI has no --max-turns (KILN-067); timeout is the limiter
+timeout_seconds: 180       # the real per-call wall-clock limit

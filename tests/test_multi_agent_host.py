@@ -89,3 +89,19 @@ def test_agents_endpoint_includes_scope(monkeypatch, tmp_path):
         agents = {x["agent_id"]: x for x in client.get("/agents").json()}
     assert agents["agnika"]["scope"] == "broad"
     assert agents["pashu"]["scope"] == "narrow"
+    # v1.4: each agent also surfaces its deep-branch security profile (KILN-068)
+    for aid in ("agnika", "pashu"):
+        sec = agents[aid]["security"]
+        assert set(sec) == {
+            "workspace",
+            "tools",
+            "write",
+            "bash",
+            "web",
+            "mcp",
+            "add_dirs",
+            "agents",
+            "max_turns",
+            "timeout_seconds",
+        }
+        assert sec["bash"] == "off"  # deny-first default until an agent opts in

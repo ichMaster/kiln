@@ -52,9 +52,15 @@ def health() -> dict:
 
 @app.get("/agents")
 def list_agents() -> list[dict]:
-    """The live agents, each one's permission scope (v1.2; set, not enforced), and latest status."""
+    """The live agents, each one's permission scope (v1.2; set, not enforced), the v1.4
+    deep-branch security profile, and latest status."""
     return [
-        {"agent_id": aid, "scope": host.get(aid).scope, "status": host.get(aid).latest_status()}
+        {
+            "agent_id": aid,
+            "scope": host.get(aid).scope,
+            "security": host.get(aid).security_summary(),
+            "status": host.get(aid).latest_status(),
+        }
         for aid in host.agents()
     ]
 

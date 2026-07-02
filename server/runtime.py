@@ -65,6 +65,15 @@ class AgentRuntime:
         if event.get("kind") == "status":
             self._latest_status = event.get("snapshot")
 
+    def security_summary(self) -> dict:
+        """The agent's v1.4 deep-branch security profile as a JSON-safe dict (for GET /agents).
+        Resolves from the agent's own AgentConfig, or the agent's `state/{id}/security.yaml`
+        directly for the default agent (whose `_config` is the module globals / None)."""
+        from kiln.config import AgentConfig
+
+        cfg = self._config if self._config is not None else AgentConfig.for_agent(self.agent_id)
+        return cfg.security.summary()
+
     def start(self) -> AgentRuntime:
         """Launch the engine loop on a daemon thread (idempotent)."""
         if self._thread is not None:

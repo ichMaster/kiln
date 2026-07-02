@@ -10,6 +10,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .security import SecurityProfile
 
 # --- Paths ------------------------------------------------------------------
 # This module lives inside the kiln/ package, so the project root is the
@@ -470,6 +474,8 @@ class AgentConfig:
     rotate_every_hours: float
     # mood bands/cues (state/{id}/mood.json), raw config
     mood: dict
+    # v1.4 deep-branch security profile (state/{id}/security.yaml; fail-closed)
+    security: SecurityProfile
 
     @classmethod
     def for_agent(cls, agent_id: str | None = None) -> AgentConfig:
@@ -479,6 +485,7 @@ class AgentConfig:
         import copy
 
         from .mood import load_mood  # lazy: mood imports config (avoid the cycle)
+        from .security import load_security  # lazy: keep the import graph a clean DAG
 
         sdir = AgentPaths.for_agent(agent_id).state_dir
         cfg = load_config(sdir / "config.yaml")
@@ -487,6 +494,7 @@ class AgentConfig:
         except (KeyError, TypeError, ValueError):
             nm = _build_needs(DEFAULT_NEEDS)  # structurally malformed -> defaults
         mood = load_mood(sdir / "mood.json")  # load_mood already heals a missing/broken file
+        security = load_security(sdir / "security.yaml")  # fail-closed → DEFAULT_SECURITY
         chat = _opt_str(cfg, "chat_model", "CHAT_MODEL", "claude-haiku-4-5-20251001")
         return cls(
             agent_id=agent_id or DEFAULT_AGENT,
@@ -524,4 +532,5 @@ class AgentConfig:
             agent_birth=_opt_str(cfg, "agent_birth", "AGENT_BIRTH", ""),
             rotate_every_hours=_opt_float(cfg, "rotate_every_hours", "ROTATE_EVERY_HOURS", 0.0),
             mood=copy.deepcopy(mood),
+            security=security,
         )

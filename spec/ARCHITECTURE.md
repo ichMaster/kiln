@@ -211,6 +211,14 @@ multi-agent is additive, not a rewrite:
   (`config.AgentConfig.for_agent(id)`) makes `drift` / `apply_satiation` / the trigger selectors /
   `classify` / `respond` / `_status_snapshot` / `mood_block` run on that agent's need model + tunables
   + mood. Each helper takes the same optional `config` (None → its module global, still monkeypatchable).
+- **Security profile (v1.4, `kiln/security.py`):** each agent carries a `SecurityProfile`
+  (`workspace` / `tools` / `write` / `bash` / `web` / `mcp` / `add_dirs` / `agents` / `max_turns` /
+  `timeout_seconds`), resolved by `load_security(state/{id}/security.yaml)` and carried on
+  `AgentConfig.security`. It is the **one loader that fails closed** — a missing / unparsable /
+  structurally-invalid file (or a bad `write`/`bash` enum) heals to the deny-first
+  `DEFAULT_SECURITY`, never to anything broader; `KILN_SEC_*` env vars override the scalars.
+  `GET /agents` surfaces `profile.summary()`. The profile gates every `claude -p` spawn (the
+  builder + enforcement are KILN-069).
 - **Reply / route:** `respond(...) → {class, route, reply, usage}`.
 - **Action registry (v1.3, KILN-063):** the FSM fires actions through a `name -> callable(ctx)`
   registry (`engine.ActionRegistry`; `default_registry()` seeded from the built-ins
@@ -353,6 +361,12 @@ code. Secrets (`ANTHROPIC_API_KEY`) live only in `.env`.
   field is **set in v1.2** (`config.agent_scope(id)` → `broad`/`narrow`, carried on each
   `AgentRuntime`, surfaced in `GET /agents`) but **not enforced** — enforcement arrives
   with the tool registry in **1.7**.
+- **Deep-branch capability profile (v1.4):** the highest-risk boundary — every `claude -p`
+  subprocess — is gated first. Each agent has a committed `state/{id}/security.yaml`
+  (`SecurityProfile`, above) resolved **fail-closed** to the deny-first `DEFAULT_SECURITY`.
+  KILN-068 lands the profile + loader + the `GET /agents` surface; the builder that turns a
+  profile into the actual argv/env/cwd (workspace cwd, generated settings + MCP isolation,
+  frontmatter ∩ profile tool grant, sub-agents as the only `claude -p` shape) is KILN-069.
 - **Closed hub** (later): multi-agent/multi-user stays an admin-managed allowlist;
   no open sign-up.
 - **Untrusted inputs** (later, with tools/RAG/web): tool/web/file content is data,
