@@ -4,7 +4,7 @@ with `fire(action, ctx)`. The built-ins wrap the loop's inline branches; each re
 `ActionContext` — the run-loop handles it needs. The turn / think / self-prompt / command primitives
 are INJECTED as callables (run-loop closures over history/prompts/brain), so the built-ins stay thin
 and testable; the `needs` helpers (`apply_satiation`, `reach_out_branch`) are called directly. This
-is the exact seam **1.5 Tools** extends with user tools (an agent's scope gates which it may fire).
+is the exact seam **1.7 Tools** extends with user tools (an agent's scope gates which it may fire).
 The loop (`engine.run`) builds the `ActionContext` and drives this via `fsm.advance` + `fire` (1.3).
 """
 
@@ -154,7 +154,7 @@ def _act_command(ctx: ActionContext) -> None:
 
 
 # Built-in action name -> callable. The keys are exactly `fsm.table_actions()` (pinned by a contract
-# test); 1.5 adds user tools to a registry seeded from this map.
+# test); 1.7 adds user tools to a registry seeded from this map.
 _BUILTIN_ACTIONS: dict[str, Callable[[ActionContext], object]] = {
     "idle": _act_idle,
     "respond": _act_respond,
@@ -171,7 +171,7 @@ _BUILTIN_ACTIONS: dict[str, Callable[[ActionContext], object]] = {
 
 class ActionRegistry:
     """`name -> callable(ctx)` + `fire(action, ctx)`. The FSM fires actions = tools through this
-    seam; 1.5 Tools extends the same registry (an agent's scope gates which actions it may fire)."""
+    seam; 1.7 Tools extends the same registry (an agent's scope gates which actions it may fire)."""
 
     def __init__(self) -> None:
         self._actions: dict[str, Callable[[ActionContext], object]] = {}

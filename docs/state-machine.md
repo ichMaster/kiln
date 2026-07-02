@@ -238,7 +238,7 @@ engagement: input, commands, and self-triggers all still fire from it (see §5).
 
 **Events** (`fsm.EventKind`). The live set is `user.message`, `command`, `self_trigger` (payload = the
 need name), `tick`, and `rotate.request`. Three more are reserved and unused this phase: `peer.message`
-(1.6), `room.message` (1.11), `tool.result` (1.5).
+(1.8), `room.message` (1.13), `tool.result` (1.7).
 
 **Event priority** (`EVENT_PRIORITY`, used by the arbiter): the arbiter pops exactly one event per
 tick, lowest number wins.
@@ -282,7 +282,7 @@ Reading the matrix:
 - **In the shipped v1.3 driver (KILN-064) the rest gate is kept as a flag**, which flips out of
   `resting` *before* `advance` sees a wake-eligible tick — so `wake` and the active `enter_rest` cells
   are shadowed by the flag (the flag does the entering/waking) and `enter_rest` is what runs on every
-  resting tick. The cells stay in the table for when the gate becomes fully FSM-owned (1.7).
+  resting tick. The cells stay in the table for when the gate becomes fully FSM-owned (1.9).
 - **`self_trigger` is absent from the resting row** because the producer does not emit self-triggers
   while resting (`select_self_trigger` runs only when not resting). `advance` would fall through to its
   default `idle` if one ever arrived, but it never does.

@@ -1,8 +1,8 @@
 """
 KILN-066 — the FSM transition trace + the pinned FSM contract. The trace is a per-tick sink (off by
 default) emitting `fsm.trace_record` (state → event → guard → action → next_state + needs) — the log
-1.8 simulation consumes. All against MockBrain (zero paid calls). The unchanged WS event protocol is
-pinned by the existing v1.1 server tests (still green in the suite).
+1.10 simulation consumes. All against MockBrain (zero paid calls). The unchanged WS event protocol
+is pinned by the existing v1.1 server tests (still green in the suite).
 """
 
 from kiln import engine as eng

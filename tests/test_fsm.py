@@ -36,7 +36,7 @@ def test_active_states_exclude_resting():
 def test_event_kinds_include_the_live_five_and_reserved_three():
     kinds = {k.value for k in EventKind}
     assert {"user.message", "command", "self_trigger", "tick", "rotate.request"} <= kinds
-    # reserved — defined but unused by the default table (land in 1.6 / 1.11 / 1.5)
+    # reserved — defined but unused by the default table (land in 1.8 / 1.13 / 1.7)
     assert {"peer.message", "room.message", "tool.result"} <= kinds
 
 

@@ -5,7 +5,7 @@ transition table, and a pure `advance` lookup. It is a leaf (imports nothing fro
 the tick loop in KILN-064; the runtime event queue is KILN-062 and the action registry KILN-063.
 
 The **default table reproduces v1.2 behaviour** (Agnika byte-for-byte). Guards are Python predicates
-here; the per-agent YAML grammar is v1.7. The queue (KILN-062) delivers ONE event per tick in
+here; the per-agent YAML grammar is v1.9. The queue (KILN-062) delivers ONE event per tick in
 priority order (input > self-trigger > tick), so the table maps a single event — it does NOT
 re-encode priority. See spec/features/fsm.md for the concept.
 """
@@ -36,8 +36,8 @@ ACTIVE_STATES: tuple[State, ...] = (State.IDLE, State.RESPONDING, State.THINKING
 
 class EventKind(str, Enum):
     """The event vocabulary drained from the queue (KILN-062). The **reserved** kinds are defined
-    but unused by the default table — they land with their phases: `peer.message` (1.6),
-    `room.message` (1.11), `tool.result` (1.5)."""
+    but unused by the default table — they land with their phases: `peer.message` (1.8),
+    `room.message` (1.13), `tool.result` (1.7)."""
 
     USER_MESSAGE = "user.message"
     COMMAND = "command"
@@ -146,7 +146,7 @@ DEFAULT_TABLE: tuple[Rule, ...] = (
 # NB (KILN-064): the v1.2 rest gate is kept as a flag in run(), which flips out of RESTING before
 # `advance` sees a wake-eligible tick — so `enter_rest` is the action that *stays* resting (it
 # announces once on entering, then just recovers), and the `wake` row above is shadowed by the flag
-# until the rest gate becomes fully FSM-owned (1.7). `enter_rest` handles both the entering tick
+# until the rest gate becomes fully FSM-owned (1.9). `enter_rest` handles both the entering tick
 # (entered_rest → REST_MESSAGE) and every continuing one (idle satiation, status "resting").
 
 
@@ -179,7 +179,7 @@ def table_actions(table: tuple[Rule, ...] = DEFAULT_TABLE) -> set[Action]:
 
 # === Transition trace (KILN-066) =============================================
 # A structured record of every FSM step, emitted through a sink the driver is handed (off by
-# default; see engine.run's `trace`). The log **1.8 simulation** consumes (state histograms +
+# default; see engine.run's `trace`). The log **1.10 simulation** consumes (state histograms +
 # transition heatmaps), so the shape is a pinned contract. Cheap when on (a dict/tick); no effect.
 
 TRACE_KEYS = frozenset({"tick", "state", "event", "guard", "action", "next_state", "needs"})

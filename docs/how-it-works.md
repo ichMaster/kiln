@@ -54,7 +54,7 @@ The engine's behaviour is a finite state machine. From the beginning the loop ha
 and moved to another when something happened; v1.3 lifts that machine out of the loop's `if/elif`
 branches and writes it down explicitly as data in `kiln/fsm.py`, with the actions it can take kept in
 a small registry in `engine.py`. Writing it as a table (rather than nested conditionals) is what lets
-it be inspected, traced, and — later — declared per agent in YAML (v1.7) and simulated (v1.8). The
+it be inspected, traced, and — later — declared per agent in YAML (v1.9) and simulated (v1.10). The
 table reproduces the established behaviour exactly; nothing about what Agnika does changes.
 
 For an engineering-level treatment — the needs→trigger→event→transition pipeline, the event queue,
@@ -93,7 +93,7 @@ One event is acted on per tick. The live ones:
 | `rotate.request` | the auto-rotate timer, or `/rotate` |
 
 Three more names are **reserved** — defined but unused until their features land: `peer.message`
-(agent-to-agent, v1.6), `room.message` (group rooms, v1.11), and `tool.result` (tools, v1.5).
+(agent-to-agent, v1.8), `room.message` (group rooms, v1.13), and `tool.result` (tools, v1.7).
 
 ### The event queue and priority
 
@@ -160,7 +160,7 @@ writes a small per-tick context — the turn/think primitives it needs, plus the
 loop reads back (the new state, whether she reached out, whether a rotation was requested, and so on).
 
 Keeping actions in a registry is deliberate: "actions are tools." The permission-scoped tool registry
-in v1.5 extends this same seam with user-defined tools, and an agent's scope will gate which actions
+in v1.7 extends this same seam with user-defined tools, and an agent's scope will gate which actions
 it may fire. `respond` internally still routes between the cheap and deep brains (see
 [Classification and routing](#classification-and-routing)); the table names the action, the brain
 routing lives inside it.
@@ -355,7 +355,7 @@ regenerated.
 
 The store (`.kiln/store.json`, atomic write with a `.bak`) holds sessions and their raw turns,
 summaries, facts, and thoughts. The full raw transcripts double as the corpus for retrieval (RAG,
-v1.4). (`state/memory.md` and a top-level `history/` are legacy; a one-shot `migrate_legacy` folds
+v1.6). (`state/memory.md` and a top-level `history/` are legacy; a one-shot `migrate_legacy` folds
 any old summaries and transcripts into the store on first run.)
 
 **Rotation** starts a fresh session without stopping the agent. The auto-rotate timer
@@ -418,6 +418,6 @@ its own topic — see [multi-agent-setup.md](multi-agent-setup.md) and [server.m
 
 The near-term roadmap (see [../spec/ROADMAP.md](../spec/ROADMAP.md)) builds on the state machine and
 the seams above: finishing the explicit FSM (a real `cooling` state and per-transition tracing),
-semantic recall over the stored transcripts (RAG, v1.4), the permission-scoped tool registry that
-extends the action registry (v1.5), agent-to-agent messages (v1.6), per-agent FSMs declared in YAML
-(v1.7), and FSM simulation and calibration (v1.8).
+semantic recall over the stored transcripts (RAG, v1.6), the permission-scoped tool registry that
+extends the action registry (v1.7), agent-to-agent messages (v1.8), per-agent FSMs declared in YAML
+(v1.9), and FSM simulation and calibration (v1.10).

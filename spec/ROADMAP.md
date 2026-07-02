@@ -449,7 +449,7 @@ async/FSM rewrite is 1.2.
 Stack: FastAPI/Starlette + websockets (silt is a working server example). The host is `agent_id`-keyed
 and **N-capable from the start** (incl. a not-yet-enforced permission-scope field) so **1.2** is purely
 additive. **Out of scope:** the **second agent / multi-agent concurrency → 1.2**; the event-queue FSM
-(1.3), RAG (1.4), tools + permission enforcement (1.5), the web client + operator management UI (v2).
+(1.3), RAG (1.6), tools + permission enforcement (1.7), the web client + operator management UI (v2).
 
 **DoD:** the server ticks with **no client connected**; a TUI client attaches over WS and holds a
 turn; a **second client sees the same session**; the API is `agent_id`-scoped; model calls don't
@@ -479,7 +479,7 @@ de-globalizing config, **not** authoring Pashu's files):
    start `AgentRuntime("pashu")` beside `agnika` at boot, each on its own thread with isolated
    `.kiln/{id}/` + `state/{id}/`. (§3, §12)
 5. **Per-agent permission-scope field.** Each runtime carries a scope (Agnika broad, Pashu narrow), set
-   per agent and **not yet enforced** — enforcement arrives with tools in 1.5. (§8)
+   per agent and **not yet enforced** — enforcement arrives with tools in 1.7. (§8)
 6. **Routes + client.** `GET /agents` lists both with status; `ws://…/agent/pashu` serves Pashu's own
    hub; the remote TUI (`./connect.sh pashu`) attaches to either agent. (§6, §12)
 7. **Isolation contract test (the DoD).** A turn or self-trigger on one agent never moves the other's
@@ -487,7 +487,7 @@ de-globalizing config, **not** authoring Pashu's files):
 
 **Out of scope:** the operator panel to add/start/stop/inspect agents (v2) — here Pashu is registered in
 config, started at server boot; and **inter-agent communication** (agents talking to each other) → its
-own phase, **1.6** (built on the 1.5 tool registry — see
+own phase, **1.8** (built on the 1.7 tool registry — see
 [server-architecture §14](features/server-architecture.en.md)).
 **DoD:** the host runs **Agnika and Pashu concurrently with isolated state** — a turn or self-trigger
 on one **never** touches the other's needs/store; a TUI attaches over WS to Pashu and holds a turn;
@@ -495,8 +495,8 @@ on one **never** touches the other's needs/store; a TUI attaches over WS to Pash
 
 ### 1.3 FSM core (explicit, table-driven) — ⬜
 **Goal:** make the agent's behaviour an **explicit, table-driven** state machine instead of `run()`'s
-implicit `if/elif` priority — the foundation for a per-agent declarative FSM (1.7) and tool-actions
-(1.5). Behaviour-preserving: no user-visible change; the value is *enabling* 1.7/1.8/1.9. (Concept:
+implicit `if/elif` priority — the foundation for a per-agent declarative FSM (1.9) and tool-actions
+(1.7). Behaviour-preserving: no user-visible change; the value is *enabling* 1.9/1.10/1.11. (Concept:
 [features/fsm.md](features/fsm.md).)
 **Implementation tasks** (ordered; 1–3 are pure, independently-testable gates, 4 is the risky
 behaviour-preserving rewire):
@@ -504,7 +504,7 @@ behaviour-preserving rewire):
    (`idle`/`thinking`/`responding`/`cooling`/`resting`) + the transition **table as data** —
    `(state, event, guard) → (action, next_state)` — whose **default table** encodes v1.2's exact
    priority + rest-gate (guards are Python predicates over needs/flags for now; the YAML grammar is
-   1.7); a pure `advance(state, event, ctx) → (action, next_state)`. *Unit-test every transition +
+   1.9); a pure `advance(state, event, ctx) → (action, next_state)`. *Unit-test every transition +
    guard; no `run()` change yet.*
 2. **Typed events + the event queue.** The `Event` kinds (`user.message`, `command`,
    `self_trigger:<need>`, `tick`, `rotate.request`; **reserved** `peer.message`/`room.message`/
@@ -516,7 +516,7 @@ behaviour-preserving rewire):
    `input > self-trigger > idle`.*
 3. **Action-registry seam.** A registry `action-name → callable`; the built-ins
    (`chat`/`deep`/`reach_out`/`think`/`idle`/`rotate`/`enter_rest`/`cool`) **registered as built-in
-   tools** and fired by name — the same seam 1.5 extends with user tools. *Unit-test each built-in maps
+   tools** and fired by name — the same seam 1.7 extends with user tools. *Unit-test each built-in maps
    to today's behaviour.*
 4. **Rewire `run()` as a thin FSM driver (behaviour-preserving).** Replace the `if/elif` with: gather
    events → enqueue → drain one → `advance` → fire the action via the registry → set the next state →
@@ -527,52 +527,257 @@ behaviour-preserving rewire):
 5. **`cooling` as a real state.** Surface `cooling` post-turn (cooldowns tick down → `idle`); it becomes
    the snapshot's `status`. *Update the status-snapshot contract + its test.*
 6. **Tracing + contracts + ARCHITECTURE.** Emit a structured **trace** of every
-   `state → event → guard → action → state` (+ tick + needs) — the log **1.8 simulation** consumes; pin
+   `state → event → guard → action → state` (+ tick + needs) — the log **1.10 simulation** consumes; pin
    the FSM as a contract (the `advance` table + the unchanged WS event protocol), with the ARCHITECTURE
    update in the same step.
 
-**Out of scope (later phases):** the **YAML** guard grammar + per-agent `fsm.yaml` loader → **1.7**;
-simulation / analytics → **1.8**; **non-blocking** execution (the model call still blocks within the
-agent) → **1.9**; `peer.message` / `room.message` / `tool.result` stay **reserved** until **1.6 / 1.11 /
-1.5**.
+**Out of scope (later phases):** the **YAML** guard grammar + per-agent `fsm.yaml` loader → **1.9**;
+simulation / analytics → **1.10**; **non-blocking** execution (the model call still blocks within the
+agent) → **1.11**; `peer.message` / `room.message` / `tool.result` stay **reserved** until **1.8 / 1.13 /
+1.7**.
 **DoD:** the loop is an FSM over a queued transition table; `advance(state, event)` is unit-tested; the
 default table reproduces v1.2 behaviour (Agnika byte-for-byte, all tests green); `cooling` is a real
 state; every transition is traced; the server emits the same events.
 
-### 1.4 RAG — ⬜
+### 1.4 Deep-branch security — sandboxed `claude -p` — ⬜
+**Goal:** put every `claude -p` subprocess — the deep think/tools branch, the `tool` sub-agents
+(session-wiki), and the facts extract/digest calls — behind a **per-agent, deny-by-default
+capability profile**, and make **named sub-agents the only `claude -p` shape**: reasoning runs
+as the `deep` sub-agent (no tools), acting as `hands` (the worker), specialists as themselves
+(session-wiki) — each a kiln-owned, single-purpose definition the profile explicitly lists —
+while the facts extract/digest utilities leave `claude -p` for the **SDK on Sonnet**, joining
+the chat branch and the session summary. Today the "tools" class
+runs Opus with `Read`/`Write`/`Bash` in the repo
+root, under the full user environment and the operator's own `~/.claude` settings and MCP servers
+— so a hostile turn can rewrite kiln's own code (including its canon), read the `.env` secrets, or
+run arbitrary commands as the user. This phase makes the v1.2 permission-scope field **real** at
+the highest-risk boundary, before RAG (1.6) widens the injected context and Tools (1.7) widens the
+action surface; 1.7's registry then reuses the same profile as its scope source.
+
+**Threat model.** The deep prompt is assembled from attacker-influenceable text: the user's
+message, the session transcript, stored summaries and facts (themselves model-written), and web
+content fetched by session-wiki (WebFetch/WebSearch). An injection landing in any of these reaches
+a subprocess that can write files and run Bash. The concrete holes: `--allowedTools
+Read,Write,Bash` (`config.DEEP_TOOLS`); cwd = the repo root, so the code, the `state/` persona
+files, and `.env` are all in scope — `claude_env()` strips `ANTHROPIC_API_KEY` from the
+environment, but `Read ./.env` recovers it; and the subprocess inherits every shell secret plus
+the operator's user-level Claude Code settings, so any allow rule or MCP server granted for daily
+work silently applies to the agent's headless calls. Blast radius today = the whole user account,
+self-modification included.
+
+**Security model — four layers, one choke point.** All `claude -p` argv/env/cwd construction
+moves into a single builder that resolves the calling agent's profile; no call site composes its
+own flags.
+1. **Capability layer — sub-agents are the tools.** The memory calls (facts extract/digest)
+   move to the **Anthropic SDK** (Sonnet — no subprocess, tool-less by construction, like the
+   session summary); every `claude -p` call is then a **named sub-agent**: deep thinking
+   fires `deep` (the reasoner — no tools), the "tools" class stops arming the main prompt and
+   fires `hands` (the general worker), and specialists keep their own definitions
+   (session-wiki) — all running exactly as the tool branch runs today. Each sub-agent's
+   frontmatter declares the tools it needs;
+   the **effective grant is frontmatter ∩ profile** (a sub-agent asking for Bash under a
+   `bash: off` profile doesn't get it), passed as explicit `--allowedTools`, with `--max-turns`
+   set and the agent-spawning tool denied (a sub-agent can't spawn further agents). The
+   **dispatch itself never runs on `claude -p`**: deciding which class/sub-agent a turn gets
+   stays local code — today's hint + need-weight `classify`; a meaning-based router is its own
+   phase (1.5) — the CLI only ever executes a decision already made, it never makes one.
+2. **Settings layer** — a kiln-**generated** settings file per call (`--settings`) carrying deny
+   rules (Bash, writes outside the workspace, `Read(./.env)`, `Read(~/.ssh/**)`, …), with the
+   operator's user/project settings excluded (the exact isolation flags, e.g.
+   `--setting-sources`, are verified against the installed CLI as the first task). MCP is
+   **allowlisted, not all-off**: `--strict-mcp-config` blocks the operator's servers, and a
+   generated `--mcp-config` loads only the profile's `mcp:` entries out of a **kiln-owned server
+   registry** (`state/mcp.yaml`), their tools granted per sub-agent as `mcp__<server>__<tool>`
+   allow rules — an agent can get a weather or notes server without ever seeing the operator's
+   MCP credentials.
+3. **Process layer** — the cwd becomes a per-agent **workspace** (`.kiln/{id}/workspace/`), so
+   the repo, `state/`, and `.env` drop out of default scope; the sub-agent definitions a persona
+   may fire are **materialized into the workspace** by kiln (they are kiln-owned config, no
+   longer inherited from the repo's `.claude/`); the environment shrinks to a minimal allowlist
+   (PATH, HOME, locale, `MAX_THINKING_TOKENS`) instead of "everything minus one key"; the
+   timeout comes from the profile.
+4. **OS layer (opt-in hardening)** — `bash: sandbox` runs Bash under the CLI's native sandbox
+   (Seatbelt / bubblewrap) for an agent that genuinely needs it; `bash: on` requires an explicit
+   committed opt-in. The default everywhere is off.
+
+**Configuration — `state/{id}/security.yaml`** (committed, per-agent like the need model;
+`load_security` → a **fail-closed** `DEFAULT_SECURITY` — the one loader whose fallback denies
+rather than permits; **web is the single default-on capability** (read-only fetch/search — the
+persona's window to the world), everything else stays shut):
+```yaml
+workspace: auto            # .kiln/{id}/workspace — the cwd of every claude -p call
+tools: [Read, Glob, Grep]  # the tool ceiling — a sub-agent gets its frontmatter ∩ this profile
+write: workspace           # off | workspace — Write/Edit confined to the workspace
+bash: off                  # off | sandbox | on (on = explicit operator opt-in)
+web: on                    # WebFetch/WebSearch — on by default (session-wiki / novelty need it)
+mcp: []                    # kiln-owned MCP servers (state/mcp.yaml) this persona may load
+add_dirs: []               # extra readable dirs (--add-dir), granted deliberately
+agents: [deep, hands, session-wiki]  # the persona's tools — the ONLY sub-agents it may fire
+max_turns: 10
+timeout_seconds: 180
+```
+The v1.2 `agent_scope` becomes the profile selector: broad (agnika) resolves to her committed
+file; narrow (companions) resolves to the fail-closed default unless the agent ships its own.
+Environment variables (UPPER_SNAKE) still override the scalars — the operator escape hatch stays.
+
+**Tasks:**
+1. **CLI flag audit (the gate).** Verify against the installed Claude Code CLI which flags give
+   settings/MCP isolation (`--settings`, `--setting-sources`, `--strict-mcp-config` + how
+   `--mcp-config` merges, `--disallowedTools`, the sandbox settings) and the sub-agent
+   semantics (`--agent`/`--agents`, frontmatter `tools:`, `mcp__<server>__<tool>` naming,
+   denying agent recursion) in headless mode; pin the findings in
+   [`features/deep-security.md`](features/deep-security.md) — already seeded with the full
+   `claude -p` call-site inventory (when each call fires and what it carries).
+2. **Profile + loader.** The `security.yaml` schema and `load_security` with the fail-closed
+   default, carried on `AgentConfig` (the v1.2 pattern) and surfaced in `GET /agents` and
+   `/status`.
+3. **The builder.** `kiln/security.py`: `claude_cmd(profile, agent, …) -> (argv, env, cwd)`
+   for the one shape every spawn now has — a **sub-agent call** — generated settings + MCP
+   config files, the frontmatter ∩ profile tool grant, env allowlist, workspace mkdir +
+   sub-agent materialization. The "tools" class reroutes to the persona's `hands` sub-agent
+   (a new kiln-authored definition — her general worker), so no call ever arms the main
+   prompt. The brain's `claude -p` call sites are rewired through it; `claude_env` and
+   `DEEP_TOOLS` retire.
+4. **The `deep` sub-agent — retire the raw deep branch.** A new kiln-authored `deep.md`
+   (beside `session-wiki.md`, materialized like the rest): the body is the persona's
+   deep-reasoning role — answer the last message, or the reach-out prompt, in her own voice;
+   the frontmatter grants **no tools**, and the persona's `deep_model` (Opus) is injected at
+   materialization so per-agent config stays authoritative. The `think` class and the
+   intensity trigger fire it through the sub-agent path — the committed needs config
+   becomes `intensity: {threshold: 0.75, action: tool, agent: deep}` — and satiation is
+   untouched (an agent named `deep` maps to the existing `SATIATION["deep"]`). The sub-agent
+   preamble splits conversational (deep, hands — answer the dialogue) from deliverable-shaped
+   (session-wiki); `brain.LiveBrain.deep` retires with the raw branch. **`/ask` is deprecated
+   and removed outright** — routing already sends reasoning turns deep (the think hints + the
+   state weight today, the 1.5 router later), and its special case in `run()` (the deep call
+   that lives in the loop because `commands.py` can't reach the brain) disappears with the
+   command, its help entry, and its tests; the calibration escape hatch is
+   `THINK_THRESHOLD=0` (every turn routes deep), no command needed.
+5. **Facts to the SDK.** `memory.extract_facts` / `digest_facts` stop shelling out: both run
+   on the **Anthropic SDK** on a new `facts_model` tunable (default **Sonnet**), API-billed
+   like the chat branch and the session summary — a faster session close/start (no CLI
+   spin-up), the positional-argv exposure gone with the subprocess, tool-less by
+   construction. The Opus-refusal guard extends to `facts_model` (Opus stays
+   subscription-only, never on the API key); extended thinking stays available through the
+   SDK parameter if digest quality ever needs it. After this task `claude -p` has exactly
+   one shape left: `--agent <name>`.
+6. **Audit trail.** Append one line per subprocess call to `.kiln/{id}/claude-audit.jsonl`
+   (timestamp, kind, argv, cwd, exit code, duration, usage) — the security log the operator can
+   actually read.
+7. **Tests.** Contract: the built argv/env/cwd for a narrow profile (no Bash/Write, the deny
+   rules present, the env allowlisted, cwd = the workspace); the facts calls spawn no
+   subprocess (the SDK seam) and refuse an Opus `facts_model`;
+   the `think` class and the intensity trigger both route to `--agent deep` (no tools, the
+   persona's deep model) with the satiation event still `deep`; `/ask` no longer exists (it
+   gets the unknown-command notice); a
+   sub-agent outside the profile's `agents:` list is refused; the effective grant is
+   frontmatter ∩ profile (a sub-agent asking for Bash under `bash: off` doesn't get it); the
+   generated MCP config carries only the profile's servers; a broken `security.yaml` heals
+   **closed**; the audit line appends. Integration (manual/flagged, the one paid check): a
+   canary — `claude -p` under the narrow profile asked to read a file outside the workspace and
+   to run Bash → both denied.
+8. **Docs.** ARCHITECTURE + how-it-works gain the security model and the profile schema; the
+   README notes that live mode no longer exposes the operator's account to the agent.
+
+**DoD:** every `claude -p` kiln spawns goes through the one builder; classification/dispatch
+never runs on `claude -p`; every conversational call runs
+as a named sub-agent from the profile's `agents:` list — `deep` for reasoning (the raw deep
+branch is gone), `hands` for tool work — each granted its frontmatter ∩ the profile; `/ask`
+and its `run()` special case are removed; the facts extract/digest calls run on the SDK
+(Sonnet, `facts_model`) so kiln spawns `claude -p` only ever as `--agent <name>`; MCP loads
+only the profile's servers from the
+kiln-owned registry (the operator's servers and settings are unreachable); a narrow-profile
+agent cannot write outside its workspace, run Bash, or read `.env` (denied and audit-logged);
+a missing or broken `security.yaml` fails **closed**; all
+contract tests run on `MockBrain`/fixtures (zero paid calls), with the canary documented as the
+single manual paid test.
+
+### 1.5 Model routing — route by meaning, not keywords — ⬜
+**Goal:** replace the keyword classifier with a **model-routing layer**: each user turn is
+labelled by meaning — `chat | deep | hands | <specialist>` — so the right brain (and the right
+cost) answers. Today `classify` routes on marker words plus a need weight
+(`TOOL_HINTS`/`THINK_HINTS`, `turn_weight`), which is brittle in both directions: «файл»
+anywhere in a message sends it to the acting branch, while a deep question phrased without a
+marker word stays on cheap chat. Routing quality only — nothing about permissions here: the
+router decides *which* brain answers; 1.4's profile decides *what that brain may do*.
+**Why here:** it needs 1.4's sub-agent vocabulary (`deep` / `hands` / specialists) as the label
+set, and every later phase inherits better routing for free.
+
+**Design:**
+- **A `route` seam on the `Brain`** — `route(turn, state, vocabulary) -> label`: one tiny,
+  tool-less call on the **chat model** (Haiku via the SDK, API-key billed — a few dozen tokens
+  in, one label out), mirroring how `chat`/`deep`/`tool` already live behind the seam.
+  `MockBrain.route` returns scripted labels, so the dry-run and all tests stay deterministic
+  with zero paid calls. The router never touches `claude -p`.
+- **The vocabulary comes from the persona** — the label set is derived from the profile's
+  `agents:` list (1.4) plus `chat`, each option described by its sub-agent's frontmatter
+  `description:`. Authoring a new specialist automatically extends what the router can route
+  to — no routing code changes.
+- **Hints stay as the fallback and the pre-filter** — no API key, dry-run, or a router error
+  falls back to today's hint + need-weight heuristic; and an unambiguous turn can skip the
+  router call entirely (a `router: always | ambiguous | off` mode — `ambiguous` calls the
+  model only when the heuristics disagree or land near the threshold).
+- **Config** — `router_model` (default = `chat_model`) and the `router` mode knob, per-agent in
+  `state/{id}/config.yaml`, env-overridable (the v1.2 pattern).
+- **Observability** — the chosen label and who chose it (router vs fallback) ride on the turn's
+  trace and the status snapshot, so misroutes are visible and tunable rather than silent.
+
+**Tasks:**
+1. **The `route` seam.** Extend the `Brain` protocol with `route`; implement it in `LiveBrain`
+   (SDK, `router_model`) and `MockBrain` (scripted labels).
+2. **Routing prompt + persona vocabulary.** The label set built from the profile's `agents:`
+   list + frontmatter descriptions; a compact routing prompt carrying the turn and a small
+   state snapshot.
+3. **Fallback + pre-filter.** The heuristic path kept intact behind the `router` mode knob;
+   `ambiguous` gating so plain small talk never pays the extra call.
+4. **Rewire `classify`.** `respond` consults the router where the mode says so; the branch map
+   and satiation stay untouched.
+5. **Observability.** The label + source in the FSM trace and the `status` snapshot.
+6. **Tests.** Scripted labels route to the right branch (a marker-free reasoning turn → `deep`,
+   an action request → `hands`); the fallback engages without a key; `router: off` reproduces
+   v1.4 routing byte-for-byte; the router spawns no subprocess — all on `MockBrain`, zero paid
+   calls.
+7. **Docs.** how-it-works gains the routing section (modes, vocabulary, fallback).
+
+**DoD:** a marker-free reasoning turn reaches `deep` and an action request reaches `hands`
+(scripted `MockBrain` labels); `router: off` reproduces v1.4 routing exactly; the router runs
+only on the SDK chat model and never spawns `claude -p`; each turn's label + source (router or
+fallback) is traceable; all tests zero-paid.
+
+### 1.6 RAG — ⬜
 **Goal:** exact recall over past conversations.
 **Tasks:** embed `history/*.json` → a **flat file index** (vectors in a NumPy/JSON
 file; brute-force cosine top-K — ample at one user's corpus, no DB/server needed);
 recall top-K relevant fragments into the turn, deduped against the window, capped.
 Port from Lumi (`core/embedder.py`, `chunking.py`, `memory.py`). Decide embedder
 (local?), chunking, when to inject; keep recall behind a seam so the durable vector
-backend can move to **pgvector at 1.10**.
-**DoD:** `/recall` returns relevant past lines; automatic RAG injects them per turn. (1.5 then exposes
+backend can move to **pgvector at 1.12**.
+**DoD:** `/recall` returns relevant past lines; automatic RAG injects them per turn. (1.7 then exposes
 the same recall as a fire-able `recall` tool, so the FSM can recall on demand, not only auto-inject.)
 
-### 1.5 Tools — ⬜
-**Goal:** Agnika's own permission-scoped tools — **and the action vocabulary the FSM fires** (1.3/1.6).
+### 1.7 Tools — ⬜
+**Goal:** Agnika's own permission-scoped tools — **and the action vocabulary the FSM fires** (1.3/1.8).
 **Tasks:** a typed-argument tool registry, separate from Claude Code's; **per-agent permission scope**
 (Agnika = broad system/home; companions narrow); e.g. time / notes / start-a-game, **plus a `recall`
-tool over the 1.4 RAG index** — on-demand recall as a fire-able FSM action, complementing 1.4's
+tool over the 1.6 RAG index** — on-demand recall as a fire-able FSM action, complementing 1.6's
 automatic per-turn injection. Built **for the FSM**: the built-in actions
 (`chat`/`deep`/`reach_out`/`think`/`idle`/`rotate`, registered in 1.3) and user tools share **one
 registry**, so an `fsm.yaml` action is just a tool name and an agent's scope gates which its machine
 may fire (concept: [features/fsm.md](features/fsm.md)). cf. Lumi's file/imagetool/news.
 **DoD:** Agnika calls a registered tool within her scope; a companion agent is denied an out-of-scope
-tool; the `recall` tool queries the 1.4 RAG index; the FSM fires a built-in action through the same
+tool; the `recall` tool queries the 1.6 RAG index; the FSM fires a built-in action through the same
 registry path as a user tool.
 
-### 1.6 Multi-agent conversation — ⬜
+### 1.8 Multi-agent conversation — ⬜
 **Goal:** one client, many agents — a single TUI where the user holds conversations with **several**
 hosted agents at once, **and** the agents can talk to **each other**. Turns the isolated multi-agent
 host of 1.2 into a shared space. (Design: [server-architecture §14](features/server-architecture.en.md).)
-**Why here:** the direct continuation of v1.2 (Pashu) — it needs only 1.2's host and **1.5's tool
+**Why here:** the direct continuation of v1.2 (Pashu) — it needs only 1.2's host and **1.7's tool
 registry** (for the `send_to` tool), and it's the first **user** of the `peer.message` event the 1.3 FSM
 reserves. Agents share no state with one another (messages pass as **copies** through the host), so
-there's no new persistence risk; the **shared-memory** form of agent talk waits for Postgres (1.10).
+there's no new persistence risk; the **shared-memory** form of agent talk waits for Postgres (1.12).
 **Tasks:** an inter-agent **`send_to(agent_id, text)` tool** — agent A's message lands on agent B's
-inbox tagged as coming from a **peer** (§14, form 1); **per-agent permission scope** (from 1.5) decides
+inbox tagged as coming from a **peer** (§14, form 1); **per-agent permission scope** (from 1.7) decides
 who may message whom; optional **observation** (form 2) — an agent subscribes to another's public stream
 and overhears it. Loop protection is the agent's **own cadence + the rest need** (no special guard, see
 §14). The **remote TUI** attaches to **several agents at once** (one socket per agent under the hood)
@@ -584,7 +789,7 @@ Pashu a message **within her scope** and Pashu's reply appears in the same windo
 the `send_to` scope cannot message a peer; a turn or peer message on one agent still **never** touches
 the other's needs/store; all on `MockBrain` (zero paid calls).
 
-### 1.7 Declarative FSM (YAML per agent) — ⬜
+### 1.9 Declarative FSM (YAML per agent) — ⬜
 **Goal:** define an agent's **behaviour in YAML**, not Python — `state/{id}/fsm.yaml` (states +
 transitions + tool-actions) interpreted by the 1.3 engine. An agent then differs in its *logic*, not
 only its calibration (needs/mood/persona). Framed as an **Extended FSM (EFSM)**: the needs are the
@@ -593,8 +798,8 @@ and transitions — **one machine definition**, not `fsm.py` + `needs_model.yaml
 being a separate `action:` vocabulary and becomes an ordinary **guarded transition naming a registry
 action** (`connection >= 0.80 → reach_out`, brain as a param). (Concept + the EFSM formalism and the
 unified-file sketch: [features/fsm.md](features/fsm.md#the-formalism-an-extended-fsm-the-needs-are-the-machines-variables).)
-**Why here:** it needs the **table-driven FSM** (1.3, the interpreter) and the **tool registry** (1.5,
-the action vocabulary); coming after multi-agent conversation (1.6) means the full event vocabulary —
+**Why here:** it needs the **table-driven FSM** (1.3, the interpreter) and the **tool registry** (1.7,
+the action vocabulary); coming after multi-agent conversation (1.8) means the full event vocabulary —
 incl. `peer.message` — is real and declarable. With those, this phase is a thin **loader**: `fsm.yaml`
 → the transition table the engine already runs.
 **Tasks:** a small **DSL** — states, `on: {event: {guard, action, to}}`, guards as a **constrained
@@ -610,12 +815,12 @@ guard grammar, params, the `variables` schema).
 broken file heals to the default; a bad action/state is caught at load with a clear error; every
 transition is traceable; all on `MockBrain`.
 
-### 1.8 FSM simulation & calibration — ⬜
+### 1.10 FSM simulation & calibration — ⬜
 **Goal:** **measure** an agent's behaviour, not just define it — run its FSM **headless** for thousands
 of ticks across scripted scenarios, collect the transition stream, and **visualize** the dynamics so you
 calibrate `fsm.yaml` (and the need model) from data, not guesswork.
-**Why here:** a declarative FSM (1.7) is "behaviour as data"; this is the loop that **tunes** it — define
-→ simulate → see the dynamics → re-tune. It consumes the **transition tracing** the 1.3/1.7 engine
+**Why here:** a declarative FSM (1.9) is "behaviour as data"; this is the loop that **tunes** it — define
+→ simulate → see the dynamics → re-tune. It consumes the **transition tracing** the 1.3/1.9 engine
 already emits — a harness + analytics around it, nothing new in the runtime. (Concept:
 [features/fsm.md](features/fsm.md).)
 **Tasks:** a **headless sim harness** — `engine.run` on `MockBrain`, fast ticks, no live model, driven by
@@ -631,12 +836,12 @@ produces a state histogram + a transition heatmap + a when/why-transitions-fired
 variants are compared on the same scenario; the analytics surface a miscalibration (e.g. an unreachable
 state, or a state she never leaves) you can act on.
 
-### 1.9 Non-blocking execution (FSM) — ⬜
+### 1.11 Non-blocking execution (FSM) — ⬜
 **Goal:** a long `deep` call no longer freezes the machine — it runs on a **worker**, the FSM stays in
 `thinking`/`responding`, and the loop **keeps draining the event queue**; the reply returns as a
 `response.ready` event. So a `/status` (or a queued peer message) is handled *during* a call, not after.
 **Why here:** an optimization of the 1.3 runtime; the **later** phases inherit it for free — especially
-**group chats (1.11)**, where a busy N-way room makes a blocking deep call most painful. Reuses kiln's
+**group chats (1.13)**, where a busy N-way room makes a blocking deep call most painful. Reuses kiln's
 proven rotation-worker pattern — `_finalize_async` already computes off-thread and hands the result back
 through a queue. (Concept: [features/fsm.md](features/fsm.md).)
 **Tasks:** a model-calling action runs on a worker; the FSM enters `thinking`, the loop continues; the
@@ -647,18 +852,18 @@ does. Thread model unchanged (server-architecture §11).
 the reply lands; the reply still arrives and transitions to `responding`; Agnika's observable behaviour
 is otherwise unchanged; all on `MockBrain`.
 
-### 1.10 Persistence → PostgreSQL — ⬜
+### 1.12 Persistence → PostgreSQL — ⬜
 **Goal:** move per-agent persistence off JSON files onto **PostgreSQL**, behind a
 backend-agnostic **Store seam** — incremental writes (O(1) row `INSERT` vs today's
 O(n) whole-file rewrite every turn), safe concurrent multi-process access (no
 last-writer-wins clobbering), and a queryable backend (incl. **pgvector** for RAG)
 that v2's web + operator hub builds on. JSON stays the zero-dependency default;
 Postgres is opt-in.
-**Why here:** by 1.9 the engine is multi-agent (1.2), event-driven (1.3), with RAG
-(1.4), tools (1.5), and cross-agent conversation (1.6) — the JSON store is now the
+**Why here:** by 1.11 the engine is multi-agent (1.2), event-driven (1.3), with RAG
+(1.6), tools (1.7), and cross-agent conversation (1.8) — the JSON store is now the
 ceiling (real-time persistence rewrites the whole file each turn; two processes on one
 agent's store clobber each other), the **shared-memory** form of agent talk (the
-group-chat rooms coming in 1.11) needs a backend that arbitrates writers, and v2 (web
+group-chat rooms coming in 1.13) needs a backend that arbitrates writers, and v2 (web
 client + admin panel + multi-agent management) needs concurrent, queryable storage.
 This is the **v1→v2 bridge**.
 **Tasks:** formalize `store.py` into a `StoreBackend` interface (load /
@@ -669,7 +874,7 @@ stays the reference impl; a schema (`agents` / `sessions` / `messages` / `summar
 embeddings table) + migrations; a Postgres backend over psycopg/asyncpg with a pool
 (per-turn `INSERT`, indexed reads, **transactions** replacing the temp-file+rename
 atomicity; the single-writer invariant becomes a row/advisory **lock** — so the v1.1
-two-process hazard is *resolved*, not just avoided); fold the 1.4 flat-file RAG index into
+two-process hazard is *resolved*, not just avoided); fold the 1.6 flat-file RAG index into
 pgvector (one backend for transcripts + recall); a one-shot **idempotent importer**
 `.kiln/{id}/store.json` → PG for every agent + an exporter back (round-trip parity, an
 escape hatch); config — `DATABASE_URL` in `.env` (a secret), `store_backend:
@@ -683,16 +888,16 @@ concurrently with no lost writes (the v1.1 clobbering hazard gone); RAG recall r
 a pgvector query; the JSON backend still passes the full store-contract suite and the
 `pytest` baseline needs no database.
 
-### 1.11 Group chats (shared rooms) — ⬜
+### 1.13 Group chats (shared rooms) — ⬜
 **Goal:** several **separate chat rooms**, each shared by the user and **several agents** — everyone in
 a room sees every message, and any agent can **answer the whole room**. The full multi-party form of the
 1.8 conversation: not the user addressing one agent, but a shared space where participants talk to all.
 **Why here:** a room is **shared conversation state** that every participant reads **and** writes — the
 "shared-memory" form [server-architecture §14](features/server-architecture.en.md) deferred to a
-write-arbitrating database, so it builds directly on **Postgres (1.10)**; the routing reuses 1.6's
+write-arbitrating database, so it builds directly on **Postgres (1.12)**; the routing reuses 1.8's
 host-brokered fan-out, generalized from one-to-one to a room.
 **Tasks:** a **room** model — an id, a participant set (the user + chosen agents), and a **shared message
-history in Postgres** (1.10); create / join / leave. **Fan-out:** a message posted to a room (by the user
+history in Postgres** (1.12); create / join / leave. **Fan-out:** a message posted to a room (by the user
 or any agent) is delivered to every other participant agent's inbox, tagged with the room and sender
 (§14 host-brokering, now N-way). **Answer-to-all:** an agent's reply goes back to the **room**, broadcast
 to every participant; an agent **decides whether to chime in** rather than being forced to answer every

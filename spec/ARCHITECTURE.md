@@ -82,8 +82,8 @@ tick:
 `advance` is pure; the driver reads back the action's outcome (status, branch, reached_out, do_rotate,
 control) and sets the next state. The rest gate stays a flag (RESTING is derived from it; the FSM's
 `wake`/active-`enter_rest` transitions are shadowed by the flag until it becomes fully FSM-owned in
-1.7). Rotation stays orthogonal (applied alongside the action). The loop runs with no client attached
-(the agent keeps living). Model calls are **synchronous today** (they freeze the loop); **1.9** moves
+1.9). Rotation stays orthogonal (applied alongside the action). The loop runs with no client attached
+(the agent keeps living). Model calls are **synchronous today** (they freeze the loop); **1.11** moves
 them behind the FSM (a `response.ready` event) so the loop never blocks. See
 [features/fsm.md](features/fsm.md) and the FSM seam under **Contracts** below.
 
@@ -178,7 +178,7 @@ Lumi-style sections:
   load into the system prompt of every branch (`build_system`). What the agent *remembers*.
 - **`messages`** — `{session_id: [{role, text, at}]}`, the full turn list per session (each turn
   carries an `at` ISO timestamp, v0.8), written **before** the summary so a summary failure can't
-  lose it. The **RAG corpus** (1.4).
+  lose it. The **RAG corpus** (1.6).
 - **`sessions`** — `{id, started_at, ended_at, mode, turns}`, the per-session index.
 - **`facts`** (v0.6) — `{id, text, first_seen, last_seen, source_session}`, durable **facts about
   the user** (who they are, preferences, life), deduped by normalized text (`add_facts`).
@@ -220,21 +220,21 @@ multi-agent is additive, not a rewrite:
   primitives + `state` / `output` / `stats` / `config`) and the outcome fields the driver reads back
   (`status` / `branch` / `reached_out` / `resting` / `do_rotate` / `control`). The registered names
   are exactly `fsm.table_actions()` (the FSM table names only actions the registry provides) —
-  **actions = tools**: **1.5 Tools** extends the same registry, and an agent's scope gates which it
+  **actions = tools**: **1.7 Tools** extends the same registry, and an agent's scope gates which it
   may fire.
 - **FSM (v1.3, `kiln/fsm.py`):** the loop's behaviour is a table-driven finite state machine. The
   seam is: **states** `idle | responding | thinking | cooling | resting`; **event kinds**
-  `user.message | command | self_trigger | tick | rotate.request` (+ reserved `peer.message` 1.6 /
-  `room.message` 1.11 / `tool.result` 1.5); a **transition table** (`DEFAULT_TABLE`, tuple of `Rule`s)
+  `user.message | command | self_trigger | tick | rotate.request` (+ reserved `peer.message` 1.8 /
+  `room.message` 1.13 / `tool.result` 1.7); a **transition table** (`DEFAULT_TABLE`, tuple of `Rule`s)
   with **guards** as Python predicates over needs/flags; the pure **`advance(state, event, ctx) →
   (action, next_state)`** (and `match` → the selected `Rule`); the per-tick **`EventQueue`** drained
   by `EVENT_PRIORITY` (`input > self-trigger > rotate > tick`); and the **trace record** (KILN-066):
   `{tick, state, event, guard, action, next_state, needs}` = `fsm.TRACE_KEYS`, emitted through the
-  optional `engine.run(trace=…)` sink (off by default) — the log **1.8 simulation** consumes. The
+  optional `engine.run(trace=…)` sink (off by default) — the log **1.10 simulation** consumes. The
   **default table reproduces v1.2 byte-for-byte** (the whole suite + the deterministic dry-run pin
   it); the WS **event protocol is unchanged** by the FSM (the v1.1 server tests stay green). Guards
   stay Python here; the per-agent **YAML grammar / `fsm.yaml`** and folding the need model in as the
-  machine's variables (an EFSM) are **1.7**.
+  machine's variables (an EFSM) are **1.9**.
 - **Model usage:** `{model, input, output, cache_read, cache_write, total, cost_usd}` captured by
   `usage_record` (SDK `msg.usage` / CLI `data.usage` + `total_cost_usd`). `total` = input+output
   (cache tracked separately, Lumi-style); `cost_usd` = the CLI's actual cost, or `None` for the
@@ -352,7 +352,7 @@ code. Secrets (`ANTHROPIC_API_KEY`) live only in `.env`.
   tools/access its scope grants. Agnika (home) is elevated; companions narrow. The
   field is **set in v1.2** (`config.agent_scope(id)` → `broad`/`narrow`, carried on each
   `AgentRuntime`, surfaced in `GET /agents`) but **not enforced** — enforcement arrives
-  with the tool registry in **1.5**.
+  with the tool registry in **1.7**.
 - **Closed hub** (later): multi-agent/multi-user stays an admin-managed allowlist;
   no open sign-up.
 - **Untrusted inputs** (later, with tools/RAG/web): tool/web/file content is data,

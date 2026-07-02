@@ -53,7 +53,7 @@ def test_two_agents_run_concurrently_with_isolated_state(monkeypatch, tmp_path):
     assert host.agents() == ["agnika", "pashu"]
     # both ticked server-side with no client (cached status present)
     assert a.latest_status() is not None and p.latest_status() is not None
-    # per-agent permission scope (set, not enforced until 1.5)
+    # per-agent permission scope (set, not enforced until 1.7)
     assert a.scope == "broad" and p.scope == "narrow"
     # per-agent config: agnika on the module globals (None → monkeypatch-safe); pashu its own
     assert a._config is None

@@ -52,7 +52,7 @@ class AgentRuntime:
             self._config = AgentConfig.for_agent(agent_id)
         else:
             self._config = None
-        # v1.2 permission scope (set, NOT enforced until tools/1.5): home agent broad, rest narrow.
+        # v1.2 permission scope (set, NOT enforced until tools/1.7): home agent broad, rest narrow.
         self.scope = scope if scope is not None else agent_scope(agent_id)
         self._ticks = ticks
         self._live = live

@@ -378,13 +378,13 @@ def _server_agents() -> list[str]:
 SERVER_AGENTS = _server_agents()  # the set of agents started at server boot (host.boot_configured)
 
 # v1.2: per-agent permission SCOPE — the home agent (agnika) is broad (system/home), companions are
-# narrow. Set per agent + surfaced in GET /agents; **not enforced** until the tool registry (1.5).
+# narrow. Set per agent + surfaced in GET /agents; **not enforced** until the tool registry (1.7).
 AGENT_BROAD_SCOPE = "broad"
 AGENT_NARROW_SCOPE = "narrow"
 
 
 def agent_scope(agent_id: str | None) -> str:
-    """The agent's permission scope (set in v1.2, ENFORCED with tools in 1.5): the home agent is
+    """The agent's permission scope (set in v1.2, ENFORCED with tools in 1.7): the home agent is
     broad; any companion is narrow."""
     return AGENT_BROAD_SCOPE if (not agent_id or agent_id == DEFAULT_AGENT) else AGENT_NARROW_SCOPE
 
