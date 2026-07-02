@@ -14,13 +14,15 @@ or None (error / no call). Token parsing lives in usage.usage_record.
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import subprocess
+import time
 from typing import Protocol, runtime_checkable
 
 from .config import AGENTS_DIR, CHAT_MODEL, DEEP_MODEL, THINKING_TOKENS
 from .history import to_messages, to_transcript
-from .security import SecurityProfile, _agent_meta, _default_profile, claude_cmd
+from .security import SecurityProfile, _agent_meta, _default_profile, append_audit, claude_cmd
 from .usage import _cli_error_detail, usage_record
 
 # usage: {model, input, output, total} or None
@@ -84,7 +86,11 @@ class LiveBrain:
     security builder. Per-agent: `profile` (the capability profile) + `paths` (its workspace)."""
 
     def __init__(
-        self, profile: SecurityProfile | None = None, paths=None, deep_model: str | None = None
+        self,
+        profile: SecurityProfile | None = None,
+        paths=None,
+        deep_model: str | None = None,
+        agent_id: str = "agnika",
     ) -> None:
         # No-arg LiveBrain() (the CLI default + the contract tests) resolves the deny-first default
         # profile + the default agent's paths; the host passes the per-agent profile/paths/model.
@@ -93,9 +99,11 @@ class LiveBrain:
         self._profile = profile if profile is not None else _default_profile()
         self._paths = paths if paths is not None else AgentPaths.for_agent()
         self._deep_model = deep_model or DEEP_MODEL  # injected into deep.md at materialization
+        self._agent_id = agent_id
         kiln_dir = self._paths.store_file.parent  # .kiln[/{id}]
         self._workspace = kiln_dir / "workspace"  # cwd of every claude -p call
         self._security = kiln_dir / "security"  # generated settings / mcp configs (kiln-owned)
+        self._audit = kiln_dir / "claude-audit.jsonl"  # one line per (refused) spawn (KILN-072)
 
     def chat(self, history: list[dict], system: str) -> tuple[str, Usage]:
         # Invariant: the API-key (SDK) path is for the CHEAP model only. Opus must NEVER be
@@ -134,6 +142,7 @@ class LiveBrain:
         # on their frontmatter model. The builder reads the tool grant itself.
         model = self._deep_model if agent == "deep" else _meta(agent).get("model", "sonnet")
         prompt = _agent_prompt(agent, history)
+        base = {"ts": _dt.datetime.now().isoformat(timespec="seconds"), "agent_id": self._agent_id}
         try:
             argv, env, cwd = claude_cmd(
                 self._profile,
@@ -146,7 +155,13 @@ class LiveBrain:
                 model_overrides={"deep": self._deep_model},
             )
         except PermissionError as e:
+            # a sub-agent outside the profile's agents: — refused before any spawn, and audited
+            append_audit(
+                self._audit, {**base, "sub_agent": agent, "refused": True, "reason": str(e)}
+            )
             return f"({agent} error: {e})", None
+
+        t0 = time.monotonic()
         try:
             result = subprocess.run(
                 argv,
@@ -158,8 +173,11 @@ class LiveBrain:
                 env=env,
             )
         except Exception as e:  # timeout / process failed to start
+            self._audit_spawn(base, agent, argv, cwd, t0, exit_code=None, usage=None, error=str(e))
             return f"({agent} error: {e})", None
+
         if result.returncode != 0:
+            self._audit_spawn(base, agent, argv, cwd, t0, exit_code=result.returncode, usage=None)
             return (
                 f"({agent} error: claude CLI {result.returncode}: {_cli_error_detail(result)})",
                 None,
@@ -167,9 +185,27 @@ class LiveBrain:
         try:
             data = json.loads(result.stdout)
         except json.JSONDecodeError:
+            self._audit_spawn(base, agent, argv, cwd, t0, exit_code=0, usage=None)
             return result.stdout.strip(), None
         rec = usage_record(model, data.get("usage"), data.get("total_cost_usd"))
+        self._audit_spawn(base, agent, argv, cwd, t0, exit_code=0, usage=rec)
         return (data.get("result") or "").strip(), rec
+
+    def _audit_spawn(self, base, agent, argv, cwd, t0, *, exit_code, usage, error=None) -> None:
+        """Write one audit line for a spawn (KILN-072): timestamp, agent, argv, cwd, exit code,
+        duration, usage. Best-effort via `append_audit` (a write failure never crashes the loop)."""
+        rec = {
+            **base,
+            "sub_agent": agent,
+            "argv": argv,
+            "cwd": str(cwd),
+            "exit": exit_code,
+            "duration_s": round(time.monotonic() - t0, 3),
+            "usage": usage,
+        }
+        if error is not None:
+            rec["error"] = error
+        append_audit(self._audit, rec)
 
 
 class MockBrain:

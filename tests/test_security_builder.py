@@ -159,3 +159,28 @@ def load_security_inline(**overrides) -> SecurityProfile:
     from kiln.security import DEFAULT_SECURITY, _build
 
     return _build({**DEFAULT_SECURITY, **overrides})
+
+
+# --- append_audit (KILN-072) -------------------------------------------------
+
+
+def test_append_audit_writes_one_json_line_per_call(tmp_path):
+    from kiln.security import append_audit
+
+    p = tmp_path / "claude-audit.jsonl"
+    append_audit(p, {"ts": "t1", "sub_agent": "deep", "exit": 0})
+    append_audit(p, {"ts": "t2", "sub_agent": "hands", "refused": True})
+    lines = [json.loads(ln) for ln in p.read_text(encoding="utf-8").splitlines()]
+    assert len(lines) == 2
+    assert lines[0]["sub_agent"] == "deep" and lines[0]["exit"] == 0
+    assert lines[1]["refused"] is True
+
+
+def test_append_audit_swallows_write_errors(tmp_path):
+    """A write failure must never propagate (auditing can't crash the loop)."""
+    from kiln.security import append_audit
+
+    # point at a path whose parent is a FILE, so mkdir/open fails — must not raise
+    clash = tmp_path / "afile"
+    clash.write_text("x", encoding="utf-8")
+    append_audit(clash / "nested" / "audit.jsonl", {"ts": "t"})  # no exception = pass

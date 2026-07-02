@@ -285,6 +285,11 @@ multi-agent is additive, not a rewrite:
   counts `claude -p` executions (deep + tool); `by_model` is the per-model breakdown
   `{model: {calls, input, output, cache_read, cache_write, cost_usd}}`. The generated
   `.kiln/usage-report.md` (`report.py`) is regenerated from it.
+- **Deep-branch audit log (v1.4):** `.kiln/{id}/claude-audit.jsonl` — one append-only JSON line
+  per `claude -p` spawn `{ts, agent_id, sub_agent, argv, cwd, exit, duration_s, usage}`, and one
+  per **refused** spawn `{ts, agent_id, sub_agent, refused: true, reason}` (an agent outside the
+  profile's `agents:`). Written best-effort by `security.append_audit` from `LiveBrain.tool` — a
+  write failure never crashes the loop. The security log the operator can actually read.
 - **Brain seam (v1.4: two methods):** `Brain.chat(history, system)` (SDK/Haiku) and
   `Brain.tool(agent, history, system)` (a `claude -p --agent` sub-agent via the builder) each
   return `(text, usage)`; `LiveBrain(profile, paths, deep_model)` and `MockBrain` implement it.

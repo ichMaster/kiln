@@ -249,6 +249,50 @@ def test_tools_class_routes_to_hands(monkeypatch):
     assert out["route"] == "TOOLS/hands"
 
 
+def _livebrain_in(tmp_path, monkeypatch):
+    """A LiveBrain whose per-agent paths live under tmp (isolates the audit/workspace writes)."""
+    from kiln.config import AgentPaths
+
+    k = tmp_path / "kiln"
+    s = tmp_path / "state"
+    paths = AgentPaths(
+        state_dir=s,
+        needs_file=k / "needs.json",
+        store_file=k / "store.json",
+        usage_ledger=k / "usage-ledger.jsonl",
+        usage_report=k / "usage-report.md",
+        canon_file=s / "canon.md",
+        prompts_file=s / "prompts.md",
+    )
+    return LiveBrain(paths=paths, agent_id="agnika"), k / "claude-audit.jsonl"
+
+
+def test_audit_line_written_per_spawn(tmp_path, monkeypatch):
+    """KILN-072: a spawn appends one audit line (ts/agent_id/sub_agent/argv/cwd/exit/usage)."""
+    import json as _json
+
+    seen = _capture_run(monkeypatch)  # mocks subprocess.run → returncode 0
+    brain, audit = _livebrain_in(tmp_path, monkeypatch)
+    brain.tool("session-wiki", [{"role": "user", "text": "привіт"}], "sys")
+    assert seen["cmd"][2] == "--agent"
+    lines = [_json.loads(x) for x in audit.read_text(encoding="utf-8").splitlines()]
+    assert len(lines) == 1
+    rec = lines[0]
+    assert set(rec) >= {"ts", "agent_id", "sub_agent", "argv", "cwd", "exit", "duration_s", "usage"}
+    assert rec["sub_agent"] == "session-wiki" and rec["exit"] == 0
+
+
+def test_audit_line_for_refused_agent(tmp_path, monkeypatch):
+    """A sub-agent outside the profile is refused before any spawn — and audited as refused."""
+    import json as _json
+
+    brain, audit = _livebrain_in(tmp_path, monkeypatch)
+    text, usage = brain.tool("rm-rf", [{"role": "user", "text": "hi"}], "sys")
+    assert usage is None and "rm-rf" in text
+    rec = _json.loads(audit.read_text(encoding="utf-8").splitlines()[0])
+    assert rec["sub_agent"] == "rm-rf" and rec["refused"] is True
+
+
 def test_livebrain_chat_refuses_opus_on_the_api_key(monkeypatch):
     """The SDK/API-key path must never run Opus — it degrades with a clear config error."""
     import kiln.brain as brainmod

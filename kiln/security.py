@@ -295,6 +295,18 @@ def _write_json(path: Path, data: dict) -> Path:
     return path
 
 
+def append_audit(audit_path: Path, record: dict) -> None:
+    """Append one JSON line to the per-agent `claude-audit.jsonl` — the security log the operator
+    can read (one line per `claude -p` spawn, and one per *refused* spawn). Best-effort: a write
+    failure is swallowed, never crashing the tick loop."""
+    try:
+        audit_path.parent.mkdir(parents=True, exist_ok=True)
+        with audit_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def claude_cmd(
     profile: SecurityProfile,
     agent: str,

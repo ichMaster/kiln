@@ -39,6 +39,7 @@ from .config import (
     BIORHYTHM,
     CHAT_MODEL,
     DEEP_MODEL,
+    DEFAULT_AGENT,
     DRIFT,  # noqa: F401 (re-exported for tests: eng.DRIFT)
     MOOD_AWARENESS,
     NEED_TRIGGERS,
@@ -217,7 +218,12 @@ def run(
                 if config is not None
                 else load_security(paths.state_dir / "security.yaml")
             )
-            brain = LiveBrain(profile=profile, paths=paths)
+            brain = LiveBrain(
+                profile=profile,
+                paths=paths,
+                deep_model=(config.deep_model if config is not None else DEEP_MODEL),
+                agent_id=(config.agent_id if config is not None else DEFAULT_AGENT),
+            )
         else:
             brain = MockBrain()
     # v1.2: resolve each calibration scalar from `config`, falling back to the module global (read
