@@ -211,11 +211,10 @@ def test_command_handled_is_a_noop_turn():
     assert ctx.output.calls == []
 
 
-def test_command_ask_forces_a_deep_turn():
+def test_command_tuple_return_is_ignored_after_ask_removed():
+    """v1.4: /ask is gone, so `_act_command` no longer runs a forced-deep turn from a command
+    code — an unexpected tuple is simply not acted on (no brain call, no output)."""
     ctx = _command_ctx(("ask", "поясни рекурсію"))
     default_registry().fire("command", ctx)
-    assert ctx.status == "responding"
-    assert ctx.branch is not None
-    # a forced-deep turn: the agent reply (lead) + usage, no user echo
-    assert ctx.output.kinds() == ["agent", "usage"]
-    assert ctx.output.calls[0][2].get("lead") is True
+    assert ctx.status == "idle"
+    assert ctx.output.calls == []

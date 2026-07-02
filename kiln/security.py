@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -251,16 +250,43 @@ def _env_allowlist(thinking_tokens: int) -> dict:
     return env
 
 
-def _materialize_agents(profile: SecurityProfile, workspace: Path, source_agents_dir: Path) -> None:
+def _inject_model(text: str, model: str) -> str:
+    """Rewrite the frontmatter `model:` line to `model` (per-agent config stays authoritative — e.g.
+    the persona's deep_model into deep.md). Appends the line if absent within the frontmatter."""
+    lines = text.splitlines(keepends=True)
+    fences = [i for i, ln in enumerate(lines) if ln.strip() == "---"]
+    if len(fences) < 2:
+        return text  # no frontmatter block — leave as is
+    lo, hi = fences[0], fences[1]
+    for i in range(lo + 1, hi):
+        if lines[i].startswith("model:"):
+            lines[i] = f"model: {model}\n"
+            return "".join(lines)
+    lines.insert(hi, f"model: {model}\n")
+    return "".join(lines)
+
+
+def _materialize_agents(
+    profile: SecurityProfile,
+    workspace: Path,
+    source_agents_dir: Path,
+    model_overrides: dict | None = None,
+) -> None:
     """Copy the profile's allowed sub-agent definitions into `<workspace>/.claude/agents/` so the
     call resolves ONLY kiln-owned agents (never the repo's `.claude/`). Missing sources are skipped
-    (e.g. `deep.md` before KILN-070) rather than crashing."""
+    rather than crashing. `model_overrides` (e.g. `{"deep": deep_model}`) rewrites the frontmatter
+    `model:` so per-agent config wins over the committed file."""
+    overrides = model_overrides or {}
     dest = workspace / ".claude" / "agents"
     dest.mkdir(parents=True, exist_ok=True)
     for agent in profile.agents:
         src = source_agents_dir / f"{agent}.md"
-        if src.exists():
-            shutil.copyfile(src, dest / f"{agent}.md")
+        if not src.exists():
+            continue
+        text = src.read_text(encoding="utf-8")
+        if agent in overrides:
+            text = _inject_model(text, overrides[agent])
+        (dest / f"{agent}.md").write_text(text, encoding="utf-8")
 
 
 def _write_json(path: Path, data: dict) -> Path:
@@ -278,12 +304,14 @@ def claude_cmd(
     security_dir: Path,
     thinking_tokens: int,
     source_agents_dir: Path,
+    model_overrides: dict | None = None,
 ) -> tuple[list[str], dict, Path]:
     """Build `(argv, env, cwd)` for one `claude -p --agent <agent>` call under `profile`.
 
     Raises `PermissionError` if the profile does not list `agent` (the gate — refused before any
-    spawn). Side effects: mkdir the workspace, materialize the profile's agents into it, and write
-    the generated settings (+ MCP config) under `security_dir`.
+    spawn). Side effects: mkdir the workspace, materialize the profile's agents into it (rewriting
+    the `model:` of any in `model_overrides`), and write the generated settings (+ MCP) under
+    `security_dir`.
     """
     if not profile.allows_agent(agent):
         raise PermissionError(
@@ -291,7 +319,7 @@ def claude_cmd(
         )
 
     workspace_dir.mkdir(parents=True, exist_ok=True)
-    _materialize_agents(profile, workspace_dir, source_agents_dir)
+    _materialize_agents(profile, workspace_dir, source_agents_dir, model_overrides)
 
     granted = effective_tools(profile, _frontmatter_tools(agent, source_agents_dir))
     settings = {"permissions": {"deny": deny_rules(profile)}}

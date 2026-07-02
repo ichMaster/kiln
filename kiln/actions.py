@@ -125,7 +125,8 @@ def _act_rotate(ctx: ActionContext) -> None:
 
 def _act_command(ctx: ActionContext) -> None:
     """A slash command: dispatch it and translate the code into the outcome the driver reads back —
-    quit/reload → `control`, rotate → `do_rotate`, `("ask", text)` → a forced-deep turn."""
+    quit/reload → `control`, rotate → `do_rotate`, else handled in place. (v1.4: `/ask` is gone —
+    routing already sends reasoning turns to the `deep` sub-agent; set `THINK_THRESHOLD=0`.)"""
     ctx.status = "idle"
     code = ctx.handle_command()
     if code == "quit":
@@ -135,22 +136,7 @@ def _act_command(ctx: ActionContext) -> None:
         ctx.control = "reload"
     elif code == "rotate":
         ctx.do_rotate = True
-    elif code == "handled":
-        pass
-    elif isinstance(code, tuple):  # ("ask", text) -> forced deep
-        if ctx.resting:
-            _act_rest_ack(ctx)  # too tired to engage even /ask: heard, no brain call (v1.2)
-            return
-        out = ctx.turn(code[1], force="deep")
-        ctx.output.agent(
-            out["reply"],
-            lead=True,
-            model=out["route"].split("/")[-1],
-            is_curiosity=out["curiosity"],
-        )
-        ctx.output.usage(out.get("usage"), ctx.stats.last_latency)
-        ctx.status, ctx.branch = "responding", out["class"]
-        ctx.reached_out = False
+    # else: "handled" / None — the command wrote its own output through the seam
 
 
 # Built-in action name -> callable. The keys are exactly `fsm.table_actions()` (pinned by a contract

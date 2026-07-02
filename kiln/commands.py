@@ -8,7 +8,6 @@ client (console today, TUI/web later) receives the result. handle_command() retu
   "quit"           — user asks to exit;
   "reload"         — re-read canon/prompts/memory (the run loop does it; no session drop);
   "rotate"         — close+summarize this session and start a fresh one (non-blocking; run loop);
-  ("ask", text)    — forced deep turn (the run loop makes the call itself);
   None             — not a command, fall through to normal handling.
 """
 
@@ -31,7 +30,6 @@ COMMANDS = (
     "prompt",
     "usage",
     "report",
-    "ask",
     "reload",
     "rotate",
     "clear",
@@ -41,8 +39,8 @@ COMMANDS = (
 
 
 def command_hints() -> str:
-    """Display string of the implemented slash commands (/ask takes an argument)."""
-    return "  ".join(f"/{c} <text>" if c == "ask" else f"/{c}" for c in COMMANDS)
+    """Display string of the implemented slash commands."""
+    return "  ".join(f"/{c}" for c in COMMANDS)
 
 
 def _fmt_needs(state) -> str:
@@ -57,7 +55,6 @@ def handle_command(
 
     parts = line[1:].split(maxsplit=1)
     cmd = parts[0].lower() if parts else ""
-    arg = parts[1] if len(parts) > 1 else ""
 
     if cmd in ("quit", "exit", "q"):
         return "quit"
@@ -144,14 +141,6 @@ def handle_command(
         else:
             write_report()
             output.notice(f"[report] regenerated -> {USAGE_REPORT_FILE}")
-
-    elif cmd == "ask":
-        # Forced Claude call (deep), bypassing the classifier.
-        # The run() loop makes the turn itself — to avoid pulling deep_reply here (cycle break).
-        if not arg:
-            output.notice("[ask] provide text: /ask <question>")
-        else:
-            return ("ask", arg)
 
     elif cmd == "clear":
         history.clear()

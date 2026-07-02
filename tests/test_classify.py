@@ -43,7 +43,8 @@ def test_classify_tool_hint_beats_think_hint():
 
 
 def test_classify_high_intensity_routes_deep():
-    assert classify("привіт", State(needs={"intensity": 0.80})) == ("deep", None)
+    # v1.4: intensity fires the `deep` sub-agent (action: tool, agent: deep)
+    assert classify("привіт", State(needs={"intensity": 0.80})) == ("tool", "deep")
 
 
 def test_classify_high_novelty_routes_session_wiki():
@@ -52,7 +53,7 @@ def test_classify_high_novelty_routes_session_wiki():
 
 def test_classify_intensity_wins_over_novelty():
     st = State(needs={"intensity": 0.80, "novelty": 0.95})
-    assert classify("привіт", st) == ("deep", None)
+    assert classify("привіт", st) == ("tool", "deep")
 
 
 def test_classify_explicit_hint_beats_high_need():

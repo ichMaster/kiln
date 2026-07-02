@@ -147,7 +147,9 @@ def respond(
         route = f"TOOL/{agent}"  # e.g. TOOL/session-wiki (the agent IS the trace label)
         event = agent if agent in sat else "deep"
     elif cls in ("think", "deep"):
-        reply, usage = brain.deep(prompt, history, system, with_tools=False)
+        # v1.4: reasoning is the `deep` sub-agent (tool-less, the persona's deep_model), fired
+        # through the one builder — no raw armed `claude -p` remains.
+        reply, usage = brain.tool("deep", history, system)
         route = f"THINK/{deep_model.split('-')[1]}"  # e.g. THINK/opus
         event = "deep"
     else:  # tools (v1.4): the armed branch is retired — fire the `hands` sub-agent (workspace-

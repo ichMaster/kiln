@@ -18,7 +18,7 @@ import json
 import subprocess
 from typing import Protocol, runtime_checkable
 
-from .config import AGENTS_DIR, CHAT_MODEL, DEEP_MODEL, THINKING_TOKENS, claude_env
+from .config import AGENTS_DIR, CHAT_MODEL, DEEP_MODEL, THINKING_TOKENS
 from .history import to_messages, to_transcript
 from .security import SecurityProfile, _agent_meta, _default_profile, claude_cmd
 from .usage import _cli_error_detail, usage_record
@@ -47,15 +47,10 @@ class Brain(Protocol):
         """A cheap, fast reply (the whole history goes in as messages)."""
         ...
 
-    def deep(
-        self, prompt: str, history: list[dict], system: str, with_tools: bool
-    ) -> tuple[str, Usage]:
-        """A deep turn (reasoning or tools); history goes into the prompt as a transcript."""
-        ...
-
     def tool(self, agent: str, history: list[dict], system: str) -> tuple[str, Usage]:
-        """Run a named Claude Code sub-agent (`claude -p --agent <agent>`); the recent
-        history goes in as a transcript. Used by "tool" self-triggers (e.g. session-wiki)."""
+        """Run a named Claude Code sub-agent (`claude -p --agent <agent>`); the recent history
+        goes in as a transcript. v1.4: the ONLY `claude -p` shape — reasoning is the `deep`
+        sub-agent, acting is `hands`, specialists are themselves (session-wiki)."""
         ...
 
 
@@ -88,13 +83,16 @@ class LiveBrain:
     """The real brain: Haiku via the SDK (chat) + `claude -p` sub-agents (deep/tools) built by the
     security builder. Per-agent: `profile` (the capability profile) + `paths` (its workspace)."""
 
-    def __init__(self, profile: SecurityProfile | None = None, paths=None) -> None:
+    def __init__(
+        self, profile: SecurityProfile | None = None, paths=None, deep_model: str | None = None
+    ) -> None:
         # No-arg LiveBrain() (the CLI default + the contract tests) resolves the deny-first default
-        # profile + the default agent's paths; the host passes the per-agent profile/paths.
+        # profile + the default agent's paths; the host passes the per-agent profile/paths/model.
         from .config import AgentPaths
 
         self._profile = profile if profile is not None else _default_profile()
         self._paths = paths if paths is not None else AgentPaths.for_agent()
+        self._deep_model = deep_model or DEEP_MODEL  # injected into deep.md at materialization
         kiln_dir = self._paths.store_file.parent  # .kiln[/{id}]
         self._workspace = kiln_dir / "workspace"  # cwd of every claude -p call
         self._security = kiln_dir / "security"  # generated settings / mcp configs (kiln-owned)
@@ -125,61 +123,6 @@ class LiveBrain:
         # SDK/Haiku has no per-call cost — leave cost_usd=None (estimated from the price table).
         return text, usage_record(msg.model, msg.usage)
 
-    def deep(
-        self, prompt: str, history: list[dict], system: str, with_tools: bool
-    ) -> tuple[str, Usage]:
-        # The subprocess holds no session between calls, so prior turns are embedded
-        # as a text transcript, with the current prompt at the end.
-        prior = history[:-1] if history else []
-        full_prompt = prompt
-        if prior:
-            full_prompt = (
-                "Контекст розмови:\n"
-                + to_transcript(prior)
-                + "\n\nПоточне повідомлення:\n"
-                + prompt
-            )
-
-        # v1.4: deep is TOOL-LESS (the armed "tools" class now fires the `hands` sub-agent via
-        # `tool()`; DEEP_TOOLS is retired). `with_tools` is kept for signature stability and
-        # ignored. KILN-070 converts this raw call into the `deep` sub-agent through the builder.
-        cmd = [
-            "claude",
-            "-p",
-            "--model",
-            DEEP_MODEL,
-            "--output-format",
-            "json",
-            "--append-system-prompt",
-            system,
-        ]
-        # The prompt goes via stdin (not a positional arg). claude_env() turns on extended thinking
-        # and strips the API key (Opus bills via the CLI login).
-        try:
-            result = subprocess.run(
-                cmd,
-                input=full_prompt,
-                capture_output=True,
-                text=True,
-                timeout=180,
-                env=claude_env(),
-            )
-        except Exception as e:  # timeout / process failed to start
-            return f"(deep error: {e})", None
-        if result.returncode != 0:
-            # The CLI occasionally fails (a limit, a transient error) — don't crash the loop.
-            return (
-                f"(deep error: claude CLI {result.returncode}: {_cli_error_detail(result)})",
-                None,
-            )
-        try:
-            data = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            return result.stdout.strip(), None  # unexpected output — as is
-        # claude -p reports the actual cost; carry it (over any estimate) into the record.
-        rec = usage_record(DEEP_MODEL, data.get("usage"), data.get("total_cost_usd"))
-        return (data.get("result") or "").strip(), rec
-
     def tool(self, agent: str, history: list[dict], system: str) -> tuple[str, Usage]:
         # Run a named sub-agent via the SECURITY BUILDER (KILN-069): `claude -p --agent <agent>`
         # under this agent's capability profile — cwd = its workspace, the profile's agents
@@ -187,7 +130,9 @@ class LiveBrain:
         # tool grant = frontmatter ∩ profile. The agent file's body IS its system prompt;
         # canon/memory ride on --append-system-prompt. An agent not in the profile's `agents:`
         # list is refused before a spawn. Degrades to "(<agent> error: …)" — never crashes.
-        model = _meta(agent).get("model", "sonnet")  # usage label only (builder reads tools itself)
+        # usage label: deep runs on the persona's deep_model (injected at materialization), others
+        # on their frontmatter model. The builder reads the tool grant itself.
+        model = self._deep_model if agent == "deep" else _meta(agent).get("model", "sonnet")
         prompt = _agent_prompt(agent, history)
         try:
             argv, env, cwd = claude_cmd(
@@ -198,6 +143,7 @@ class LiveBrain:
                 security_dir=self._security,
                 thinking_tokens=THINKING_TOKENS,
                 source_agents_dir=AGENTS_DIR,
+                model_overrides={"deep": self._deep_model},
             )
         except PermissionError as e:
             return f"({agent} error: {e})", None
@@ -237,14 +183,8 @@ class MockBrain:
         text = f"(dry-run chat: messages={len(history)})"
         return text, usage_record(CHAT_MODEL, {"input_tokens": 8, "output_tokens": 12})
 
-    def deep(
-        self, prompt: str, history: list[dict], system: str, with_tools: bool
-    ) -> tuple[str, Usage]:
-        prior = len(history) - 1 if history else 0
-        text = f"(dry-run deep: transcript={prior} turns, tools={with_tools})"
-        return text, usage_record(DEEP_MODEL, {"input_tokens": 20, "output_tokens": 30})
-
     def tool(self, agent: str, history: list[dict], system: str) -> tuple[str, Usage]:
         text = f"(dry-run tool[{agent}]: turns={len(history)})"
-        model = _meta(agent).get("model", "sonnet")
+        # deep runs on the deep model; other sub-agents on their frontmatter model.
+        model = DEEP_MODEL if agent == "deep" else _meta(agent).get("model", "sonnet")
         return text, usage_record(model, {"input_tokens": 16, "output_tokens": 24})

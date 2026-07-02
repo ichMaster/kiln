@@ -83,14 +83,6 @@ def test_mockbrain_chat_contract():
     assert usage["total"] == usage["input"] + usage["output"]
 
 
-def test_mockbrain_deep_contract():
-    text, usage = MockBrain().deep(
-        "питання", [{"role": "user", "text": "питання"}], "sys", with_tools=False
-    )
-    assert isinstance(text, str) and text
-    assert set(usage) == USAGE_KEYS
-
-
 def test_mockbrain_tool_contract():
     text, usage = MockBrain().tool("session-wiki", [{"role": "user", "text": "привіт"}], "sys")
     assert isinstance(text, str) and text
@@ -117,10 +109,6 @@ class RecordingBrain:
         self.calls.append("chat")
         return "CHAT-REPLY", usage_record(CHAT_MODEL, {"input_tokens": 1, "output_tokens": 1})
 
-    def deep(self, prompt, history, system, with_tools):
-        self.calls.append(("deep", with_tools))
-        return "DEEP-REPLY", usage_record(DEEP_MODEL, {"input_tokens": 2, "output_tokens": 2})
-
     def tool(self, agent, history, system):
         self.calls.append(("tool", agent))
         return "TOOL-REPLY", usage_record("sonnet", {"input_tokens": 3, "output_tokens": 3})
@@ -135,20 +123,20 @@ def test_respond_chat_routes_to_brain_chat():
     assert set(out["usage"]) == USAGE_KEYS
 
 
-def test_respond_think_routes_to_brain_deep():
+def test_respond_think_routes_to_deep_subagent():
     brain = RecordingBrain()
-    # Prompt carries THINK_HINTS markers -> deep branch, no tools.
+    # Prompt carries THINK_HINTS markers -> the `deep` sub-agent (v1.4), tool-less.
     out = respond(
         "поясни, чому так", State(needs={"intensity": 0.0, "connection": 0.0}), [], "sys", brain
     )
-    assert brain.calls == [("deep", False)]
-    assert out["reply"] == "DEEP-REPLY"
+    assert brain.calls == [("tool", "deep")]
+    assert out["reply"] == "TOOL-REPLY"
 
 
-def test_respond_force_deep_bypasses_classify():
+def test_respond_force_deep_routes_to_deep_subagent():
     brain = RecordingBrain()
     out = respond("будь-що", State(needs={}), [], "sys", brain, force="deep")
-    assert brain.calls == [("deep", False)]
+    assert brain.calls == [("tool", "deep")]
     assert out["class"] == "deep"
 
 
@@ -207,14 +195,14 @@ def _capture_run(monkeypatch):
     return seen
 
 
-def test_livebrain_deep_is_toolless_and_uses_stdin(monkeypatch):
-    """v1.4: the deep branch is TOOL-LESS — no --allowedTools (the armed 'tools' class fires the
-    `hands` sub-agent instead). Prompt still on stdin; Opus never on the API key."""
+def test_livebrain_deep_is_the_tool_less_deep_subagent(monkeypatch):
+    """v1.4: reasoning is the `deep` sub-agent through the builder — --agent deep, tool-less
+    (deep.md declares no tools → no --allowedTools), prompt on stdin, Opus never on the API key."""
     seen = _capture_run(monkeypatch)
-    LiveBrain().deep("ПРОМПТ", [], "sys", with_tools=True)  # with_tools ignored now
-    assert seen["input"] == "ПРОМПТ"  # prompt on stdin
-    assert "ПРОМПТ" not in seen["cmd"]  # never a positional arg
-    assert "--allowedTools" not in seen["cmd"]  # tool-less deep (v1.4)
+    LiveBrain().tool("deep", [{"role": "user", "text": "поясни"}], "sys")
+    assert "--agent" in seen["cmd"] and "deep" in seen["cmd"]
+    assert "--allowedTools" not in seen["cmd"]  # deep is tool-less
+    assert seen["input"] and seen["input"] not in seen["cmd"]  # prompt on stdin
     assert "ANTHROPIC_API_KEY" not in seen["env"]  # Opus never bills via the API key
     assert "MAX_THINKING_TOKENS" in seen["env"]  # extended thinking ON
 

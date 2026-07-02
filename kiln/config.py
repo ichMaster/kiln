@@ -201,7 +201,7 @@ DEFAULT_NEEDS = {
         "connection": {"threshold": 0.80, "action": "chat"},
         "rest": {"threshold": 0.90, "action": "idle"},
         "novelty": {"threshold": 0.85, "action": "tool", "agent": "session-wiki"},
-        "intensity": {"threshold": 0.75, "action": "deep"},
+        "intensity": {"threshold": 0.75, "action": "tool", "agent": "deep"},
         "reflection": {"threshold": 0.60, "action": "thought"},
         "curiosity": {"threshold": 0.65, "action": "ask"},
     },

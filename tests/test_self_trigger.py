@@ -125,8 +125,9 @@ def test_reach_out_chat_when_calm():
 
 
 def test_reach_out_deep_when_intensity_high():
+    # v1.4: intensity fires the `deep` sub-agent (action: tool, agent: deep)
     st = State(needs={"connection": 0.85, "intensity": 0.80})  # intensity >= 0.75
-    assert reach_out_branch(st) == ("deep", None)
+    assert reach_out_branch(st) == ("tool", "deep")
 
 
 def test_reach_out_session_wiki_when_novelty_high():
@@ -137,4 +138,4 @@ def test_reach_out_session_wiki_when_novelty_high():
 def test_reach_out_intensity_wins_over_novelty():
     # both high -> intensity has priority (REACH_OUT_MODELS order)
     st = State(needs={"connection": 0.85, "intensity": 0.80, "novelty": 0.95})
-    assert reach_out_branch(st) == ("deep", None)
+    assert reach_out_branch(st) == ("tool", "deep")

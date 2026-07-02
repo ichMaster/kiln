@@ -152,18 +152,12 @@ def test_quit_returns_quit():
     assert handle_command("/quit", State(needs={}), [], "sys", False, RecordingOutput()) == "quit"
 
 
-def test_ask_returns_tuple():
-    assert handle_command("/ask питання", State(needs={}), [], "sys", False, RecordingOutput()) == (
-        "ask",
-        "питання",
-    )
-
-
-def test_ask_without_arg_notifies():
+def test_ask_removed_is_unknown_command():
+    """v1.4: /ask is gone — routing already sends reasoning turns to the `deep` sub-agent."""
     out = RecordingOutput()
-    action = handle_command("/ask", State(needs={}), [], "sys", False, out)
+    action = handle_command("/ask питання", State(needs={}), [], "sys", False, out)
     assert action == "handled"
-    assert any("[ask]" in n for n in out.notices)
+    assert any("unknown command" in n for n in out.notices)
 
 
 def test_command_hints_match_handled_commands(monkeypatch):

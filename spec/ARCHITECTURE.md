@@ -95,10 +95,11 @@ behind the **`Brain` seam** (`brain.py`), each method returning `(text, usage)`:
 - **chat** → **Haiku** via the Anthropic Messages API (`LiveBrain.chat`, in-process
   SDK; `anthropic` imported lazily so dry-run is dependency-free). Cheap, fast,
   no tools.
-- **deep** → **Opus** via `claude -p` (`LiveBrain.deep`, subprocess,
-  `--output-format json` for text + token usage). Reasoning only — **tool-less** (v1.4: the old
-  `--allowedTools Read,Write,Bash` armed branch is retired; `DEEP_TOOLS` is gone). KILN-070 folds
-  this raw call into the `deep` sub-agent through the builder.
+- **deep** → the **`deep` sub-agent** (v1.4): reasoning runs as `claude -p --agent deep`, built by
+  the same builder as any sub-agent — **tool-less** (`deep.md` declares no tools) on the persona's
+  `deep_model` (Opus, injected into the materialized frontmatter). The `think` class and the
+  intensity trigger (`action: tool, agent: deep`) both fire it; the raw armed `claude -p` branch and
+  `LiveBrain.deep` are gone (`DEEP_TOOLS` retired). Satiation event is still `deep`.
 - **tool** → a **named Claude Code sub-agent** via `claude -p --agent <agent>`, built by the
   **security builder** (`security.claude_cmd`, v1.4): cwd = the agent's `.kiln/{id}/workspace/`, the
   profile's `agents:` materialized into it, a minimal env allowlist, generated `--settings` deny
@@ -281,11 +282,13 @@ multi-agent is additive, not a rewrite:
   counts `claude -p` executions (deep + tool); `by_model` is the per-model breakdown
   `{model: {calls, input, output, cache_read, cache_write, cost_usd}}`. The generated
   `.kiln/usage-report.md` (`report.py`) is regenerated from it.
-- **Brain seam:** `Brain.chat(history, system)`, `Brain.deep(prompt, history, system,
-  with_tools)`, and `Brain.tool(agent, history, system)` each return `(text, usage)`;
-  `LiveBrain` (SDK + CLI + named sub-agents) and `MockBrain` implement it; model ids are
-  config. `respond()` calls the model only through this seam (classes
-  `chat | think | tools | tool`, the last delegating to a named `.claude/agents/<agent>`).
+- **Brain seam (v1.4: two methods):** `Brain.chat(history, system)` (SDK/Haiku) and
+  `Brain.tool(agent, history, system)` (a `claude -p --agent` sub-agent via the builder) each
+  return `(text, usage)`; `LiveBrain(profile, paths, deep_model)` and `MockBrain` implement it.
+  `Brain.deep` is **retired** — reasoning is the `deep` sub-agent through `tool()`. `respond()`
+  calls the model only through this seam: the classes `chat | think | tools | tool` map to
+  `chat` (Haiku), `tool("deep")` (think/deep), `tool("hands")` (tools), and `tool(<agent>)`
+  (a named specialist).
 - **Output seam:** `Output` with `user(text)` /
   `agent(text, is_self, lead, model, is_thought, is_curiosity)` / `usage(dict, latency?)` /
   `notice(text)` / `status(snapshot)`; the core emits through it, `ConsoleOutput` is the default

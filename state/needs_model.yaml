@@ -17,7 +17,7 @@ need_triggers:
   connection: { threshold: 0.80, action: chat }
   rest:       { threshold: 0.90, action: idle }
   novelty:    { threshold: 0.85, action: tool, agent: session-wiki }
-  intensity:  { threshold: 0.75, action: deep }
+  intensity:  { threshold: 0.75, action: tool, agent: deep }   # v1.4: fires the `deep` sub-agent
   reflection: { threshold: 0.60, action: thought }   # v0.10 inner monologue (no self-msg)
   curiosity:  { threshold: 0.65, action: ask }        # v0.11 monitor-discharged (no self-msg)
 
